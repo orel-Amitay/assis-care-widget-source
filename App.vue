@@ -1,0 +1,27049 @@
+<template>
+  <div
+    class="assis-plugin-root"
+    dir="ltr"
+    :style="{ direction: 'ltr', '--assis-bottom-offset': `${pluginBottomOffset}px` }"
+  >
+  <!-- Quick actions (above the heart button) -->
+  <transition name="quick-actions" appear>
+    <div
+      v-if="pluginMessagesFetched && showQuickActions && !isChatOpen && loginChannels === 'ai'"
+      :class="['quick-actions', 'quick-actions--starter', `quick-${heartPosition}`, `quick-${heartSize}`, `quick-layout-${pluginBubbleLayout}`, heartPosition === 'right' ? 'items-end' : 'items-start', { 'plan-powered-by-assis': usesPoweredOpenButton }]"
+      @click.stop
+    >
+      <div
+        class="quick-actions-list"
+        :class="heartPosition === 'right' ? 'items-end' : 'items-start'"
+      >
+        <div class="quick-starter-intro-wrap">
+          <button
+            class="quick-starter-close"
+            type="button"
+            :aria-label="language === 'he' ? 'סגירת הצעות' : 'Dismiss suggestions'"
+            @click.stop="dismissQuickActions"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M18 6 6 18"></path>
+              <path d="M6 6 18 18"></path>
+            </svg>
+          </button>
+        </div>
+
+        <template v-if="shownOutsideBubbles.length">
+          <template v-for="(bubble, index) in shownOutsideBubbles" :key="`outside-${index}-${bubble.plainText}`">
+            <div
+              class="quick-starter-item"
+              :class="{
+                'quick-starter-item--tail': bubbleHasTail(index, shownOutsideBubbles.length),
+                'quick-starter-item--float': index === 0,
+                'quick-starter-item--follow': index > 0,
+              }"
+            >
+            <div
+              v-if="index === 0 && bubble.lineHtml.length >= 2"
+              class="quick-starter-intro"
+              :dir="bubble.titleDir"
+              :style="{ textAlign: bubble.titleDir === 'rtl' ? 'right' : 'left', cursor: 'pointer' }"
+              @click="onOutsideBubbleClick(bubble)"
+            >
+              <div class="quick-starter-intro__copy">
+                <p class="quick-starter-title" :dir="bubble.titleDir" v-html="bubble.lineHtml[0] || bubble.plainText"></p>
+                <p v-if="bubble.lineHtml[1]" class="quick-starter-sub" :dir="bubble.subDir" v-html="bubble.lineHtml[1]"></p>
+              </div>
+            </div>
+            <div
+              v-else-if="bubble.face === 'long' && bubble.isIntroHtml"
+              class="quick-starter-intro quick-starter-intro--html"
+              :dir="bubble.dir"
+              :style="{ textAlign: bubble.dir === 'rtl' ? 'right' : 'left', cursor: 'pointer' }"
+              @click="onOutsideBubbleClick(bubble)"
+            >
+              <div class="quick-starter-intro__copy" v-html="bubble.text"></div>
+            </div>
+            <div
+              v-else-if="bubble.face === 'long'"
+              class="quick-starter-intro"
+              :dir="bubble.titleDir"
+              :style="{ cursor: 'pointer' }"
+              @click="onOutsideBubbleClick(bubble)"
+            >
+              <div class="quick-starter-intro__copy">
+                <p class="quick-starter-title" :dir="bubble.titleDir">{{ bubble.lines[0] || bubble.plainText }}</p>
+                <p v-if="bubble.lines[1]" class="quick-starter-sub" :dir="bubble.subDir">{{ bubble.lines[1] }}</p>
+              </div>
+            </div>
+            <div
+              v-else-if="bubble.isIntroHtml"
+              class="quick-starter-intro quick-starter-intro--html"
+              :dir="bubble.dir"
+              :style="{ textAlign: bubble.dir === 'rtl' ? 'right' : 'left', cursor: 'pointer' }"
+              @click="onOutsideBubbleClick(bubble)"
+            >
+              <div class="quick-starter-intro__copy" v-html="bubble.text"></div>
+            </div>
+            <button
+              v-else-if="bubble.clickable"
+              class="quick-starter-btn"
+              type="button"
+              :data-quick-prompt-index="bubble.clickableIndex"
+              :dir="bubble.dir"
+              :style="bubble.chipStyle"
+            @click="sendOutsideBubble(bubble)"
+            >
+              <span class="quick-starter-btn__icon" aria-hidden="true">
+                <outside-bubble-icon :name="bubble.icon" />
+              </span>
+              <span class="quick-starter-btn__label">{{ bubble.plainText }}</span>
+            </button>
+            <div
+              v-else-if="index === 0 && bubble.lines.length"
+              class="quick-starter-intro"
+              :dir="bubble.titleDir"
+              style="cursor: pointer"
+              @click="onOutsideBubbleClick(bubble)"
+            >
+              <p class="quick-starter-title" :dir="bubble.titleDir">{{ bubble.lines[0] }}</p>
+              <p v-if="bubble.lines[1]" class="quick-starter-sub" :dir="bubble.subDir">{{ bubble.lines[1] }}</p>
+            </div>
+            <div
+              v-else-if="bubble.face === 'chip'"
+              class="quick-starter-btn quick-starter-btn--static"
+              :dir="bubble.dir"
+              :style="[bubble.chipStyle, { cursor: 'pointer' }]"
+              @click="onOutsideBubbleClick(bubble)"
+            >
+              <span class="quick-starter-btn__icon" aria-hidden="true">
+                <outside-bubble-icon :name="bubble.icon" />
+              </span>
+              <span class="quick-starter-btn__label">{{ bubble.plainText }}</span>
+            </div>
+            <div
+              v-else
+              class="quick-starter-btn quick-starter-btn--static"
+              :dir="bubble.dir"
+              :style="[bubble.chipStyle, { cursor: 'pointer' }]"
+              @click="onOutsideBubbleClick(bubble)"
+            >
+              <span class="quick-starter-btn__icon" aria-hidden="true">
+                <outside-bubble-icon :name="bubble.icon" />
+              </span>
+              <span class="quick-starter-btn__label">{{ bubble.plainText }}</span>
+            </div>
+            <span
+              v-if="bubbleHasTail(index, shownOutsideBubbles.length)"
+              class="quick-starter-tail"
+              :class="pluginBubbleLayout === 'one_down' || pluginBubbleLayout === 'pair_down' ? 'quick-starter-tail--up' : 'quick-starter-tail--down'"
+              aria-hidden="true"
+            ></span>
+            </div>
+          </template>
+        </template>
+        <template v-else>
+          <div
+            v-if="quickActionIntroTitle"
+            class="quick-starter-intro quick-starter-intro--float"
+            :dir="quickActionIntroDir"
+            :style="{ textAlign: quickActionIntroDir === 'rtl' ? 'right' : 'left', cursor: 'pointer' }"
+            @click="onOutsideBubbleClick(null)"
+          >
+            <div class="quick-starter-intro__copy">
+              <p
+                class="quick-starter-title"
+                :dir="getTextDirection(quickActionIntroTitle)"
+              >{{ quickActionIntroTitle }}</p>
+              <p
+                v-if="quickActionIntroSub"
+                class="quick-starter-sub"
+                :dir="getTextDirection(quickActionIntroSub)"
+              >{{ quickActionIntroSub }}</p>
+            </div>
+          </div>
+          <button
+            v-for="(prompt, index) in quickActionPrompts"
+            :key="`${index}-${prompt.plainText}`"
+            class="quick-starter-btn"
+            type="button"
+            :data-quick-prompt-index="index"
+            :dir="prompt.dir"
+            :style="{ textAlign: prompt.dir === 'rtl' ? 'right' : 'left' }"
+            @click="sendOutsideBubble(prompt)"
+          >
+            <span class="quick-starter-btn__icon" aria-hidden="true">
+              <svg v-if="index % 2 === 0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 10.5h8"></path>
+                <path d="M8 14h5"></path>
+                <path d="M7 18.5 4.5 21v-4.2A8.5 8.5 0 1 1 12 20.5"></path>
+              </svg>
+              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3.5 13.4 8l4.6 1.4L13.4 11 12 15.5 10.6 11 6 9.4 10.6 8z"></path>
+                <path d="M18 14.5 18.7 16.8 19.9 17.5 18.7 18.2 18 20.5 17.3 18.2 16.1 17.5 17.3 16.8z"></path>
+              </svg>
+            </span>
+            <span class="quick-starter-btn__label">{{ prompt.plainText }}</span>
+          </button>
+        </template>
+      </div>
+    </div>
+  </transition>
+
+  <!-- Fixed Blue Heart Button -->
+  <button
+    v-if="planSubscription && pluginMessagesFetched"
+    :class="['fixed-heart-btn', `button-${heartPosition}`, `button-${heartSize}`, { 'plan-subscription-off': planSubscription === 'off', 'plan-subscription-off--can-close': planSubscription === 'off' && isChatOpen, 'plan-powered-by-assis': usesPoweredOpenButton, 'heart-chat-open': isChatOpen }]"
+    @click="toggleChat"
+    :title="`Chat with ${resolvedBusinessName}`">
+    <!-- Text Bubble -->
+    <transition name="bubble-label">
+      <div
+        v-if="loginChannels !== 'ai' && planSubscription !== 'off'"
+        class="heart-text-bubble"
+        :class="{ 'bubble-whatsapp': loginChannels === 'whatsapp' }"
+      >
+      <div v-if="loginChannels === 'whatsapp' && getTextDirection(buttonLabel) === 'rtl'" class="whatsapp-number">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="#2563eb">
+          <path
+            d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
+        </svg>
+      </div>
+
+      <span
+        class="bubble-text"
+        :dir="getTextDirection(buttonLabel)"
+        :style="{ textAlign: getTextDirection(buttonLabel) === 'rtl' ? 'right' : 'left', textDirection: getTextDirection(buttonLabel) }"
+      >{{ buttonLabel }}</span>
+          
+      <div v-if="loginChannels === 'whatsapp' && getTextDirection(buttonLabel) === 'ltr'" class="whatsapp-number">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="#2563eb">
+          <path
+            d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
+        </svg>
+      </div>
+      </div>
+    </transition>
+
+    <assis-heart-logo :class="['heart-image', {
+      'no-rotation': loginChannels === 'ai' || usesPoweredOpenButton,
+      'no-heartbeat': planSubscription === 'off' || usesPoweredOpenButton
+    }]" />
+    <span
+      v-if="usesPoweredOpenButton && !isChatOpen && loginChannels === 'ai' && !showQuickActions"
+      class="heart-chat-hint"
+      aria-hidden="true"
+    >
+      <span class="heart-chat-hint__glyph">
+        <span class="heart-chat-hint__dots">
+          <span></span>
+          <span></span>
+          <span></span>
+        </span>
+      </span>
+    </span>
+  </button>
+
+  <!-- Mobile-only backdrop: solid on the classic widget, dimmed sheet overlay on the new design -->
+  <div
+    v-if="pluginMessagesFetched && isChatOpen"
+    class="chat-mobile-backdrop"
+    :class="{ 'chat-mobile-backdrop--sheet': isNewAssisDesign }"
+    aria-hidden="true"
+  ></div>
+
+  <!-- In-widget teleport host: keep menus in the same stacking context as the chat
+       (body portals sit under host pages that raise #assis-plugin-app / the shell). -->
+  <div
+    ref="internalTeleportRoot"
+    class="assis-internal-teleport-root"
+    aria-hidden="true"
+  ></div>
+
+  <!-- Variant dropdown portal: keep outside chat v-if so Teleport isn't torn down mid-patch -->
+  <teleport v-if="resolvedTeleportTarget" :to="resolvedTeleportTarget">
+    <div
+      v-if="isChatOpen && productVariantMenu.visible"
+      class="lh-option-menu-portal"
+      :style="{
+        top: `${productVariantMenu.top}px`,
+        left: `${productVariantMenu.left}px`,
+        width: `${productVariantMenu.width}px`,
+      }"
+      role="listbox"
+      @click.stop
+    >
+      <button
+        v-for="choice in productVariantMenu.choices"
+        :key="choice.key"
+        type="button"
+        class="lh-option-menu-item"
+        role="option"
+        :dir="getTextDirection(choice.label)"
+        :style="{ textAlign: getTextDirection(choice.label) === 'rtl' ? 'right' : 'left' }"
+        :aria-selected="choice.key === productVariantMenu.selectedKey ? 'true' : 'false'"
+        :data-selected="choice.key === productVariantMenu.selectedKey ? 'true' : null"
+        :data-unavailable="choice.unavailable ? 'true' : null"
+        :disabled="choice.unavailable"
+        @click.stop="selectProductVariantFromMenu(choice.key)"
+      >
+        <span>{{ choice.label }}</span>
+        <svg
+          v-if="choice.key === productVariantMenu.selectedKey"
+          class="lh-option-menu-check"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M4 12.5 9.5 18 20 6.5"></path>
+        </svg>
+      </button>
+    </div>
+  </teleport>
+
+  <!-- Chat Container - Positioned relative to heart button -->
+  <div v-if="pluginMessagesFetched && isChatOpen" :class="['chat-container', `chat-${heartPosition}`, `chat-container-${heartSize}`, { 'chat-maximized': isMaximized, 'disable-initial-animations': disableInitialAnimations, 'chat-open-animate': shouldAnimateChatOpen, 'assis-home-open': showPoweredByAssisHome, 'assis-chat-v2': isNewAssisDesign, 'assis-chat-he-flip': isNewAssisDesign && language === 'he' }]"
+    ref="chatContainer">
+    <div
+      v-if="productDetail"
+      class="assis-product-detail"
+      :style="{
+        top: `${productSheetTop}px`,
+        right: `${productSheetRight}px`,
+        bottom: `${productSheetBottom}px`,
+        left: `${productSheetLeft}px`
+      }"
+    >
+      <div
+        class="assis-product-detail-card"
+        :dir="language === 'he' ? 'rtl' : 'ltr'"
+        role="dialog"
+        :aria-label="language === 'he' ? 'פרטי מוצר' : 'Product details'"
+        @click.stop
+      >
+      <div class="assis-product-detail-split" dir="ltr">
+      <div
+        class="assis-product-detail-main"
+        :dir="language === 'he' ? 'rtl' : 'ltr'"
+      >
+        <div class="assis-product-detail-copy">
+          <div class="assis-product-detail-title-row" dir="ltr">
+            <button
+              v-if="getProductDisplayHref(productDetail.product)"
+              type="button"
+              class="assis-product-detail-title-link"
+              :aria-label="language === 'he' ? 'מעבר למוצר' : 'View product'"
+              @click="openProductDetailPage"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M16.5 16.5 7.5 7.5"></path>
+                <path d="M7.5 14.2V7.5h6.7"></path>
+              </svg>
+            </button>
+            <h3
+              class="assis-product-detail-title"
+              :dir="getTextDirection(getProductDisplayTitle(productDetail.product))"
+            >{{ getProductDisplayTitle(productDetail.product) }}</h3>
+          </div>
+          <div
+            class="assis-product-detail-price-block"
+            :dir="language === 'he' ? 'rtl' : 'ltr'"
+          >
+            <div
+              v-if="getProductDetailPrice() || getProductDetailClubPriceAmount()"
+              class="assis-product-detail-price-row"
+            >
+              <span
+                v-if="isPluginEilatPricingEnabled()"
+                class="assis-product-detail-price-region"
+              >{{ getProductCardIsraelPriceLabel() }}</span>
+              <span
+                v-if="getProductDetailPrice()"
+                class="assis-product-detail-price-value"
+              >{{ getProductDetailPrice() }}</span>
+              <span
+                v-if="getProductDetailClubPriceAmount()"
+                class="assis-product-detail-price-club"
+              >
+                <span class="assis-product-detail-price-club-label">{{ getProductDetailClubShortLabel() }}</span>
+                <span class="assis-product-detail-price-club-value">{{ getProductDetailClubPriceAmount() }}</span>
+              </span>
+            </div>
+            <div
+              v-if="getProductDetailEilatPrice() || getProductDetailEilatClubPrice()"
+              class="assis-product-detail-price-row"
+            >
+              <span class="assis-product-detail-price-region">{{ getProductCardEilatPriceLabel() }}</span>
+              <span
+                v-if="getProductDetailEilatPrice()"
+                class="assis-product-detail-price-value"
+              >{{ getProductDetailEilatPrice() }}</span>
+              <span
+                v-if="getProductDetailEilatClubPrice()"
+                class="assis-product-detail-price-club"
+              >
+                <span class="assis-product-detail-price-club-label">{{ getProductDetailClubShortLabel() }}</span>
+                <span class="assis-product-detail-price-club-value">{{ getProductDetailEilatClubPrice() }}</span>
+              </span>
+            </div>
+          </div>
+          <div v-if="getProductDetailRating()" class="assis-product-detail-rating" dir="ltr">
+            <span class="assis-product-detail-stars" :aria-label="getProductDetailRatingLabel()">
+              <span
+                v-for="star in 5"
+                :key="star"
+                class="assis-product-detail-star"
+              >
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="M8 1.4 9.8 5.5l4.5.4-3.4 2.9.1 4.5L8 11.2 4.9 13.3l.1-4.5L1.6 5.9l4.5-.4L8 1.4Z"></path>
+                </svg>
+                <svg
+                  class="is-on"
+                  viewBox="0 0 16 16"
+                  aria-hidden="true"
+                  :style="{ clipPath: `inset(0 ${100 - getProductDetailStarFill(star)}% 0 0)` }"
+                >
+                  <path d="M8 1.4 9.8 5.5l4.5.4-3.4 2.9.1 4.5L8 11.2 4.9 13.3l.1-4.5L1.6 5.9l4.5-.4L8 1.4Z"></path>
+                </svg>
+              </span>
+            </span>
+            <span v-if="getProductDetailRating().value != null" class="assis-product-detail-score">{{ getProductDetailRatingValue() }}</span>
+            <span v-if="getProductDetailRating().count != null" class="assis-product-detail-count">({{ getProductDetailRating().count }})</span>
+          </div>
+          <div
+            v-if="getProductDisplayDescription(productDetail.product)"
+            class="assis-product-detail-desc-block"
+            :dir="getTextDirection(getProductDisplayDescription(productDetail.product))"
+          >
+            <p
+              ref="productDetailDesc"
+              class="assis-product-detail-desc"
+              :class="{ 'is-open': productDetailDescOpen }"
+            >{{ getProductDisplayDescription(productDetail.product) }}</p>
+            <button
+              v-if="productDetailDescClamped"
+              type="button"
+              class="assis-product-detail-desc-more"
+              :class="{ 'is-open': productDetailDescOpen }"
+              :aria-expanded="productDetailDescOpen ? 'true' : 'false'"
+              :aria-label="productDetailDescOpen ? (language === 'he' ? 'פחות' : 'Show less') : (language === 'he' ? 'עוד' : 'Read more')"
+              @click.stop="productDetailDescOpen = !productDetailDescOpen"
+            >
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 6.5 8 10.5 12 6.5"></path>
+              </svg>
+            </button>
+          </div>
+          <div
+            v-if="getProductDetailOptionGroups().length"
+            class="assis-product-detail-options"
+          >
+            <div
+              v-for="group in getProductDetailOptionGroups()"
+              :key="`${group.index}-${group.name}`"
+              class="assis-product-detail-option-group"
+            >
+              <span
+                class="assis-product-detail-option-name"
+                :dir="getTextDirection(group.name)"
+              >{{ group.name }}</span>
+              <div v-if="group.kind === 'swatch'" class="assis-product-detail-swatches">
+                <button
+                  v-for="value in group.values"
+                  :key="`${group.index}-${value.label}`"
+                  type="button"
+                  class="assis-product-detail-swatch"
+                  :class="{ 'is-on': value.selected, 'is-off': value.unavailable }"
+                  :disabled="value.unavailable"
+                  :aria-label="value.label"
+                  :aria-pressed="value.selected ? 'true' : 'false'"
+                  @click.stop="selectProductDetailOption(group.index, value.label)"
+                >
+                  <img v-if="value.image" :src="value.image" alt="" />
+                  <span v-else>{{ value.label }}</span>
+                </button>
+              </div>
+              <div v-else class="assis-product-detail-pills">
+                <button
+                  v-for="value in group.values"
+                  :key="`${group.index}-${value.label}`"
+                  type="button"
+                  class="assis-product-detail-option"
+                  :class="{ 'is-selected': value.selected }"
+                  :disabled="value.unavailable"
+                  :dir="getTextDirection(value.label)"
+                  @click.stop="selectProductDetailOption(group.index, value.label)"
+                >{{ value.label }}</button>
+              </div>
+            </div>
+          </div>
+          <div
+            v-else-if="getProductVariantChoices(productDetail.product).length > 1"
+            class="assis-product-detail-options"
+          >
+            <button
+              type="button"
+              class="assis-product-detail-variant"
+              :dir="getTextDirection(getSelectedVariantLabel(productDetail.message, productDetail.index, productDetail.product))"
+              :aria-expanded="isProductVariantMenuOpen(productDetail.message, productDetail.index) ? 'true' : 'false'"
+              aria-haspopup="listbox"
+              @click.stop="toggleProductVariantMenu(productDetail.message, productDetail.index, productDetail.product, $event)"
+            >
+              <span>{{ getSelectedVariantLabel(productDetail.message, productDetail.index, productDetail.product) }}</span>
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 6.5 8 10.5 12 6.5"></path>
+              </svg>
+            </button>
+          </div>
+          <div v-if="getProductDetailQuestions().length" class="assis-product-detail-ask">
+            <div class="assis-product-detail-ask-title">
+              <svg class="assis-product-detail-ask-heart" viewBox="0 0 24 24" fill="#1d6fee" aria-hidden="true">
+                <path d="M12.1 21s-7.2-4.6-9.6-8.7C.7 9.3 1.6 5.6 4.6 4.2c1.9-.9 4.1-.3 5.5 1.3L12 7.4l1.9-1.9c1.4-1.6 3.6-2.2 5.5-1.3 3 1.4 3.9 5.1 2.1 8.1C19.3 16.4 12.1 21 12.1 21z"></path>
+              </svg>
+              <span>{{ getProductDetailAskLabel() }}</span>
+            </div>
+            <div class="assis-product-detail-questions">
+              <button
+                v-for="(question, questionIndex) in getProductDetailQuestions()"
+                :key="`${question.text}-${questionIndex}`"
+                type="button"
+                class="assis-product-detail-question"
+                :dir="getTextDirection(question.label)"
+                @click="askProductDetailQuestion(question)"
+              >
+                <svg v-if="question.icon === 'grid'" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+                  <rect x="2.4" y="2.4" width="4.2" height="4.2" rx="1"></rect>
+                  <rect x="9.4" y="2.4" width="4.2" height="4.2" rx="1"></rect>
+                  <rect x="2.4" y="9.4" width="4.2" height="4.2" rx="1"></rect>
+                  <rect x="9.4" y="9.4" width="4.2" height="4.2" rx="1"></rect>
+                </svg>
+                <svg v-else-if="question.icon === 'tag'" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M8.2 2.5h4.1v4.1L7.2 12a1.4 1.4 0 0 1-2 0L3.8 10.6a1.4 1.4 0 0 1 0-2l5-5.1Z"></path>
+                  <path d="M10.6 5.2h.01"></path>
+                </svg>
+                <svg v-else viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 3.5h10v7.2H5.2L3 12.5V3.5Z"></path>
+                </svg>
+                <span>{{ question.label }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+        <div
+          class="assis-product-detail-media"
+          :class="{ 'assis-product-detail-media--empty': !getProductGalleryImages(productDetail.product).length }"
+          @mouseenter="stopProductDetailSlideshow"
+          @mouseleave="startProductDetailSlideshow"
+        >
+          <button
+            type="button"
+            class="assis-product-detail-close"
+            :aria-label="language === 'he' ? 'סגור' : 'Close'"
+            @click="closeProductDetail"
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+              <path d="M4.5 4.5 11.5 11.5M11.5 4.5 4.5 11.5"></path>
+            </svg>
+          </button>
+          <div
+            v-if="getProductGalleryImages(productDetail.product).length"
+            class="assis-product-detail-viewport"
+            dir="ltr"
+          >
+          <div
+            class="assis-product-detail-track"
+            :style="getProductDetailTrackStyle()"
+          >
+            <div
+              v-for="(src, imageIndex) in getProductGalleryImages(productDetail.product)"
+              :key="`${src}-${imageIndex}`"
+              class="assis-product-detail-slide"
+            >
+              <img :src="src" :alt="getProductDisplayTitle(productDetail.product)" />
+            </div>
+          </div>
+          <div
+            v-if="getProductGalleryImages(productDetail.product).length > 1"
+            class="assis-product-detail-thumbs"
+          >
+            <button
+              v-for="(src, imageIndex) in getProductGalleryImages(productDetail.product)"
+              :key="`thumb-${src}-${imageIndex}`"
+              type="button"
+              class="assis-product-detail-thumb"
+              :class="{ 'is-on': imageIndex === (productDetail.imageIndex || 0) }"
+              :aria-label="language === 'he' ? `תמונה ${imageIndex + 1}` : `Image ${imageIndex + 1}`"
+              @click="setProductDetailImage(imageIndex)"
+            >
+              <span class="assis-product-detail-thumb-clip">
+                <img :src="src" alt="" />
+              </span>
+            </button>
+          </div>
+          </div>
+          <span
+            v-if="getProductDetailDiscountLabel()"
+            class="assis-product-detail-sale"
+          >{{ getProductDetailDiscountLabel() }}</span>
+          <span
+            v-if="getProductDetailClubBadgeText()"
+            class="assis-product-detail-club-badge"
+            :class="{ 'assis-product-detail-club-badge--under-sale': Boolean(getProductDetailDiscountLabel()) }"
+            :key="`detail-club-${clubBadgeShowEilat ? 'eilat' : 'israel'}`"
+            :dir="getTextDirection(getProductDetailClubBadgeText())"
+          >{{ getProductDetailClubBadgeText() }}</span>
+          <button
+            v-if="getProductDetailImage()"
+            type="button"
+            class="assis-product-detail-zoom"
+            :aria-label="language === 'he' ? 'הגדלת תמונה' : 'Enlarge image'"
+            @click="openImageModal(getProductDetailImage())"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="10.5" cy="10.5" r="6.5"></circle>
+              <path d="M15.2 15.2 20 20"></path>
+              <path d="M10.5 8v5M8 10.5h5"></path>
+            </svg>
+          </button>
+          <template v-if="getProductGalleryImages(productDetail.product).length > 1">
+            <button
+              type="button"
+              class="assis-product-detail-nav assis-product-detail-nav--prev"
+              :aria-label="language === 'he' ? 'תמונה קודמת' : 'Previous image'"
+              @click="stepProductDetailImage(-1)"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M15 18l-6-6 6-6"></path>
+              </svg>
+            </button>
+            <button
+              type="button"
+              class="assis-product-detail-nav assis-product-detail-nav--next"
+              :aria-label="language === 'he' ? 'תמונה הבאה' : 'Next image'"
+              @click="stepProductDetailImage(1)"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M9 6l6 6-6 6"></path>
+            </svg>
+            </button>
+          </template>
+        </div>
+      </div>
+      </div>
+      <div class="assis-product-detail-foot">
+        <div class="assis-product-detail-qty">
+          <button
+            type="button"
+            :aria-label="language === 'he' ? 'הפחת כמות' : 'Remove one'"
+            :disabled="productDetail.quantity <= 1"
+            @click="stepProductDetailQuantity(-1)"
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
+              <path d="M4 8h8"></path>
+            </svg>
+          </button>
+          <span>{{ productDetail.quantity }}</span>
+          <button
+            type="button"
+            :aria-label="language === 'he' ? 'הוסף כמות' : 'Add one'"
+            @click="stepProductDetailQuantity(1)"
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
+              <path d="M8 4v8M4 8h8"></path>
+            </svg>
+          </button>
+        </div>
+        <button
+          type="button"
+          class="assis-product-detail-add"
+          :class="{ 'has-total': getProductDetailLineTotal() }"
+          :disabled="!isProductDetailInBag() && (isProductFullySoldOut(productDetail.product) || !isSelectedVariantAvailable(productDetail.product, productDetail.message, productDetail.index))"
+          @click="addProductDetailToBag"
+        >
+          <span class="assis-product-detail-add-label">
+            <svg v-if="!isProductDetailInBag()" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M6.5 8h11l-1 12h-9l-1-12Z"></path>
+              <path d="M9 8V7a3 3 0 0 1 6 0v1"></path>
+            </svg>
+            <span>{{ getProductDetailAddLabel() }}</span>
+          </span>
+          <span v-if="getProductDetailLineTotal()" class="assis-product-detail-add-total">{{ getProductDetailLineTotal() }}</span>
+        </button>
+      </div>
+    </div>
+    <!-- Chat Header -->
+    <div
+      class="chat-header"
+      :class="{
+        'chat-header--with-promo': isNewAssisDesign && hasBannerContentItems && !showPoweredByAssisHome && activeBannerPromoText
+      }"
+      @pointerdown="onChatHeaderPointerDown"
+    >
+      <div v-if="loginChannels !== 'ai'" class="header-content">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="header-icon">
+          <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path>
+        </svg>
+        <span class="header-title">{{ guestName && showGuestInput && currentStep === 'chat' && guestName !== 'Customer'
+          ? `Hi ${guestName}` : "Assis - Live Chat" }}</span>
+        <span class="header-emoji">💙</span>
+        <!-- <span v-if="!guestEmail && !guestPhone" class="guest-tag">Guest</span> -->
+      </div>
+
+      <div v-else class="header-content" :class="{ 'header-brand': isNewAssisDesign }">
+        <template v-if="isNewAssisDesign">
+          <img
+            v-if="headerLogo"
+            :src="headerLogo"
+            alt=""
+            width="22"
+            height="22"
+            decoding="async"
+            @error="handleLogoError"
+          >
+          <span :title="resolvedBusinessName" :dir="language === 'he' ? 'rtl' : 'ltr'">{{ resolvedBusinessName }}</span>
+        </template>
+        <template v-else>
+        <div v-if="headerLogo" class="header-logo">
+          <img :src="headerLogo" alt="Business Logo" @error="handleLogoError">
+        </div>
+
+        <div>
+          <div class="flex">
+            <p class="header-title">{{ showAssisCredit && planSubscription === 'care_by_assis' ? `Assis 💙 ${resolvedBusinessName}` : resolvedBusinessName }}</p>
+            <span
+            v-if="false"
+              class="header-info-tooltip"
+              tabindex="0"
+              role="button"
+              :aria-label="infoTooltip"
+              ref="headerInfoIcon"
+              @mouseenter="showHeaderInfoTooltip"
+              @mouseleave="hideHeaderInfoTooltip"
+              @focusin="showHeaderInfoTooltip"
+              @focusout="hideHeaderInfoTooltip"
+            >i</span>
+            <teleport v-if="resolvedTeleportTarget" :to="resolvedTeleportTarget">
+              <div
+                v-if="headerInfoTooltipPortal.visible"
+                :class="['header-info-tooltip-portal', { 'header-info-tooltip-portal-rtl': language === 'he' }]"
+                :style="{
+                  top: `${headerInfoTooltipPortal.top}px`,
+                  left: `${headerInfoTooltipPortal.left}px`
+                }"
+                role="tooltip"
+              >{{ infoTooltip }}</div>
+            </teleport>
+          </div>
+          <!-- <div class="header-connected" :style="isSocketConnected ? 'color: #22c55e;' : 'color: #be1d1d;'">
+            <div class="connected-pill"
+              :style="isSocketConnected ? 'background-color: #22c55e;' : 'background-color: #be1d1d;'"></div>
+            <p class="connected-text">{{ isSocketConnected ? (language === 'he' ? 'מחובר' : 'Connected') : (language === 'he' ? 'לא מחובר' : 'Disconnected') }}</p>
+          </div> -->
+        </div>
+        </template>
+      </div>
+
+      <div
+        v-if="isNewAssisDesign && hasBannerContentItems && !showPoweredByAssisHome && activeBannerPromoText"
+        id="assis-demo-chat-promo"
+        class="assis-demo-chat-promo"
+        :class="{ 'assis-demo-chat-promo--whatsapp': activeBannerTone === 'whatsapp' }"
+      >
+        <component
+          :is="showActiveWhatsAppBanner ? 'button' : 'div'"
+          class="assis-demo-promo-link"
+          :type="showActiveWhatsAppBanner ? 'button' : null"
+          :data-tone="activeBannerTone"
+          @click="onBannerSurfaceClick"
+        >
+          <span class="assis-demo-promo-icon" aria-hidden="true">
+            <svg v-if="activeBannerTone === 'whatsapp'" viewBox="0 0 24 24" width="11" height="11" fill="currentColor">
+              <path d="M19.05 4.91A9.82 9.82 0 0 0 12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.87 9.87 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.91-7.02zm-7.01 15.24h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24 2.2 0 4.27.86 5.82 2.42a8.18 8.18 0 0 1 2.41 5.83c0 4.55-3.7 8.24-8.24 8.24zm4.52-6.16c-.25-.12-1.47-.72-1.7-.81-.23-.08-.39-.12-.56.12-.17.25-.64.81-.78.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-2-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.02-.38.11-.51.11-.11.25-.29.37-.43.12-.14.17-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.34-.76-1.84-.2-.48-.4-.42-.56-.42h-.48c-.17 0-.43.06-.66.31-.23.25-.87.85-.87 2.07 0 1.22.89 2.4 1.01 2.56.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.67-1.18.21-.58.21-1.07.14-1.18-.07-.1-.25-.17-.5-.29z"/>
+            </svg>
+            <svg v-else viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 4.5 13.2 10 18.5 12 13.2 14 12 19.5 10.8 14 5.5 12 10.8 10z"/>
+            </svg>
+          </span>
+          <p v-if="activeBannerPromoHtml" class="assis-demo-promo-text" v-html="activeBannerPromoHtml"></p>
+          <p v-else class="assis-demo-promo-text">{{ activeBannerPromoText }}</p>
+          <span v-if="activeBannerHasLinks || showActiveWhatsAppBanner" class="assis-demo-promo-arrow" aria-hidden="true">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M7 17 17 7"/>
+              <path d="M7 7h10v10"/>
+            </svg>
+          </span>
+        </component>
+      </div>
+
+      <div class="header-actions">
+        <button
+          v-if="isStoreCart"
+          id="assis-furisport-cart-btn"
+          class="action-btn assis-furisport-cart-btn"
+          type="button"
+          :class="{ 'is-bump': shopifyCartBadgeBump }"
+          :title="shopifyCartBagLabel"
+          :aria-label="shopifyCartBagLabel"
+          :aria-expanded="showShopifyCartPanel ? 'true' : 'false'"
+          @click.stop.prevent="toggleShopifyCartPanel"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 5h2l1.2 9.2a2 2 0 0 0 2 1.8h8.5a2 2 0 0 0 2-1.6L20 8H7"></path>
+            <circle cx="10" cy="20" r="1.2"></circle>
+            <circle cx="17" cy="20" r="1.2"></circle>
+            <circle cx="18.2" cy="9.2" r="1.6" fill="currentColor" stroke="none"></circle>
+          </svg>
+          <span
+            class="cart-badge"
+            :class="{ 'is-bump': shopifyCartBadgeBump }"
+            :data-count="String(shopifyCartItemCount || 0)"
+          >{{ shopifyCartItemCount ? String(shopifyCartItemCount) : '' }}</span>
+        </button>
+        <div ref="headerMenuWrapper" class="header-menu-wrapper">
+          <button
+            class="action-btn menu-btn"
+            type="button"
+            title="Menu"
+            aria-label="Menu"
+            :aria-expanded="showHeaderMenu ? 'true' : 'false'"
+            aria-haspopup="menu"
+            @click.stop.prevent="toggleHeaderMenu"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="5" r="1.6"></circle>
+              <circle cx="12" cy="12" r="1.6"></circle>
+              <circle cx="12" cy="19" r="1.6"></circle>
+            </svg>
+          </button>
+
+          <transition name="header-menu">
+            <div
+              v-if="showHeaderMenu"
+              class="header-menu"
+              role="menu"
+              :dir="direction"
+            >
+              <button
+                v-if="isNewAssisDesign && !showPoweredByAssisHome"
+                class="header-menu-item"
+                type="button"
+                role="menuitem"
+                @click="handleHeaderMenuAction('home')"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M4 11.2 12 4.5l8 6.7"></path>
+                  <path d="M7 10.8V20h10v-9.2"></path>
+                </svg>
+                <span class="header-menu-item-label">{{ homeScreenLabel }}</span>
+              </button>
+              <div class="header-menu-channels" role="group">
+                <button
+                  v-for="(item, index) in visiblePluginSpecificMenu"
+                  :key="`plugin-specific-menu-${index}`"
+                  class="header-menu-item header-menu-item-channel"
+                  type="button"
+                  role="menuitem"
+                  :disabled="isPluginDefaultWhatsappItem(item) && !businessWhatsAppNumber"
+                  @click="openPluginSpecificMenuLink(item)"
+                  @keydown.enter.prevent="openPluginSpecificMenuLink(item)"
+                  @keydown.space.prevent="openPluginSpecificMenuLink(item)"
+                >
+                  <svg
+                    v-if="item.icon === 'whatsapp' || isPluginDefaultWhatsappItem(item)"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.582-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"
+                    />
+                  </svg>
+                  <svg
+                    v-else-if="item.icon === 'email'"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.35"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                    <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
+                  </svg>
+                  <svg
+                    v-else
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.35"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                  </svg>
+                  <span class="header-menu-item-label">{{ pluginSpecificMenuItemLabel(item) }}</span>
+                </button>
+                <button
+                  v-if="hasEmailCommunicationChannel"
+                  class="header-menu-item header-menu-item-channel"
+                  type="button"
+                  role="menuitem"
+                  :disabled="!businessEmail"
+                  @click="handleHeaderMenuAction('email')"
+                  @keydown.enter.prevent="handleHeaderMenuAction('email')"
+                  @keydown.space.prevent="handleHeaderMenuAction('email')"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                    <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
+                  </svg>
+                  <span class="header-menu-item-label">{{ switchToEmailLabel }}</span>
+                </button>
+              </div>
+              <button class="header-menu-item" type="button" role="menuitem" @click="handleHeaderMenuAction('reset')">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                  <path d="M3 3v5h5"></path>
+                </svg>
+                <span class="header-menu-item-label">{{ disconnectLabel }}</span>
+              </button>
+              <div
+                v-if="pluginAllowDownloadConversation"
+                class="header-menu-divider"
+                role="separator"
+                aria-hidden="true"
+              ></div>
+              <button
+                v-if="pluginAllowDownloadConversation"
+                class="header-menu-item header-menu-item-secondary"
+                type="button"
+                role="menuitem"
+                @click="handleHeaderMenuAction('downloadConversation')"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span class="header-menu-item-label">{{ downloadConversationLabel }}</span>
+              </button>
+            </div>
+          </transition>
+        </div>
+
+        <button
+          class="action-btn maximize-btn"
+          type="button"
+          :title="expandLabel"
+          :aria-label="expandLabel"
+          @click="maximizeChat"
+        >
+          <svg v-if="!isMaximized" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <polyline points="9 21 3 21 3 15"></polyline>
+            <line x1="21" y1="3" x2="14" y2="10"></line>
+            <line x1="3" y1="21" x2="10" y2="14"></line>
+          </svg>
+          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="4 14 10 14 10 20"></polyline>
+            <polyline points="20 10 14 10 14 4"></polyline>
+            <line x1="14" y1="10" x2="21" y2="3"></line>
+            <line x1="3" y1="21" x2="10" y2="14"></line>
+          </svg>
+        </button>
+
+        <button class="action-btn close-btn" type="button" title="Close" aria-label="Close" @click="toggleChat">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <transition name="banner">
+      <div
+        v-if="!isNewAssisDesign && loginChannels.includes('ai') && businessWhatsAppNumber && hasBannerContentItems && !showPoweredByAssisHome"
+        class="chat-header-banner"
+        :class="{ 'chat-header-banner-rtl': activeBannerTextDirection === 'rtl' }"
+        role="note"
+      >
+        <div class="chat-header-banner-text-wrap">
+          <transition name="banner-text">
+            <div
+              v-if="showActiveWhatsAppBanner"
+              :key="`whatsapp-${activeBannerContentKey}`"
+              class="chat-header-banner-whatsapp"
+              :class="`chat-header-banner-whatsapp-${activeBannerTextDirection}`"
+              role="button"
+              tabindex="0"
+              @click="onWhatsAppBannerClick"
+              @keydown.enter.prevent="onWhatsAppBannerClick"
+              @keydown.space.prevent="onWhatsAppBannerClick"
+            >
+              <svg class="chat-header-banner-icon" width="12" height="12" viewBox="0 0 24 24" fill="#3ea664" aria-hidden="true">
+                <path
+                  d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.582-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
+              </svg>
+              <span class="chat-header-banner-text" :dir="activeBannerTextDirection">{{ whatsappBannerLabel }}</span>
+              <svg class="chat-header-banner-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#166534"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M7 17L17 7"></path>
+                <path d="M7 7h10v10"></path>
+              </svg>
+            </div>
+            <span
+              v-else
+              :key="`html-${activeBannerContentKey}`"
+              class="chat-header-banner-text"
+              :class="`chat-header-banner-text-${activeBannerTextDirection}`"
+              :dir="activeBannerTextDirection"
+              v-html="activeBannerContent"
+            ></span>
+          </transition>
+        </div>
+      </div>
+    </transition>
+
+    <!-- Chat-local Error Toast -->
+    <div v-if="errorsInRequestAgent || shopifyActionError" class="chat-inline-toast" role="status" aria-live="polite">
+      <div class="chat-inline-toast-content">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" class="toast-icon">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        <span class="chat-inline-toast-message">{{ errorsInRequestAgent || shopifyActionError }}</span>
+      </div>
+    </div>
+
+    <div
+      v-if="showPoweredByAssisHome"
+      class="assis-home"
+      :dir="language === 'he' ? 'rtl' : 'ltr'"
+    >
+      <div class="assis-home-main">
+        <div
+          class="assis-home-copy"
+          :dir="getTextDirection(poweredByAssisHomeBody || poweredByAssisHomeTitle)"
+        >
+          <div class="assis-home-brand" aria-hidden="true">
+            <assis-heart-logo class="assis-home-brand-icon" />
+          </div>
+          <h2
+            class="assis-home-title"
+            :dir="getTextDirection(poweredByAssisHomeTitle)"
+            :style="{ textAlign: getTextDirection(poweredByAssisHomeTitle) === 'rtl' ? 'right' : 'left' }"
+          >{{ poweredByAssisHomeTitle }}</h2>
+          <p
+            class="assis-home-body"
+            :dir="getTextDirection(poweredByAssisHomeBody)"
+            :style="{ textAlign: getTextDirection(poweredByAssisHomeBody) === 'rtl' ? 'right' : 'left' }"
+          >{{ poweredByAssisHomeBody }}</p>
+        </div>
+        <div v-if="poweredByAssisHomeProducts.length" class="assis-home-cards">
+          <article
+            v-for="(product, index) in poweredByAssisHomeProducts"
+            :key="`${product.id}-${index}`"
+            :class="['assis-home-card', `assis-home-card--${index === 0 ? 'a' : index === 1 ? 'b' : 'c'}`]"
+          >
+            <a
+              class="assis-home-card-link"
+              :href="product.href || '#'"
+              target="_blank"
+              rel="noopener noreferrer"
+              @click.prevent="openProductModal(product)"
+            >
+              <div
+                class="assis-home-card-image"
+                :class="{ 'assis-home-card-image--empty': !product.image || isHomeProductImageErrored(product, index) }"
+              >
+                <img
+                  v-if="product.image && !isHomeProductImageErrored(product, index)"
+                  :src="product.image"
+                  :alt="product.title || 'Product'"
+                  @error="markHomeProductImageError(product, index)"
+                />
+                <div v-else class="assis-product-image-placeholder" aria-hidden="true">
+                  <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+                    <path d="M7 14l2-2 3 3 2-2 3 3"></path>
+                    <path d="M8.5 9.5h.01"></path>
+                  </svg>
+                </div>
+              </div>
+              <span class="assis-home-card-title">
+                <span
+                  class="assis-home-card-title-text"
+                  :dir="getTextDirection(product.title)"
+                  :style="{ textAlign: getTextDirection(product.title) === 'rtl' ? 'right' : 'left' }"
+                >{{ product.title }}</span>
+              </span>
+            </a>
+            <button
+              v-if="isStoreCart && !isProductFullySoldOut(product)"
+              type="button"
+              class="assis-home-card-add"
+              :data-added="!productNeedsOptionPicker(product) && isProductInBag(product) ? 'true' : null"
+              :disabled="!productNeedsOptionPicker(product) && isProductInBag(product)"
+              :dir="getTextDirection(productNeedsOptionPicker(product)
+                ? (language === 'he' ? 'בחירת אפשרויות' : 'Choose options')
+                : (isProductInBag(product)
+                  ? getAddToCartLabel(true)
+                  : (language === 'he' ? `הוסף את ${product.title} לסל` : `Add ${product.title} to cart`)))"
+              :aria-label="productNeedsOptionPicker(product)
+                ? (language === 'he' ? 'בחירת אפשרויות' : 'Choose options')
+                : (isProductInBag(product)
+                  ? getAddToCartLabel(true)
+                  : (language === 'he' ? `הוסף את ${product.title} לסל` : `Add ${product.title} to cart`))"
+              @click.stop="onHomeProductAdd(product)"
+            >
+              <svg v-if="!productNeedsOptionPicker(product) && isProductInBag(product)" class="lh-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 12.5 9.5 18 20 6.5"></path>
+              </svg>
+              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+                <path d="M12 5v14M5 12h14"></path>
+              </svg>
+            </button>
+          </article>
+        </div>
+      </div>
+      <div class="assis-home-actions">
+        <div class="assis-home-chips" role="group" :aria-label="language === 'he' ? 'שאלות מוצעות' : 'Suggested questions'">
+          <button
+            v-for="chip in poweredByAssisHomeChips"
+            :key="chip.text"
+            type="button"
+            :dir="chip.dir || insideChipDir(chip.text)"
+            :style="chip.chipStyle || { textAlign: insideChipDir(chip.text) === 'rtl' ? 'right' : 'left' }"
+            @click="submitPoweredByAssisHome(chip.textToSend || chip.text, 'chip')"
+          >
+            <span class="assis-chip-icon" aria-hidden="true">
+              <outside-bubble-icon :name="chip.icon" />
+            </span>
+            <span class="assis-chip-label">{{ chip.text }}</span>
+          </button>
+        </div>
+      </div>
+      <button
+        v-if="hasClientChatMessages"
+        type="button"
+        class="assis-home-composer assis-home-continue-composer"
+        :aria-label="continueConversationLabel"
+        @click="goToAssisConversation"
+      >
+        <span class="assis-home-continue-composer-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path>
+          </svg>
+        </span>
+        <span class="assis-home-continue-composer-msg">
+          <bdi>{{ assisHomeContinueChipText }}</bdi>
+        </span>
+        <span class="assis-home-continue-composer-cta">{{ continueConversationLabel }}</span>
+      </button>
+      <form
+        v-else
+        class="assis-home-composer"
+        autocomplete="off"
+        :data-has-text="poweredByAssisHomeDraft.trim() ? 'true' : 'false'"
+        @submit.prevent="submitPoweredByAssisHome(poweredByAssisHomeDraft)"
+      >
+        <button type="button" class="assis-home-clip" :aria-label="language === 'he' ? 'צירוף קובץ' : 'Attach file'" @click="triggerFileSelect">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+          </svg>
+        </button>
+        <input
+          ref="homeFileInput"
+          type="file"
+          multiple
+          accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
+          @change="handleFileSelect"
+          style="display: none;"
+        />
+        <textarea
+          ref="homeChatInput"
+          class="assis-home-input"
+          name="message"
+          rows="1"
+          enterkeyhint="enter"
+          :placeholder="language === 'he' ? 'כתבו הודעה...' : 'Ask anything...'"
+          maxlength="2000"
+          v-model="poweredByAssisHomeDraft"
+          :dir="getTextDirection(poweredByAssisHomeDraft)"
+          :style="{ textAlign: getTextDirection(poweredByAssisHomeDraft) === 'rtl' ? 'right' : 'left' }"
+          @keydown.enter="handleHomeEnterKey"
+          @input="autoResizeHomeTextarea"
+        ></textarea>
+        <button type="button" class="assis-home-send" :aria-label="language === 'he' ? 'שליחה' : 'Send'" @click="submitPoweredByAssisHome(poweredByAssisHomeDraft)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 19V5"></path>
+            <path d="m5 12 7-7 7 7"></path>
+          </svg>
+        </button>
+      </form>
+      <div class="assis-home-cared" :class="{ 'assis-footer-credit-off': !showAssisCredit }">
+        <p
+          class="assis-home-mistakes"
+          :dir="getTextDirection(assisFooterMistakesLabel)"
+        >{{ assisFooterMistakesLabel }}</p>
+        <p
+          class="assis-home-powered"
+          :class="{ 'assis-home-powered--reserved': !showAssisCredit }"
+          :dir="getTextDirection(planSubscription === 'powered_by_assis' ? assisFooterPoweredLabel : assisFooterCareLabel)"
+        >
+          <a
+            v-if="showAssisCredit"
+            href="https://www.assis.care"
+            target="_blank"
+            rel="nofollow noopener noreferrer"
+            @click="onPluginFooterLogoClick"
+          >{{ assisFooterCreditText }}</a>
+          <span v-else aria-hidden="true">{{ assisFooterCreditText }}</span>
+        </p>
+        <a
+          class="assis-home-privacy"
+          href="https://assis.care/EndUserTerms"
+          target="_blank"
+          rel="nofollow noopener noreferrer"
+          @click="onPluginFooterTermsClick"
+          :dir="getTextDirection(assisFooterPrivacyLabel)"
+        >{{ assisFooterPrivacyLabel }}</a>
+      </div>
+    </div>
+
+    <!-- Chat Content -->
+    <div v-show="!showPoweredByAssisHome" class="chat-content" :class="{ 'full-conversation': currentStep === 'chat', 'full-conversation-ai': loginChannels === 'ai' }">
+      <!-- Guest Username Input Section -->
+      <div v-if="showGuestInput && currentStep === 'name'" class="guest-input-section">
+        <div class="step-content">
+          <h2 class="guest-input-title">Enter Your Name</h2>
+          <p class="guest-input-description">
+            Please provide your name{{ isWhatsAppMode ? '' : ' to continue as a guest' }}
+          </p>
+
+          <div class="input-group">
+            <input v-model="guestName" type="text" placeholder="Your name" class="guest-name-input"
+              @keyup.enter="handleGuestContinue" @input="handleTextInput('guestName')"
+              :dir="getTextDirection(guestName)"
+              :style="{ textAlign: getTextDirection(guestName) === 'rtl' ? 'right' : 'left' }" />
+          </div>
+        </div>
+
+        <div class="step-navigation">
+          <button @click="goBackToOptions" class="back-btn">
+            ← Back to options
+          </button>
+          <button @click="handleGuestContinue" class="next-btn" :disabled="!guestName.trim()">
+            Next
+          </button>
+        </div>
+      </div>
+
+      <!-- Guest Contact Input Section -->
+      <div v-else-if="showGuestInput && currentStep === 'contact'" class="guest-input-section">
+        <div class="step-content">
+          <h2 class="guest-input-title">Contact Information</h2>
+          <p class="guest-input-description">
+            Please provide your {{ isWhatsAppMode ? 'phone number' : (loginChannels.includes('email') &&
+              loginChannels.includes('whatsapp') ? 'email and/or phone number (at least one is required)' :
+              loginChannels.includes('email') ? 'email' : loginChannels.includes('whatsapp') ? 'phone number' : '') }}
+          </p>
+
+          <div class="contact-inputs">
+            <div v-if="loginChannels.includes('email') && !isWhatsAppMode" class="input-field">
+              <label for="email-input">Email</label>
+              <input id="email-input" v-model="guestEmail" type="email" placeholder="your.email@example.com"
+                :class="['contact-input', { 'error': (guestEmail || '').trim() && !isValidEmail(guestEmail) }]"
+                @input="handleTextInput('guestEmail')" :dir="getTextDirection(guestEmail)"
+                :style="{ textAlign: getTextDirection(guestEmail) === 'rtl' ? 'right' : 'left' }" />
+              <span v-if="(guestEmail || '').trim() && !isValidEmail(guestEmail)" class="error-message">
+                Please enter a valid email address
+              </span>
+            </div>
+
+            <div v-if="loginChannels.includes('whatsapp') || isWhatsAppMode" class="input-field">
+              <label for="phone-input">Phone</label>
+              <input id="phone-input" v-model="guestPhone" type="tel" placeholder="+1 (555) 123-4567"
+                :class="['contact-input', { 'error': (guestPhone || '').trim() && !isValidPhone(guestPhone) }]"
+                @input="handleTextInput('guestPhone')" :dir="getTextDirection(guestPhone)"
+                :style="{ textAlign: getTextDirection(guestPhone) === 'rtl' ? 'right' : 'left' }" />
+              <span v-if="(guestPhone || '').trim() && !isValidPhone(guestPhone)" class="error-message">
+                Phone number must start with +, contain only numbers and spaces, and have at least 7 digits
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="step-navigation">
+          <button @click="goBackToName" class="back-btn">
+            ← Back
+          </button>
+          <button @click="handleContactContinue" class="next-btn" :disabled="!hasValidContact">
+            Next
+          </button>
+        </div>
+      </div>
+
+      <!-- Guest Acknowledgment Section -->
+      <div v-else-if="showGuestInput && currentStep === 'acknowledgment'" class="guest-input-section">
+        <div class="step-content">
+          <h2 class="guest-input-title">Important Notice</h2>
+          <p class="guest-input-description">
+            Before we begin, please confirm your understanding
+          </p>
+
+          <div class="acknowledgment-checkbox">
+            <label class="checkbox-label">
+              <input type="checkbox" v-model="userAcknowledgment" class="acknowledgment-input" />
+              <span class="checkmark"></span>
+              <span class="checkbox-text">
+                I understand that I will be chatting with a real human agent, not an AI chatbot
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div class="step-navigation">
+          <button v-if="!isAuthenticated && (guestName || guestEmail || guestPhone)" @click="goBackToContact"
+            class="back-btn">
+            ← Back
+          </button>
+          <button v-else @click="goBackToOptions" class="back-btn">
+            ← Back to options
+          </button>
+          <button @click="handleAcknowledgmentContinue" class="next-btn" :disabled="!userAcknowledgment">
+            Start Chat
+          </button>
+        </div>
+      </div>
+
+      <!-- Chat Interface -->
+      <div v-else-if="showGuestInput && currentStep === 'chat'" class="chat-interface">
+
+        <div
+          v-if="showOrderPinnedTab"
+          class="assis-order-pinned-wrap"
+          :class="{ 'assis-order-pinned-wrap--he': language === 'he' }"
+        >
+          <div
+            class="assis-order-pinned-group"
+            :dir="language === 'he' ? 'rtl' : 'ltr'"
+            @mouseenter="onPinnedOrderHoverEnter"
+            @mouseleave="onPinnedOrderHoverLeave"
+          >
+            <div
+              class="assis-order-pinned-tab"
+              :class="{
+                'assis-order-pinned-tab--open': ordersPanelExpanded,
+                'assis-order-pinned-tab--picker-open': pinnedOrderPickerOpen,
+              }"
+            >
+              <button
+                type="button"
+                class="assis-order-pinned-tab-main"
+                :aria-expanded="ordersPanelExpanded ? 'true' : 'false'"
+                :aria-label="pinnedOrderTabAriaLabel"
+                @click.stop="togglePinnedOrderTab"
+              >
+                <span class="assis-order-pinned-tab-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"></path>
+                    <path d="M12 22V12"></path>
+                    <path d="m3.3 7 7.703 4.734a2 2 0 0 0 1.994 0L20.7 7"></path>
+                  </svg>
+                </span>
+                <span class="assis-order-pinned-tab-number">{{ pinnedOrderNumber }}</span>
+                <span
+                  v-if="pinnedOrderStatus"
+                  class="assis-order-card-status"
+                  :data-color="pinnedOrderStatusColor"
+                >{{ pinnedOrderStatus }}</span>
+                <span class="assis-order-pinned-tab-action" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                    <path v-if="ordersPanelExpanded" d="M18 15l-6-6-6 6"></path>
+                    <path v-else d="M6 9l6 6 6-6"></path>
+                  </svg>
+                </span>
+              </button>
+              <template v-if="pinnedOrderExtraCount > 0">
+                <span class="assis-order-pinned-tab-divider" aria-hidden="true"></span>
+                <button
+                  type="button"
+                  class="assis-order-pinned-tab-extra"
+                  :aria-expanded="pinnedOrderPickerOpen ? 'true' : 'false'"
+                  :aria-label="pinnedOrderExtraAriaLabel"
+                  @click.stop="togglePinnedOrderPicker"
+                >
+                  +{{ pinnedOrderExtraCount }}
+                  <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path v-if="pinnedOrderPickerOpen" d="M18 15l-6-6-6 6"></path>
+                    <path v-else d="M6 9l6 6 6-6"></path>
+                  </svg>
+                </button>
+              </template>
+            </div>
+            <div
+              v-if="pinnedOrderPickerOpen && pinnedOrderExtraCount > 0"
+              class="assis-order-pinned-picker"
+              role="listbox"
+              :aria-label="language === 'he' ? 'בחרו הזמנה' : 'Choose an order'"
+            >
+              <button
+                v-for="entry in pinnedOrderPickerEntries"
+                :key="`pinned-order-${entry.index}`"
+                type="button"
+                class="assis-order-pinned-picker-item"
+                :class="{ 'assis-order-pinned-picker-item--active': entry.active }"
+                role="option"
+                :aria-selected="entry.active ? 'true' : 'false'"
+                @click.stop="selectFromPinnedOrderPicker(entry.index)"
+              >
+                <span class="assis-order-pinned-picker-number">{{ entry.number }}</span>
+                <span
+                  v-if="entry.status"
+                  class="assis-order-card-status"
+                  :data-color="entry.statusColor"
+                >{{ entry.status }}</span>
+                <span v-if="entry.summary" class="assis-order-pinned-picker-summary">{{ entry.summary }}</span>
+              </button>
+            </div>
+            <div
+              v-if="showPinnedOrderHoverCard"
+              class="assis-order-pinned-hover"
+              role="tooltip"
+            >
+              <div class="assis-order-pinned-hover-head">
+                <span class="assis-order-pinned-hover-number">{{ pinnedOrderNumber }}</span>
+                <span
+                  v-if="pinnedOrderStatus"
+                  class="assis-order-card-status"
+                  :data-color="pinnedOrderStatusColor"
+                >{{ pinnedOrderStatus }}</span>
+              </div>
+              <div
+                v-if="pinnedOrderHoverSummary"
+                class="assis-order-pinned-hover-line"
+              >{{ pinnedOrderHoverSummary }}</div>
+              <div
+                v-if="pinnedOrderHoverLocation"
+                class="assis-order-pinned-hover-line"
+              >
+                <span class="assis-order-pinned-hover-label">{{ language === 'he' ? 'יעד' : 'Ship to' }}</span>
+                <span dir="auto">{{ pinnedOrderHoverLocation }}</span>
+              </div>
+              <div
+                v-if="pinnedOrderHoverItemCountLabel"
+                class="assis-order-pinned-hover-line"
+              >{{ pinnedOrderHoverItemCountLabel }}</div>
+              <ul
+                v-if="pinnedOrderHoverLineItems.length"
+                class="assis-order-pinned-hover-items"
+              >
+                <li
+                  v-for="(item, itemIndex) in pinnedOrderHoverLineItems"
+                  :key="`pinned-hover-item-${itemIndex}`"
+                  class="assis-order-pinned-hover-item"
+                >
+                  <span
+                    class="assis-order-pinned-hover-item-media"
+                    :class="{ 'assis-order-pinned-hover-item-media--empty': !item.imageUrl }"
+                  >
+                    <img
+                      v-if="item.imageUrl"
+                      :src="item.imageUrl"
+                      :alt="item.title"
+                    />
+                  </span>
+                  <span class="assis-order-pinned-hover-item-copy">
+                    <span class="assis-order-pinned-hover-item-title">{{ item.title }}</span>
+                    <span class="assis-order-pinned-hover-item-meta" dir="ltr">{{ item.qtyLabel }}</span>
+                  </span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="chat-messages" ref="chatMessages" @scroll.passive="closeProductVariantMenu">
+          <div v-if="loginChannels === 'ai' && false" :class="['ai-welcome-message', { 'slide-up-animation': !wasSessionRestored }]">
+            <p>You can ask here, and at any time continue to WhatsApp with a human representative.</p>
+          </div>
+          <div v-if="loginChannels === 'ai'" :class="['ai-today-message', { 'slide-up-animation': !wasSessionRestored }]">
+            <p>{{ language === 'he' ? 'היום' : 'Today'}}</p>
+          </div>
+          <div
+            v-for="(message, index) in chatMessages"
+            :key="message.id || message.datetime"
+            v-show="!(message.isStreaming && !String(message.message || '').trim())"
+          >
+            <div
+              :class="[
+                'message',
+                'sender-' + message.sender?.toLowerCase(),
+                {
+                  'message-no-animation': !shouldAnimateMessage(index),
+                  'message--contact-submission': isContactSubmissionMessage(message),
+                },
+              ]"
+            >
+              <div class="message-content">
+                <div class="message-content-container">
+                  <template v-if="loginChannels !== 'ai'">
+                    <div
+                      v-if="message.sender?.toLowerCase() === 'agent' || message.sender?.toLowerCase() === 'assis' || isAutoMessageToSignIn(message)"
+                      class="agent-info">
+                      <div class="agent-avatar">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="#2563eb" stroke="#2563eb"
+                          stroke-width="2">
+                          <path
+                            d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                        </svg>
+                      </div>
+                      <span class="agent-name">Assis</span>
+                    </div>
+                    <div v-else-if="message.sender?.toLowerCase() === 'business'" class="agent-info">
+                      <div class="agent-avatar">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="#2563eb" stroke="#2563eb"
+                          stroke-width="2">
+                          <path
+                            d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                        </svg>
+                      </div>
+                      <span class="agent-name">Business</span>
+                    </div>
+                    <div v-else-if="message.sender?.toLowerCase() === 'ai'" class="agent-info">
+                      <div class="agent-avatar">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2"
+                          stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M12 8V4H8" />
+                          <rect width="16" height="12" x="4" y="8" rx="2" />
+                          <path d="M2 14h2" />
+                          <path d="M20 14h2" />
+                          <path d="M15 13v2" />
+                          <path d="M9 13v2" />
+                        </svg>
+                      </div>
+                      <span class="agent-name">AI</span>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <div v-if="message.sender?.toLowerCase() !== 'client'" class="ai-agent-info">
+                      <svg v-if="isNewAssisDesign" class="assis-msg-heart" viewBox="0 0 24 24" fill="#1d6fee" aria-hidden="true">
+                        <path d="M12.1 21s-7.2-4.6-9.6-8.7C.7 9.3 1.6 5.6 4.6 4.2c1.9-.9 4.1-.3 5.5 1.3L12 7.4l1.9-1.9c1.4-1.6 3.6-2.2 5.5-1.3 3 1.4 3.9 5.1 2.1 8.1C19.3 16.4 12.1 21 12.1 21z"></path>
+                      </svg>
+                      <svg v-else xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="16" height="16" zoomAndPan="magnify" viewBox="0 0 375 374.999991" preserveAspectRatio="xMidYMid meet" version="1.0"><defs><filter x="0%" y="0%" width="100%" height="100%" id="d367e9792d"><feColorMatrix values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0" color-interpolation-filters="sRGB"/></filter><clipPath id="e70d97f7ce"><path d="M 37 34 L 341 34 L 341 315 L 37 315 Z M 37 34 " clip-rule="nonzero"/></clipPath><clipPath id="09dbea8992"><path d="M 40.460938 27.304688 L 342.941406 37.636719 L 333.179688 323.398438 L 30.699219 313.0625 Z M 40.460938 27.304688 " clip-rule="nonzero"/></clipPath><clipPath id="f7e8ca687b"><path d="M 40.460938 27.304688 L 342.941406 37.636719 L 333.179688 323.398438 L 30.699219 313.0625 Z M 40.460938 27.304688 " clip-rule="nonzero"/></clipPath><mask id="19d8b7cb40"><g filter="url(#d367e9792d)"><rect x="-84.5" width="540" fill="#000000" y="-94.499998" height="539.999987" fill-opacity="0.97"/></g></mask><clipPath id="75825c1bf0"><path d="M 7 13 L 58 13 L 58 56 L 7 56 Z M 7 13 " clip-rule="nonzero"/></clipPath><clipPath id="decbc671cb"><path d="M 31.277344 64.355469 L 1.050781 43.890625 L 30.042969 1.070312 L 60.269531 21.535156 Z M 31.277344 64.355469 " clip-rule="nonzero"/></clipPath><clipPath id="5da7c50e24"><path d="M 31.277344 64.355469 L 1.050781 43.890625 L 30.042969 1.070312 L 60.269531 21.535156 Z M 31.277344 64.355469 " clip-rule="nonzero"/></clipPath><clipPath id="9482bc1b73"><path d="M 31.28125 64.347656 L 0.800781 43.710938 L 30.183594 0.316406 L 60.664062 20.953125 Z M 31.28125 64.347656 " clip-rule="nonzero"/></clipPath><clipPath id="6e9a1ff91e"><rect x="0" width="61" y="0" height="65"/></clipPath><clipPath id="bc710eee7b"><rect x="0" width="373" y="0" height="360"/></clipPath></defs><g transform="matrix(1, 0, 0, 1, 2, 12)"><g clip-path="url(#bc710eee7b)"><g clip-path="url(#e70d97f7ce)"><g clip-path="url(#09dbea8992)"><g clip-path="url(#f7e8ca687b)"><path fill="#026ee7" d="M 262.554688 257.160156 C 266.628906 253.339844 270.691406 249.398438 274.707031 245.355469 C 276.140625 243.902344 277.539062 242.417969 278.972656 240.933594 C 281.925781 237.863281 284.828125 234.761719 287.703125 231.570312 C 289.246094 229.855469 290.753906 228.136719 292.261719 226.402344 C 295.070312 223.160156 297.761719 219.863281 300.421875 216.515625 C 301.726562 214.875 303.046875 213.265625 304.316406 211.605469 C 308.09375 206.644531 311.722656 201.59375 315.066406 196.449219 C 315.242188 196.183594 315.386719 195.902344 315.550781 195.621094 C 318.683594 190.738281 321.550781 185.746094 324.199219 180.714844 C 325.101562 179.007812 325.867188 177.265625 326.71875 175.539062 C 328.53125 171.824219 330.195312 168.074219 331.6875 164.296875 C 332.464844 162.351562 333.171875 160.402344 333.84375 158.4375 C 335.171875 154.605469 336.25 150.730469 337.191406 146.835938 C 337.625 145.046875 338.136719 143.277344 338.488281 141.46875 C 339.574219 135.824219 340.375 130.136719 340.570312 124.414062 C 342.128906 78.75 306.382812 40.492188 260.738281 38.933594 C 217.113281 37.445312 190.5625 74.464844 190.5625 74.464844 C 190.5625 74.464844 166.601562 35.71875 122.972656 34.230469 C 77.328125 32.667969 39.054688 68.398438 37.496094 114.0625 C 37.300781 119.785156 37.710938 125.515625 38.410156 131.234375 C 38.632812 133.046875 39.027344 134.863281 39.335938 136.679688 C 40.011719 140.628906 40.835938 144.550781 41.882812 148.480469 C 42.421875 150.488281 43.011719 152.480469 43.632812 154.472656 C 44.867188 158.34375 46.269531 162.199219 47.824219 166.03125 C 48.539062 167.808594 49.203125 169.601562 49.984375 171.363281 C 52.285156 176.566406 54.804688 181.726562 57.597656 186.828125 C 57.757812 187.101562 57.867188 187.394531 58.023438 187.6875 C 61.007812 193.0625 64.285156 198.335938 67.714844 203.542969 C 68.867188 205.285156 70.074219 206.976562 71.265625 208.703125 C 73.6875 212.226562 76.167969 215.699219 78.730469 219.125 C 80.117188 220.972656 81.503906 222.792969 82.925781 224.59375 C 85.558594 227.972656 88.261719 231.265625 91 234.527344 C 92.308594 236.105469 93.605469 237.6875 94.949219 239.230469 C 98.679688 243.539062 102.464844 247.75 106.269531 251.839844 C 106.5625 252.152344 106.835938 252.484375 107.128906 252.796875 C 115.132812 261.3125 123.1875 269.257812 130.976562 276.621094 C 131.253906 276.882812 131.535156 277.128906 131.8125 277.390625 C 145.140625 289.917969 157.617188 300.640625 167.335938 308.8125 C 167.335938 308.8125 173.863281 314.125 182.367188 314.417969 C 190.867188 314.707031 197.742188 309.851562 197.742188 309.851562 C 207.996094 302.363281 221.175781 292.511719 235.328125 280.925781 C 235.625 280.683594 235.917969 280.457031 236.210938 280.214844 C 244.484375 273.402344 253.066406 266.023438 261.628906 258.074219 C 261.945312 257.765625 262.242188 257.453125 262.554688 257.160156 Z M 262.554688 257.160156 " fill-opacity="1" fill-rule="nonzero"/></g></g></g><g mask="url(#19d8b7cb40)"><g transform="matrix(1, 0, 0, 1, 75, 57)"><g clip-path="url(#6e9a1ff91e)"><g clip-path="url(#75825c1bf0)"><g clip-path="url(#decbc671cb)"><g clip-path="url(#5da7c50e24)"><g clip-path="url(#9482bc1b73)"><path fill="#ebfaff" d="M 8.957031 31.8125 C 9.222656 31.292969 9.53125 30.792969 9.875 30.320312 C 14.625 23.703125 21.261719 16.960938 29.007812 14.367188 C 29.671875 14.144531 30.347656 13.949219 31.03125 13.789062 C 32.878906 13.355469 34.78125 13.226562 36.679688 13.304688 C 37.90625 13.355469 39.15625 13.371094 40.414062 13.402344 C 42.171875 13.441406 43.933594 13.503906 45.65625 13.699219 C 48.117188 14.066406 50.824219 14.5 53.113281 15.847656 C 56.363281 17.847656 57.851562 21.859375 56.996094 25.480469 C 56.523438 27.363281 55.410156 29.011719 53.835938 30.148438 C 51.992188 31.398438 49.90625 32.1875 47.835938 33.011719 C 45.769531 33.832031 43.71875 34.691406 41.941406 36.074219 C 40.558594 37.011719 39.292969 38.058594 38.117188 39.214844 C 34.59375 42.683594 31.929688 47.132812 29.917969 52.175781 C 29.410156 53.386719 28.320312 54.203125 26.992188 54.675781 C 26.382812 54.894531 25.742188 55.011719 25.097656 55.066406 C 21.925781 55.335938 18.398438 55.101562 15.535156 53.5 C 13.402344 52.484375 11.570312 50.917969 10.164062 49.023438 C 8.753906 47.125 7.769531 44.894531 7.332031 42.539062 C 7.035156 40.972656 6.984375 39.347656 7.210938 37.730469 C 7.371094 35.792969 7.9375 33.804688 8.957031 31.8125 " fill-opacity="1" fill-rule="nonzero"/></g></g></g></g></g></g></g></g></g></svg>
+                    </div>
+                  </template>
+
+                  <!-- Submitted contact card (disabled by default, pencil to edit) -->
+                  <div
+                    v-if="isContactSubmissionMessage(message)"
+                    class="assis-contact-submission"
+                    dir="ltr"
+                    @click.stop
+                  >
+                    <div class="assis-contact-submission-card">
+                      <div
+                        class="assis-contact-submission-channels"
+                        :class="{ 'assis-contact-submission-channels--he': language === 'he' }"
+                      >
+                        <template v-if="hasWhatsappCommunicationChannel && hasEmailCommunicationChannel">
+                          <button
+                            type="button"
+                            class="assis-contact-submission-channel"
+                            :data-active="message.contactChannel === 'whatsapp' ? 'true' : null"
+                            disabled
+                          >
+                            <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" aria-hidden="true"><path d="M19.05 4.91A9.82 9.82 0 0 0 12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.87 9.87 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.91-7.02zm-7.01 15.24h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24 2.2 0 4.27.86 5.82 2.42a8.18 8.18 0 0 1 2.41 5.83c0 4.55-3.7 8.24-8.24 8.24zm4.52-6.16c-.25-.12-1.47-.72-1.7-.81-.23-.08-.39-.12-.56.12-.17.25-.64.81-.78.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-2-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.02-.38.11-.51.11-.11.25-.29.37-.43.12-.14.17-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.34-.76-1.84-.2-.48-.4-.42-.56-.42h-.48c-.17 0-.43.06-.66.31-.23.25-.87.85-.87 2.07 0 1.22.89 2.4 1.01 2.56.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.67-1.18.21-.58.21-1.07.14-1.18-.07-.1-.25-.17-.5-.29z"/></svg>
+                            WhatsApp
+                          </button>
+                          <button
+                            type="button"
+                            class="assis-contact-submission-channel"
+                            :data-active="message.contactChannel === 'email' ? 'true' : null"
+                            disabled
+                          >
+                            <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="6.5" width="16" height="11" rx="2"></rect><path d="m5.5 8.5 6.5 5 6.5-5"></path></svg>
+                            {{ language === 'he' ? 'אימייל' : 'Email' }}
+                          </button>
+                        </template>
+                        <span
+                          v-else
+                          class="assis-contact-submission-channel"
+                          data-active="true"
+                        >
+                          <template v-if="message.contactChannel === 'whatsapp'">WhatsApp</template>
+                          <template v-else>{{ language === 'he' ? 'אימייל' : 'Email' }}</template>
+                        </span>
+                        <span
+                          v-if="message.wasEdited"
+                          class="assis-contact-submission-edited"
+                        >{{ contactSubmissionEditedLabel }}</span>
+                      </div>
+
+                      <div
+                        v-if="message.contactChannel === 'whatsapp'"
+                        class="assis-contact-submission-row"
+                        dir="ltr"
+                      >
+                        <span class="assis-contact-submission-prefix">
+                          {{ `${countryCodeToFlag(message.phoneCountryIso || selectedPhoneCountryIso)} +${message.phonePrefix || selectedPhonePrefix}` }}
+                        </span>
+                        <input
+                          class="assis-contact-submission-input"
+                          type="text"
+                          maxlength="24"
+                          dir="ltr"
+                          :value="message.phoneLocal || ''"
+                          :placeholder="agentCardWhatsappPlaceholder"
+                          disabled
+                          readonly
+                        />
+                        <button
+                          type="button"
+                          class="assis-contact-submission-edit"
+                          :aria-label="language === 'he' ? 'עריכה' : 'Edit'"
+                          :title="language === 'he' ? 'עריכה' : 'Edit'"
+                          @click="startContactSubmissionEdit(message)"
+                        >
+                          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M12 20h9"></path>
+                            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                          </svg>
+                        </button>
+                      </div>
+
+                      <div
+                        v-else
+                        class="assis-contact-submission-row"
+                        dir="ltr"
+                      >
+                        <input
+                          class="assis-contact-submission-input assis-contact-submission-input--email"
+                          type="email"
+                          dir="ltr"
+                          :value="message.email || ''"
+                          :placeholder="agentCardEmailPlaceholder"
+                          disabled
+                          readonly
+                        />
+                        <button
+                          type="button"
+                          class="assis-contact-submission-edit"
+                          :aria-label="language === 'he' ? 'עריכה' : 'Edit'"
+                          :title="language === 'he' ? 'עריכה' : 'Edit'"
+                          @click="startContactSubmissionEdit(message)"
+                        >
+                          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M12 20h9"></path>
+                            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Media files display -->
+                  <div v-else-if="message.message && isMediaFile(message.message)" class="media-files">
+                    <!-- Image display -->
+                    <div v-if="isImage(message.message)" class="image-container">
+                      <img :src="message.message" :alt="message.message" class="media-image"
+                        @click="openImageModal(message.message)" />
+                      <div class="download-btn-wrapper" @click.stop.prevent>
+                        <button @click.stop.prevent="downloadFile(message.message, message.message)"
+                          class="download-btn" title="Download image">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="7,10 12,15 17,10" />
+                            <line x1="12" y1="15" x2="12" y2="3" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <!-- Video display -->
+                    <div v-else-if="isVideo(message.message)" class="video-container">
+                      <video :src="message.message" :poster="message.message" controls class="media-video">
+                        Your browser does not support the video tag.
+                      </video>
+                      <div class="download-btn-wrapper" @click.stop.prevent>
+                        <button @click.stop.prevent="downloadFile(message.message, message.message)"
+                          class="download-btn" title="Download video">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="7,10 12,15 17,10" />
+                            <line x1="12" y1="15" x2="12" y2="3" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <!-- Audio display -->
+                    <div v-else-if="isAudioMessage(message.message)" class="audio-container">
+                      <audio :src="message.message" controls preload="metadata" class="media-audio">
+                        Your browser does not support the audio tag.
+                      </audio>
+                    </div>
+                    <!-- Document display -->
+                    <div v-else-if="isDocument(message.message)" class="document-container">
+                      <a :href="message.message" target="_blank" class="document-link">
+                        <div class="document-info">
+                          <div class="document-name">{{ message.mediaFile?.fileName || "Document" }}</div>
+                        </div>
+                      </a>
+                      <div class="download-btn-wrapper" @click.stop.prevent>
+                        <button @click.stop.prevent="downloadFile(message.message, message.message)"
+                          class="download-btn" title="Download document">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="7,10 12,15 17,10" />
+                            <line x1="12" y1="15" x2="12" y2="3" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+
+                  </div>
+                  <div v-else class="assis-message-with-order">
+                  <div class="message-bubble" :dir="getTextDirection(message.message)"
+                    :style="{ textAlign: getTextDirection(message.message) === 'rtl' ? 'right' : 'left' }">
+                    <div
+                      v-if="message.isTyping && isMessageTypewriting(message)"
+                      class="assis-typewriter"
+                      :dir="language === 'he' ? 'rtl' : getTextDirection(message.message || typewriterText)"
+                      :style="{ textAlign: (language === 'he' || getTextDirection(message.message || typewriterText) === 'rtl') ? 'right' : 'left' }"
+                      v-html="typewriterLiveHtml"
+                    ></div>
+                    <div
+                      v-else-if="message.isStreaming"
+                      class="assis-typewriter"
+                      :dir="language === 'he' ? 'rtl' : getTextDirection(message.message)"
+                      :style="{ textAlign: (language === 'he' || getTextDirection(message.message) === 'rtl') ? 'right' : 'left' }"
+                    >
+                      <template v-if="language === 'he' || getTextDirection(message.message) === 'rtl'">
+                        <span class="assis-gemini-caret" aria-hidden="true"></span><span v-html="renderMessage(message.message, '')"></span>
+                      </template>
+                      <template v-else>
+                        <span v-html="renderMessage(message.message, '')"></span><span class="assis-gemini-caret" aria-hidden="true"></span>
+                      </template>
+                    </div>
+                    <div
+                      v-else
+                      v-html="renderMessage(message.message, `${message.sender?.toLowerCase() === 'client' ? 'text-white' : ''}`)">
+                    </div>
+
+                    <div v-if="loginChannels === 'ai' && !isNewAssisDesign" class="ai-message-timestamp">
+                      <div v-if="message.sender?.toLowerCase() === 'ai'" class="ai-sender-icon"><svg
+                          xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                          class="lucide lucide-sparkles w-3 h-3 opacity-60">
+                          <path
+                            d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z">
+                          </path>
+                          <path d="M20 3v4"></path>
+                          <path d="M22 5h-4"></path>
+                          <path d="M4 17v2"></path>
+                          <path d="M5 18H3"></path>
+                        </svg></div>
+                      <div v-if="message.sender?.toLowerCase() === 'business'" class="ai-sender-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                          class="lucide lucide-building2 w-3 h-3 opacity-60">
+                          <path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z" />
+                          <path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+                          <path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2" />
+                          <path d="M10 6h4" />
+                          <path d="M10 10h4" />
+                          <path d="M10 14h4" />
+                          <path d="M10 18h4" />
+                        </svg>
+                      </div>
+                      <div v-if="message.sender?.toLowerCase() === 'assis' || message.sender?.toLowerCase() === 'agent'"
+                        class="ai-sender-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                          class="lucide lucide-user w-3 h-3 opacity-60">
+                          <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
+                          <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                      </div>
+
+                      <p :class="`ai-message-timestamp__${message.sender?.toLowerCase()}`">{{
+                        formatTimestamp(message.datetime) }}</p>
+                    </div>
+                  </div>
+                  </div>
+
+                  <div v-if="message.sender?.toLowerCase() === 'client' && loginChannels !== 'ai'" class="client-info">
+                    <div class="client-avatar">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="#6b7280" stroke="#6b7280" stroke-width="2">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                        <circle cx="12" cy="7" r="4" />
+                      </svg>
+                    </div>
+                    <span class="agent-name">You</span>
+                  </div>
+                </div>
+
+                <div v-if="loginChannels !== 'ai'" class="message-timestamp">{{ formatTimestamp(message.datetime) }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Product Cards -->
+            <div
+              v-if="!isMessageTextRevealing(message) && message.products && message.products.length > 0"
+              class="assis-products-container"
+              :class="{ 'assis-products-container--carousel': message.products.length > 1 }"
+              :data-product-carousel-key="getMessageCarouselKey(message)"
+              :dir="getTextDirection(assisProductsSectionLabel)"
+            >
+              <h4
+                class="assis-lh-section-title"
+                :dir="getTextDirection(assisProductsSectionLabel)"
+                :style="{ textAlign: getTextDirection(assisProductsSectionLabel) === 'rtl' ? 'right' : 'left' }"
+              >{{ assisProductsSectionLabel }}</h4>
+              <button
+                v-if="message.products.length > 1 && doesProductCarouselNeedNav(message)"
+                class="assis-products-carousel-arrow assis-products-carousel-arrow--prev"
+                type="button"
+                :disabled="isProductCarouselAtStart(message)"
+                :aria-label="language === 'he' ? 'מוצרים קודמים' : 'Previous products'"
+                @click.stop="productCarouselScroll(message, -1, $event)"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M15 18l-6-6 6-6"></path>
+                </svg>
+              </button>
+
+              <div
+                class="assis-products-viewport"
+                :aria-label="assisProductsSectionLabel"
+                @scroll.passive="syncProductCarouselScroll(message, $event); closeProductVariantMenu(); closeProductCardOptionMenu()"
+                @scrollend.passive="syncProductCarouselScroll(message, $event)"
+              >
+                <div class="assis-products-track">
+                  <div
+                    v-for="(product, index) in message.products"
+                    :key="getProductDisplayId(product, index)"
+                    class="assis-product-card-slot"
+                    :style="{ '--assis-product-i': Math.min(index, 6) }"
+                  >
+                    <article
+                      class="assis-product-card assis-lh-tile-card"
+                      :dir="getProductCardDirection(product, index)"
+                      role="link"
+                      tabindex="0"
+                      @click="onProductCardActivate(product, message, index)"
+                      @keydown.enter.prevent="openProductDetail(product, message, index)"
+                      @keydown.space.prevent="openProductDetail(product, message, index)"
+                    >
+                      <div
+                        class="lh-media"
+                        :class="{
+                          'assis-product-image-wrapper--empty': !getProductGalleryImage(product, message, index) || isProductImageErrored(message, index),
+                          'lh-media--gallery': getProductGalleryImages(product).length > 1,
+                        }"
+                        @pointerdown="onProductGalleryPointerDown"
+                        @pointerup="onProductGalleryPointerUp(message, index, product, $event)"
+                        @pointercancel="onProductGalleryPointerCancel"
+                      >
+                        <span
+                          v-if="isProductFullySoldOut(product)"
+                          class="lh-oos-badge"
+                          :dir="getTextDirection(language === 'he' ? 'אזל מהמלאי' : 'Out of stock')"
+                        >{{ language === 'he' ? 'אזל מהמלאי' : 'Out of stock' }}</span>
+                        <span
+                          v-else-if="isProductCardPreOrder(product, message, index)"
+                          class="lh-oos-badge lh-preorder-badge"
+                          :dir="getTextDirection(language === 'he' ? 'הזמנה מוקדמת' : 'Pre-order')"
+                        >{{ language === 'he' ? 'הזמנה מוקדמת' : 'Pre-order' }}</span>
+                        <div
+                          v-if="!isProductFullySoldOut(product) && (getProductCardDiscountLabel(product, message, index) || getProductCardClubPrice(product, message, index))"
+                          class="lh-media-badges-left"
+                        >
+                          <span
+                            v-if="getProductCardDiscountLabel(product, message, index)"
+                            class="lh-sale-badge"
+                          >{{ getProductCardDiscountLabel(product, message, index) }}</span>
+                          <span
+                            v-if="getProductCardClubBadgeText(product, message, index)"
+                            class="lh-club-badge"
+                            :key="`card-club-${message?.id || index}-${clubBadgeShowEilat ? 'eilat' : 'israel'}`"
+                            :dir="getTextDirection(getProductCardClubBadgeText(product, message, index))"
+                          >{{ getProductCardClubBadgeText(product, message, index) }}</span>
+                        </div>
+                        <img
+                          v-if="getProductGalleryImage(product, message, index) && !isProductImageErrored(message, index)"
+                          :src="getProductGalleryImage(product, message, index)"
+                          :alt="getProductDisplayTitle(product)"
+                          class="assis-product-image"
+                          @error="markProductImageError(message, index)"
+                        />
+                        <div v-else class="assis-product-image-placeholder" aria-hidden="true">
+                          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+                            <path d="M7 14l2-2 3 3 2-2 3 3"></path>
+                            <path d="M8.5 9.5h.01"></path>
+                          </svg>
+                        </div>
+                        <template v-if="getProductGalleryImages(product).length > 1">
+                          <button
+                            type="button"
+                            class="lh-media-nav lh-media-nav--prev"
+                            :disabled="getProductGalleryIndex(message, index, product) === 0"
+                            :aria-label="language === 'he' ? 'תמונה קודמת' : 'Previous image'"
+                            @click.stop="stepProductGallery(message, index, product, -1)"
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                              <path d="M15 18l-6-6 6-6"></path>
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            class="lh-media-nav lh-media-nav--next"
+                            :disabled="getProductGalleryIndex(message, index, product) >= getProductGalleryImages(product).length - 1"
+                            :aria-label="language === 'he' ? 'תמונה הבאה' : 'Next image'"
+                            @click.stop="stepProductGallery(message, index, product, 1)"
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                              <path d="M9 6l6 6-6 6"></path>
+                            </svg>
+                          </button>
+                          <div class="lh-media-dots">
+                            <button
+                              v-for="(src, imageIndex) in getProductGalleryImages(product)"
+                              :key="`${src}-${imageIndex}`"
+                              type="button"
+                              class="lh-media-dot"
+                              :class="{ 'is-active': imageIndex === getProductGalleryIndex(message, index, product) }"
+                              :aria-label="language === 'he' ? `תמונה ${imageIndex + 1}` : `Image ${imageIndex + 1}`"
+                              @click.stop="setProductGalleryIndex(message, index, imageIndex)"
+                            ></button>
+                          </div>
+                        </template>
+                      </div>
+                      <div class="lh-info">
+                        <span
+                          class="lh-title"
+                          :dir="getTextDirection(getProductDisplayTitle(product))"
+                        >{{ getProductDisplayTitle(product) }}</span>
+                        <div
+                          class="lh-desc"
+                          :dir="language === 'he' ? 'rtl' : 'ltr'"
+                        >{{ getProductRecommendationReason(product) || '\u00A0' }}</div>
+                        <div class="lh-foot">
+          <div
+            v-if="messageHasCardRating(message)"
+            class="lh-rating"
+            dir="ltr"
+            :aria-hidden="readProductRating(product) ? null : 'true'"
+          >
+                            <template v-if="readProductRating(product)">
+                            <span class="lh-rating-stars" :aria-label="readProductRatingLabel(product)">
+                              <span
+                                v-for="star in 5"
+                                :key="star"
+                                class="lh-rating-star"
+                              >
+                                <svg viewBox="0 0 16 16" aria-hidden="true">
+                                  <path d="M8 1.4 9.8 5.5l4.5.4-3.4 2.9.1 4.5L8 11.2 4.9 13.3l.1-4.5L1.6 5.9l4.5-.4L8 1.4Z"></path>
+                                </svg>
+                                <svg
+                                  class="is-on"
+                                  viewBox="0 0 16 16"
+                                  aria-hidden="true"
+                                  :style="{ clipPath: `inset(0 ${100 - readProductRatingStarFill(product, star)}% 0 0)` }"
+                                >
+                                  <path d="M8 1.4 9.8 5.5l4.5.4-3.4 2.9.1 4.5L8 11.2 4.9 13.3l.1-4.5L1.6 5.9l4.5-.4L8 1.4Z"></path>
+                                </svg>
+                              </span>
+                            </span>
+                            <span v-if="readProductRating(product).value != null" class="lh-rating-score">{{ readProductRatingValue(product) }}</span>
+                            <span v-if="readProductRating(product).count != null" class="lh-rating-count">({{ readProductRating(product).count }})</span>
+                            </template>
+                          </div>
+                          <div
+                            v-if="getProductCardPrice(product, message, index)"
+                            class="lh-price-block"
+                          >
+                            <div class="lh-price-row">
+                              <span
+                                v-if="isPluginEilatPricingEnabled()"
+                                class="lh-price-region"
+                              >{{ getProductCardIsraelPriceLabel() }}</span>
+                              <span class="lh-price">{{ getProductCardPrice(product, message, index) }}</span>
+                              <span
+                                v-if="getProductCardCompareAtPrice(product, message, index)"
+                                class="lh-price-was"
+                              >{{ getProductCardCompareAtPrice(product, message, index) }}</span>
+                            </div>
+                            <div
+                              v-if="getProductCardEilatPrice(product, message, index)"
+                              class="lh-price-row lh-price-row--eilat"
+                            >
+                              <span class="lh-price-region">{{ getProductCardEilatPriceLabel() }}</span>
+                              <span class="lh-price">{{ getProductCardEilatPrice(product, message, index) }}</span>
+                            </div>
+                          </div>
+                          <div class="lh-actions">
+                          <template
+                            v-for="cardOpt in [{
+                              group: getProductCardOptionGroup(product, message, index),
+                              selected: getProductCardSelectedOptionLabel(product, message, index),
+                              open: isProductCardOptionMenuOpen(message, index),
+                            }]"
+                            :key="`card-opt-wrap-${message?.id || index}`"
+                          >
+                            <div
+                              v-if="cardOpt.group"
+                              class="lh-variant-select-wrap"
+                              :class="{ 'is-open': cardOpt.open }"
+                              :dir="language === 'he' ? 'rtl' : 'ltr'"
+                              @click.stop
+                            >
+                              <button
+                                type="button"
+                                class="lh-option-select"
+                                :aria-label="cardOpt.group.name || (language === 'he' ? 'בחירת אפשרות' : 'Choose option')"
+                                :aria-expanded="cardOpt.open ? 'true' : 'false'"
+                                :dir="getTextDirection(cardOpt.selected)"
+                                @click.stop="toggleProductCardOptionMenu(product, message, index)"
+                              >
+                                <span class="lh-option-select-label">{{ cardOpt.selected }}</span>
+                              </button>
+                              <div
+                                v-if="cardOpt.open"
+                                class="lh-card-option-menu"
+                                role="listbox"
+                                @click.stop
+                              >
+                                <button
+                                  v-for="value in cardOpt.group.values"
+                                  :key="`${cardOpt.group.index}-${value.label}`"
+                                  type="button"
+                                  class="lh-option-menu-item"
+                                  role="option"
+                                  :dir="getTextDirection(value.label)"
+                                  :aria-selected="value.label === cardOpt.selected ? 'true' : 'false'"
+                                  :data-selected="value.label === cardOpt.selected ? 'true' : null"
+                                  :data-unavailable="value.unavailable ? 'true' : null"
+                                  :disabled="value.unavailable"
+                                  @click.stop="selectProductCardOptionFromMenu(product, message, index, cardOpt.group.index, value.label)"
+                                >
+                                  <span>{{ value.label }}</span>
+                                  <svg
+                                    v-if="value.label === cardOpt.selected"
+                                    class="lh-option-menu-check"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2.6"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    aria-hidden="true"
+                                  >
+                                    <path d="M4 12.5 9.5 18 20 6.5"></path>
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                            <div
+                              v-else-if="messageHasCardVariants(message)"
+                              class="lh-variant-select-wrap lh-variant-select-wrap--empty"
+                              aria-hidden="true"
+                            ></div>
+                          </template>
+                          <button
+                            v-if="isStoreCart"
+                            type="button"
+                            class="lh-add-to-cart"
+                            :data-added="productCardAddsSelectedVariant(product, message, index) && isProductCardInBag(product, index, message) ? 'true' : null"
+                            :disabled="isProductFullySoldOut(product) || (productCardAddsSelectedVariant(product, message, index) && (!isSelectedVariantAvailable(product, message, index) || isProductCardInBag(product, index, message)))"
+                            :dir="getTextDirection(getProductCardCartLabel(product, index, message))"
+                            :aria-label="getProductCardCartLabel(product, index, message)"
+                            @click.stop="onProductCardCartClick(product, index, message)"
+                          >
+                            <svg
+                              v-if="productCardAddsSelectedVariant(product, message, index) && isProductCardInBag(product, index, message)"
+                              class="lh-check"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2.6"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              aria-hidden="true"
+                            >
+                              <path d="M4 12.5 9.5 18 20 6.5"></path>
+                            </svg>
+                            <svg
+                              v-else-if="!productCardAddsSelectedVariant(product, message, index)"
+                              viewBox="0 0 16 16"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="1.6"
+                              stroke-linecap="round"
+                              aria-hidden="true"
+                            >
+                              <path d="M3 4.5h10M3 8h10M3 11.5h10"></path>
+                            </svg>
+                            <svg
+                              v-else
+                              viewBox="0 0 16 16"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="1.8"
+                              stroke-linecap="round"
+                              aria-hidden="true"
+                            >
+                              <path d="M8 3.2v9.6M3.2 8h9.6"></path>
+                            </svg>
+                            <span>{{ getProductCardCartLabel(product, index, message) }}</span>
+                          </button>
+                          </div>
+                        </div>
+                      </div>
+                    </article>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                v-if="message.products.length > 1 && doesProductCarouselNeedNav(message)"
+                class="assis-products-carousel-arrow assis-products-carousel-arrow--next"
+                type="button"
+                :disabled="isProductCarouselAtEnd(message)"
+                :aria-label="language === 'he' ? 'מוצרים הבאים' : 'Next products'"
+                @click.stop="productCarouselScroll(message, 1, $event)"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M9 18l6-6-6-6"></path>
+                </svg>
+              </button>
+            </div>
+
+            <!-- Discount / coupon cards -->
+            <div
+              v-if="!isMessageTextRevealing(message) && getMessageDiscounts(message).length"
+              class="assis-discounts-container"
+              :class="{ 'assis-discounts-container--carousel': getMessageDiscounts(message).length > 1 }"
+              :data-discount-carousel-key="getDiscountCarouselKey(message)"
+              :dir="getTextDirection(getMessageDiscounts(message).length > 1 ? assisDiscountsSectionLabel : assisDiscountSectionLabel)"
+            >
+              <div
+                class="assis-discounts-viewport"
+                :aria-label="getMessageDiscounts(message).length > 1 ? assisDiscountsSectionLabel : assisDiscountSectionLabel"
+                @scroll.passive="syncDiscountCarouselPage(message, $event)"
+              >
+                <div class="assis-discounts-track">
+                  <article
+                    v-for="(discount, discountIndex) in getMessageDiscounts(message)"
+                    :key="`${getDiscountId(discount)}-${discountIndex}`"
+                    class="assis-lh-coupon-card"
+                    :class="{ 'assis-lh-coupon-card--general': isGeneralDiscount(discount) }"
+                    :style="{ '--assis-coupon-i': Math.min(discountIndex, 6) }"
+                    :data-code="getDiscountApplyValue(discount) || null"
+                    :data-applied="isDiscountApplied(discount) ? 'true' : null"
+                    :dir="getDiscountCardDirection(discount)"
+                  >
+                    <span
+                      v-if="isGeneralDiscount(discount)"
+                      class="lh-offer-mark"
+                      aria-hidden="true"
+                    >
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M8.2 2.5h4.1v4.1L7.2 12a1.4 1.4 0 0 1-2 0L3.8 10.6a1.4 1.4 0 0 1 0-2l5-5.1Z"></path>
+                        <path d="M10.6 5.2h.01"></path>
+                      </svg>
+                    </span>
+                    <span
+                      v-if="isGeneralDiscount(discount)"
+                      class="lh-offer-kicker"
+                    >{{ language === 'he' ? 'מבצע' : 'Offer' }}</span>
+                    <div
+                      class="lh-coupon-code-row"
+                      :dir="isGeneralDiscount(discount) ? getDiscountCardDirection(discount) : 'ltr'"
+                    >
+                      <span
+                        class="lh-coupon-code"
+                        :class="{ 'lh-coupon-title': isGeneralDiscount(discount) }"
+                      >{{ getDiscountDisplayText(discount) }}</span>
+                      <button
+                        v-if="!isGeneralDiscount(discount) && getDiscountDisplayText(discount)"
+                        type="button"
+                        class="lh-coupon-copy"
+                        :data-copied="isDiscountCodeCopied(discount) ? 'true' : null"
+                        :aria-label="getDiscountCopyAriaLabel(discount)"
+                        :title="getDiscountCopyTitle(discount)"
+                        @click.stop="copyDiscountCode(discount)"
+                      >
+                        <svg v-if="isDiscountCodeCopied(discount)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <path d="M4 12.5 9.5 18 20 6.5"></path>
+                        </svg>
+                        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <rect x="9" y="9" width="11" height="11" rx="2"></rect>
+                          <path d="M5 15V5a2 2 0 0 1 2-2h10"></path>
+                        </svg>
+                      </button>
+                    </div>
+                    <p
+                      v-if="getDiscountNote(discount)"
+                      class="lh-coupon-note"
+                      :dir="getTextDirection(getDiscountNote(discount))"
+                    >{{ getDiscountNote(discount) }}</p>
+                    <button
+                      v-if="!isGeneralDiscount(discount) && isStoreCart && getDiscountApplyValue(discount)"
+                      type="button"
+                      class="lh-coupon-apply"
+                      :data-apply-coupon="getDiscountApplyValue(discount)"
+                      :data-applied="isDiscountApplied(discount) ? 'true' : 'false'"
+                      :data-inapplicable="isDiscountInapplicable(discount) ? 'true' : null"
+                      :disabled="isDiscountApplying(discount)"
+                      :aria-busy="isDiscountApplying(discount) ? 'true' : 'false'"
+                      :dir="getTextDirection(getDiscountApplyLabel(isDiscountApplied(discount), isDiscountApplying(discount), isDiscountInapplicable(discount)))"
+                      @click.stop="applyMessageDiscount(discount)"
+                    >
+                      <svg v-if="isDiscountApplied(discount)" class="lh-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M4 12.5 9.5 18 20 6.5"></path>
+                      </svg>
+                      <span>{{ getDiscountApplyLabel(isDiscountApplied(discount), isDiscountApplying(discount), isDiscountInapplicable(discount)) }}</span>
+                    </button>
+                  </article>
+                </div>
+              </div>
+              <div v-if="doesDiscountCarouselNeedNav(message)" class="assis-discounts-carousel-nav">
+                <button
+                  class="assis-products-carousel-arrow assis-products-carousel-arrow--prev"
+                  type="button"
+                  :disabled="getDiscountCarouselPage(message) === 0"
+                  :aria-label="language === 'he' ? 'הנחות קודמות' : 'Previous discounts'"
+                  @click.stop="discountCarouselPrev(message, $event)"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M15 18l-6-6 6-6"></path>
+                  </svg>
+                </button>
+                <button
+                  class="assis-products-carousel-arrow assis-products-carousel-arrow--next"
+                  type="button"
+                  :disabled="getDiscountCarouselPage(message) >= getDiscountCarouselMaxPage(message)"
+                  :aria-label="language === 'he' ? 'הנחות הבאות' : 'Next discounts'"
+                  @click.stop="discountCarouselNext(message, $event)"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M9 18l6-6-6-6"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <OrderVerificationCard
+              v-if="showOrderVerificationCard(message)"
+              :message="message"
+              :language="language"
+              :assis-backend-url="ASSIS_BACKEND_URL"
+              :care-request-id="careRequestId"
+              :phone-prefix="phonePrefix"
+              :selected-phone-country-iso="selectedPhoneCountryIso"
+              :has-whatsapp-channel="hasWhatsappCommunicationChannel"
+              :has-email-channel="hasEmailCommunicationChannel"
+              :known-phone="orderVerificationKnownPhone"
+              :known-email="orderVerificationKnownEmail"
+              :socket="socket"
+              :get-client-id="getOrCreateClientId"
+              :is-valid-email="isValidEmail"
+              :is-valid-phone="isValidPhone"
+              :normalize-phone="stripLeadingZeroAfterPhonePrefix"
+              :track-plugin-event="trackPluginEvent"
+              @open-prefix-dropdown="closePhonePrefixDropdown"
+              @restart="onOrderVerificationRestart"
+            />
+
+            <div
+              v-if="showOrderInMessage(message)"
+              class="assis-order-inline-host"
+              data-orders-preview="active"
+              :dir="language === 'he' ? 'rtl' : 'ltr'"
+            >
+            <div
+              v-if="showInlineOrderPreview(message)"
+              class="assis-order-preview"
+            >
+              <div class="assis-order-preview-head">
+                <span class="assis-order-preview-number">{{ getInlineOrderPreviewHeading(message) }}</span>
+                <button
+                  type="button"
+                  class="assis-order-preview-enlarge assis-order-preview-enlarge--quiet assis-order-collapse-btn"
+                  :aria-label="enlargeOrderLabel"
+                  @click.stop="openLargeOrderView"
+                >
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M15 3h6v6"></path>
+                    <path d="M9 21H3v-6"></path>
+                    <path d="M21 3l-7 7"></path>
+                    <path d="M3 21l7-7"></path>
+                  </svg>
+                </button>
+              </div>
+              <div
+                v-for="order in [getInlineOrderPreviewOrder(message)].filter(Boolean)"
+                :key="`order-preview-${message.id || message.datetime}`"
+                class="assis-order-preview-body"
+              >
+                <div
+                  class="assis-order-preview-media"
+                  :class="{ 'assis-order-preview-media--empty': !getOrderPreviewImage(order) }"
+                >
+                  <img
+                    v-if="getOrderPreviewImage(order)"
+                    :src="getOrderPreviewImage(order)"
+                    :alt="getOrderPreviewTitle(order)"
+                  />
+                </div>
+                <div class="assis-order-preview-copy">
+                  <div
+                    v-if="getOrderFulfillmentStatusLabel(order)
+                      || getOrderPaymentStatusLabel(order)
+                      || getOrderDeliveryStatusLabel(order)"
+                    class="assis-order-preview-statuses"
+                  >
+                    <span
+                      v-if="getOrderFulfillmentStatusLabel(order)"
+                      class="assis-order-card-status"
+                      :data-color="getOrderFulfillmentStatusColor(order)"
+                    >{{ getOrderFulfillmentStatusLabel(order) }}</span>
+                    <span
+                      v-if="getOrderPaymentStatusLabel(order)"
+                      class="assis-order-card-status"
+                      :data-color="getOrderPaymentStatusColor(order)"
+                    >{{ getOrderPaymentStatusLabel(order) }}</span>
+                    <span
+                      v-if="getOrderDeliveryStatusLabel(order)"
+                      class="assis-order-card-status"
+                      :data-color="getOrderDeliveryStatusColor(order)"
+                    >{{ getOrderDeliveryStatusLabel(order) }}</span>
+                  </div>
+                  <div
+                    v-if="getOrderSelectionSummary(order)"
+                    class="assis-order-preview-summary"
+                  >{{ getOrderSelectionSummary(order) }}</div>
+                  <div
+                    v-if="getOrderLocationLabel(order)"
+                    class="assis-order-preview-meta"
+                  >
+                    <span class="assis-order-preview-meta-label">{{ language === 'he' ? 'יעד' : 'Ship to' }}</span>
+                    {{ getOrderLocationLabel(order) }}
+                  </div>
+                  <div
+                    v-if="getInlineOrderPreviewItemCountLabel(order)"
+                    class="assis-order-preview-meta"
+                  >{{ getInlineOrderPreviewItemCountLabel(order) }}</div>
+                </div>
+              </div>
+              <p class="assis-order-preview-caption">{{ orderVerifiedCaption }}</p>
+            </div>
+            <div
+              v-if="ordersPanelExpanded || needsVerifiedOrderSelection(message)"
+              class="assis-orders-dock assis-orders-inline"
+              :dir="language === 'he' ? 'rtl' : 'ltr'"
+            >
+              <div
+                class="assis-orders-dock-panel"
+              >
+                <div
+                  class="assis-orders-container"
+                  :data-orders-key="getMessageCarouselKey(activeOrdersMessage)"
+                  :dir="language === 'he' ? 'rtl' : 'ltr'"
+                >
+                  <template v-if="needsVerifiedOrderSelection(activeOrdersMessage)">
+                    <h4 class="assis-lh-section-title">{{ language === 'he' ? 'בחרו הזמנה' : 'Choose an order' }}</h4>
+                    <p class="assis-order-selection-subtitle">{{ language === 'he' ? 'נמצאו כמה הזמנות - בחרו אחת להצגה.' : 'We found a few orders - pick one to view.' }}</p>
+                    <div
+                      class="assis-order-selection-list"
+                      :aria-label="language === 'he' ? 'בחרו הזמנה' : 'Choose an order'"
+                    >
+                      <button
+                        v-for="(order, index) in getNormalizedOrders(activeOrdersMessage)"
+                        :key="`order-selection-${getOrderCardKey(order, index)}`"
+                        type="button"
+                        class="assis-order-selection-item"
+                        :style="{ '--assis-order-i': Math.min(index, 6) }"
+                        @click="selectVerifiedOrder(activeOrdersMessage, index)"
+                      >
+                        <div
+                          class="assis-order-selection-item-media"
+                          :class="{ 'assis-order-selection-item-media--empty': !getOrderPreviewImage(order) }"
+                        >
+                          <img
+                            v-if="getOrderPreviewImage(order)"
+                            :src="getOrderPreviewImage(order)"
+                            :alt="getOrderPreviewTitle(order)"
+                            class="assis-order-selection-item-image"
+                          />
+                        </div>
+                        <div class="assis-order-selection-item-body">
+                          <div class="assis-order-selection-item-heading">
+                            <span class="assis-order-selection-item-number">{{ getOrderDisplayNumber(order) }}</span>
+                            <span
+                              v-if="getOrderFulfillmentStatusLabel(order)"
+                              class="assis-order-card-status"
+                              :data-color="getOrderFulfillmentStatusColor(order)"
+                            >{{ getOrderFulfillmentStatusLabel(order) }}</span>
+                          </div>
+                          <span
+                            v-if="getOrderSelectionSummary(order)"
+                            class="assis-order-selection-item-meta"
+                          >{{ getOrderSelectionSummary(order) }}</span>
+                        </div>
+                      </button>
+                    </div>
+                  </template>
+
+                  <template v-else-if="getDisplayedOrders(activeOrdersMessage).length > 0">
+                    <div class="assis-orders-section-header">
+                      <div class="assis-orders-section-heading">
+                        <h4 class="assis-lh-section-title assis-orders-section-title">{{ language === 'he' ? 'פרטי הזמנה' : 'Order details' }}</h4>
+                        <button
+                          v-if="showVerifiedOrderChange(activeOrdersMessage)"
+                          type="button"
+                          class="assis-order-selection-change"
+                          @click="clearVerifiedOrderSelection(activeOrdersMessage)"
+                        >{{ language === 'he' ? 'חזרה להזמנות שלי' : 'Back to my orders' }}</button>
+                      </div>
+                      <button
+                        type="button"
+                        class="assis-order-preview-enlarge assis-order-preview-enlarge--quiet assis-order-collapse-btn"
+                        :aria-label="reduceOrderLabel"
+                        @click.stop="collapseOrdersPanel"
+                      >
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <path d="M4 14h6v6"></path>
+                          <path d="M20 10h-6V4"></path>
+                          <path d="M14 10l7-7"></path>
+                          <path d="M3 21l7-7"></path>
+                        </svg>
+                      </button>
+                    </div>
+                    <article
+                      v-for="(order, index) in getDisplayedOrders(activeOrdersMessage)"
+                      :key="getOrderCardKey(order, index)"
+                      class="assis-order-card"
+                      :dir="language === 'he' ? 'rtl' : 'ltr'"
+                    >
+                      <div class="assis-order-card-header">
+                        <div class="assis-order-card-heading">
+                          <span class="assis-order-card-number">{{ getOrderDisplayNumber(order) }}</span>
+                          <span
+                            v-if="getOrderFulfillmentStatusLabel(order)"
+                            class="assis-order-card-status"
+                            :data-color="getOrderFulfillmentStatusColor(order)"
+                          >{{ getOrderFulfillmentStatusLabel(order) }}</span>
+                          <span
+                            v-if="getOrderPaymentStatusLabel(order)"
+                            class="assis-order-card-status"
+                            :data-color="getOrderPaymentStatusColor(order)"
+                          >{{ getOrderPaymentStatusLabel(order) }}</span>
+                          <span
+                            v-if="getOrderDeliveryStatusLabel(order)"
+                            class="assis-order-card-status"
+                            :data-color="getOrderDeliveryStatusColor(order)"
+                          >{{ getOrderDeliveryStatusLabel(order) }}</span>
+                        </div>
+                        <span v-if="getOrderDisplayDate(order)" class="assis-order-card-date" dir="ltr">{{ getOrderDisplayDate(order) }}</span>
+                      </div>
+
+                      <div v-if="getOrderLocationLabel(order)" class="assis-order-card-meta">
+                        <span class="assis-order-card-meta-label">{{ language === 'he' ? 'יעד משלוח' : 'Ship to' }}</span>
+                        {{ getOrderLocationLabel(order) }}
+                      </div>
+
+                      <ul v-if="getOrderLineItems(order).length" class="assis-order-card-items">
+                        <li
+                          v-for="(item, itemIndex) in getOrderLineItems(order)"
+                          :key="`${getOrderCardKey(order, index)}-item-${itemIndex}`"
+                          class="assis-order-card-item assis-order-card-item--ask"
+                          role="button"
+                          tabindex="0"
+                          :aria-label="askAboutOrderItemLabel(item)"
+                          @click="askAboutOrderItem(item)"
+                          @keydown.enter.prevent="askAboutOrderItem(item)"
+                          @keydown.space.prevent="askAboutOrderItem(item)"
+                        >
+                          <div
+                            class="assis-order-card-item-media"
+                            :class="{ 'assis-order-card-item-media--empty': !item.imageUrl }"
+                          >
+                            <img
+                              v-if="item.imageUrl"
+                              :src="item.imageUrl"
+                              :alt="item.title"
+                              class="assis-order-card-item-image"
+                            />
+                          </div>
+                          <div class="assis-order-card-item-main">
+                            <div class="assis-order-card-item-row">
+                              <div class="assis-order-card-item-body">
+                                <div class="assis-order-card-item-title">{{ item.title }}</div>
+                                <div class="assis-order-card-item-meta">
+                                  <span dir="ltr">{{ getOrderItemQuantityLabel(item.currentQuantity ?? item.quantity ?? 1) }}</span>
+                                  <span
+                                    v-if="hasOrderItemUnitDiscount(item)"
+                                    class="assis-order-card-item-price-original"
+                                  >{{ formatOrderPriceValue(item.originalPrice, item.currency || order.currency) }}</span>
+                                  <span>{{ formatOrderPriceValue(item.price, item.currency || order.currency) }}</span>
+                                </div>
+                              </div>
+                            <div
+                              v-if="formatOrderPriceValue(getOrderItemLineTotal(item), item.currency || order.currency)"
+                              class="assis-order-card-item-price"
+                              dir="ltr"
+                            >
+                              {{ formatOrderPriceValue(getOrderItemLineTotal(item), item.currency || order.currency) }}
+                            </div>
+                            </div>
+                            <div
+                              v-for="(discount, discountIndex) in getOrderItemDisplayedDiscounts(item)"
+                              :key="`${getOrderCardKey(order, index)}-item-${itemIndex}-discount-${discountIndex}`"
+                              class="assis-order-card-item-discount"
+                            >
+                              <span class="assis-order-card-item-discount-label">{{ getOrderItemDiscountLabel(discount) }}</span>
+                              <span
+                                v-if="formatOrderPriceValue(discount.amount, discount.currency || item.currency || order.currency)"
+                                class="assis-order-card-item-discount-value"
+                                dir="ltr"
+                              >
+                                -{{ formatOrderPriceValue(discount.amount, discount.currency || item.currency || order.currency) }}
+                              </span>
+                            </div>
+                          </div>
+                        </li>
+                      </ul>
+
+                      <div v-if="getOrderTotals(order).length" class="assis-order-card-totals">
+                        <div
+                          v-for="(row, rowIndex) in getOrderTotals(order)"
+                          :key="`${getOrderCardKey(order, index)}-total-${rowIndex}`"
+                          class="assis-order-card-total-row"
+                          :class="{
+                            'assis-order-card-total-row--strong': row.strong,
+                            'assis-order-card-total-row--nested': row.nested,
+                          }"
+                        >
+                          <span>{{ row.label }}</span>
+                          <span dir="ltr">{{ row.value }}</span>
+                        </div>
+                      </div>
+
+                      <div v-if="getOrderFulfillmentRows(order).length" class="assis-order-card-fulfillment">
+                        <h5 class="assis-order-card-fulfillment-title">{{ orderShippingSectionTitle }}</h5>
+                        <div
+                          v-for="(row, rowIndex) in getOrderFulfillmentRows(order)"
+                          :key="`${getOrderCardKey(order, index)}-fulfillment-${rowIndex}`"
+                          class="assis-order-card-fulfillment-row"
+                        >
+                          <span class="assis-order-card-fulfillment-label">{{ row.label }}</span>
+                          <a
+                            v-if="row.href"
+                            class="assis-order-card-fulfillment-link"
+                            :href="row.href"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            @click.stop
+                          >{{ row.value }}</a>
+                          <span v-else class="assis-order-card-fulfillment-value">{{ row.value }}</span>
+                        </div>
+                      </div>
+                    </article>
+                  </template>
+                </div>
+              </div>
+            </div>
+            </div>
+
+            <div
+              v-if="showCheckoutChatCard(message)"
+              class="assis-checkout-slot"
+              :class="{ 'assis-checkout--end': checkoutAlignEnd(message) }"
+            >
+            <div class="assis-checkout-card" :class="{ 'is-closing': checkoutChatClosing }">
+              <div class="assis-checkout-row">
+                <div class="assis-checkout-side">
+                  <strong
+                    class="assis-checkout-title"
+                    :dir="language === 'he' ? 'rtl' : 'ltr'"
+                  >{{ shopifyCartPanelTitle }}</strong>
+                  <div class="assis-checkout-thumbs">
+                    <span
+                      v-for="line in shopifyCheckoutPreviewLines"
+                      :key="line.key"
+                      class="assis-checkout-thumb"
+                    >
+                      <button
+                        type="button"
+                        class="assis-checkout-thumb-link"
+                        :aria-label="line.title"
+                        @click.stop.prevent="openCartLineDetail(line, 'checkout_card')"
+                      >
+                        <img v-if="line.image" :src="line.image" alt="" />
+                      </button>
+                      <button
+                        type="button"
+                        class="assis-checkout-thumb-remove"
+                        :aria-label="language === 'he' ? 'הסר' : 'Remove'"
+                        @click.stop.prevent="removeShopifyCartLine(line.key)"
+                      >
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+                          <path d="M4 4l8 8M12 4 4 12"></path>
+                        </svg>
+                      </button>
+                    </span>
+                    <button
+                      v-if="shopifyCheckoutMoreCount"
+                      type="button"
+                      class="assis-checkout-more"
+                      @click.stop.prevent="showShopifyCartPanel = true"
+                    >+{{ shopifyCheckoutMoreCount }}</button>
+                  </div>
+                </div>
+                <div
+                  class="assis-checkout-card-copy"
+                  :dir="language === 'he' ? 'rtl' : 'ltr'"
+                >
+                  <span v-if="shopifyCheckoutItemNames" class="assis-checkout-names">
+                    <span class="assis-checkout-names-text">{{ shopifyCheckoutItemNames }}</span>
+                    <span
+                      v-if="shopifyCheckoutExtraCount"
+                      class="assis-checkout-names-more"
+                      tabindex="0"
+                    >+{{ shopifyCheckoutExtraCount }}</span>
+                    <span
+                      v-if="shopifyCheckoutExtraCount"
+                      class="assis-checkout-names-tip"
+                      role="tooltip"
+                    >
+                      <span
+                        v-for="(title, extraIndex) in shopifyCheckoutExtraNames"
+                        :key="`${title}-${extraIndex}`"
+                      >{{ title }}</span>
+                    </span>
+                  </span>
+                  <span class="assis-checkout-price">{{ shopifyCartFormattedTotal }}</span>
+                  <button
+                    type="button"
+                    class="assis-go-checkout"
+                    @click.stop.prevent="openShopifyCheckout"
+                  >
+                    <span>{{ shopifyCartCheckoutLabel }}</span>
+                    <svg class="assis-go-checkout-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M9 6l6 6-6 6"></path>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+            </div>
+            <div
+              v-else-if="showCheckoutChatButton(message)"
+              class="assis-checkout-slot"
+              :class="{ 'assis-checkout--end': checkoutAlignEnd(message) }"
+            >
+            <div class="assis-checkout-inline" dir="ltr">
+              <button
+                type="button"
+                class="assis-checkout-inline-main"
+                :class="{ 'has-thumbs': shopifyCheckoutPreviewLines.some((line) => line.image) }"
+                @click.stop.prevent="openShopifyCheckout"
+              >
+                <span class="assis-checkout-inline-label">{{ shopifyCartCheckoutLabel }}</span>
+                <span v-if="shopifyCartFormattedTotal" class="assis-checkout-inline-price">{{ shopifyCartFormattedTotal }}</span>
+                <span v-if="shopifyCheckoutPreviewLines.some((line) => line.image)" class="assis-checkout-inline-thumbs">
+                  <span
+                    v-for="line in shopifyCheckoutPreviewLines.filter((line) => line.image)"
+                    :key="line.key"
+                    class="assis-checkout-inline-thumb"
+                  >
+                    <img v-if="line.image" :src="line.image" alt="" />
+                  </span>
+                  <span v-if="shopifyCheckoutMoreCount" class="assis-checkout-inline-more">+{{ shopifyCheckoutMoreCount }}</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                class="assis-checkout-inline-arrow"
+                :aria-label="language === 'he' ? 'פתיחת הסל' : 'Open bag'"
+                @click.stop.prevent="openCheckoutChatCard"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M9 6l6 6-6 6"></path>
+                </svg>
+              </button>
+            </div>
+            </div>
+          </div>
+
+          <div
+            v-if="showLoaderBubble"
+            :class="[
+              'loading-message-bubble',
+              {
+                'slide-up-animation': !wasSessionRestored,
+                'loading-message-bubble--v2': isNewAssisDesign,
+                'loading-message-bubble--he-flip': isNewAssisDesign && language === 'he',
+              },
+            ]"
+          >
+            <div class="ai-agent-info">
+              <svg v-if="isNewAssisDesign" class="assis-msg-heart" viewBox="0 0 24 24" fill="#1d6fee" aria-hidden="true">
+                <path d="M12.1 21s-7.2-4.6-9.6-8.7C.7 9.3 1.6 5.6 4.6 4.2c1.9-.9 4.1-.3 5.5 1.3L12 7.4l1.9-1.9c1.4-1.6 3.6-2.2 5.5-1.3 3 1.4 3.9 5.1 2.1 8.1C19.3 16.4 12.1 21 12.1 21z"></path>
+              </svg>
+              <svg v-else xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="24" height="24" zoomAndPan="magnify" viewBox="0 0 375 374.999991" preserveAspectRatio="xMidYMid meet" version="1.0"><defs><filter x="0%" y="0%" width="100%" height="100%" id="d367e9792d-loader"><feColorMatrix values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0" color-interpolation-filters="sRGB"/></filter><clipPath id="e70d97f7ce-loader"><path d="M 37 34 L 341 34 L 341 315 L 37 315 Z M 37 34 " clip-rule="nonzero"/></clipPath></defs><g transform="matrix(1, 0, 0, 1, 2, 12)"><path fill="#026ee7" d="M 262.554688 257.160156 C 266.628906 253.339844 270.691406 249.398438 274.707031 245.355469 C 276.140625 243.902344 277.539062 242.417969 278.972656 240.933594 C 281.925781 237.863281 284.828125 234.761719 287.703125 231.570312 C 289.246094 229.855469 290.753906 228.136719 292.261719 226.402344 C 295.070312 223.160156 297.761719 219.863281 300.421875 216.515625 C 301.726562 214.875 303.046875 213.265625 304.316406 211.605469 C 308.09375 206.644531 311.722656 201.59375 315.066406 196.449219 C 315.242188 196.183594 315.386719 195.902344 315.550781 195.621094 C 318.683594 190.738281 321.550781 185.746094 324.199219 180.714844 C 325.101562 179.007812 325.867188 177.265625 326.71875 175.539062 C 328.53125 171.824219 330.195312 168.074219 331.6875 164.296875 C 332.464844 162.351562 333.171875 160.402344 333.84375 158.4375 C 335.171875 154.605469 336.25 150.730469 337.191406 146.835938 C 337.625 145.046875 338.136719 143.277344 338.488281 141.46875 C 339.574219 135.824219 340.375 130.136719 340.570312 124.414062 C 342.128906 78.75 306.382812 40.492188 260.738281 38.933594 C 217.113281 37.445312 190.5625 74.464844 190.5625 74.464844 C 190.5625 74.464844 166.601562 35.71875 122.972656 34.230469 C 77.328125 32.667969 39.054688 68.398438 37.496094 114.0625 C 37.300781 119.785156 37.710938 125.515625 38.410156 131.234375 C 38.632812 133.046875 39.027344 134.863281 39.335938 136.679688 C 40.011719 140.628906 40.835938 144.550781 41.882812 148.480469 C 42.421875 150.488281 43.011719 152.480469 43.632812 154.472656 C 44.867188 158.34375 46.269531 162.199219 47.824219 166.03125 C 48.539062 167.808594 49.203125 169.601562 49.984375 171.363281 C 52.285156 176.566406 54.804688 181.726562 57.597656 186.828125 C 57.757812 187.101562 57.867188 187.394531 58.023438 187.6875 C 61.007812 193.0625 64.285156 198.335938 67.714844 203.542969 C 68.867188 205.285156 70.074219 206.976562 71.265625 208.703125 C 73.6875 212.226562 76.167969 215.699219 78.730469 219.125 C 80.117188 220.972656 81.503906 222.792969 82.925781 224.59375 C 85.558594 227.972656 88.261719 231.265625 91 234.527344 C 92.308594 236.105469 93.605469 237.6875 94.949219 239.230469 C 98.679688 243.539062 102.464844 247.75 106.269531 251.839844 C 106.5625 252.152344 106.835938 252.484375 107.128906 252.796875 C 115.132812 261.3125 123.1875 269.257812 130.976562 276.621094 C 131.253906 276.882812 131.535156 277.128906 131.8125 277.390625 C 145.140625 289.917969 157.617188 300.640625 167.335938 308.8125 C 167.335938 308.8125 173.863281 314.125 182.367188 314.417969 C 190.867188 314.707031 197.742188 309.851562 197.742188 309.851562 C 207.996094 302.363281 221.175781 292.511719 235.328125 280.925781 C 235.625 280.683594 235.917969 280.457031 236.210938 280.214844 C 244.484375 273.402344 253.066406 266.023438 261.628906 258.074219 C 261.945312 257.765625 262.242188 257.453125 262.554688 257.160156 Z M 262.554688 257.160156 " fill-opacity="1" fill-rule="nonzero"/></g></svg>
+            </div>
+            <div class="message-bubble" :class="{ 'loading-bubble': !isNewAssisDesign }">
+              <p
+                v-if="isNewAssisDesign"
+                class="assis-thinking-line"
+                :dir="thinkingLineDir"
+                :style="{ textAlign: thinkingLineDir === 'rtl' ? 'right' : 'left' }"
+                aria-live="polite"
+              >
+                <template v-if="thinkingLineDir === 'rtl'">
+                  <span class="assis-gemini-caret" aria-hidden="true"></span><span class="assis-thinking-text">{{ thinkingPhraseText }}</span>
+                </template>
+                <template v-else>
+                  <span class="assis-thinking-text">{{ thinkingPhraseText }}</span><span class="assis-gemini-caret" aria-hidden="true"></span>
+                </template>
+              </p>
+              <div v-else class="loading-dots">
+                <span class="dot"></span>
+                <span class="dot"></span>
+                <span class="dot"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Error bubble - persists until a new message or phone submit -->
+          <div v-if="errorWithAiIntervention" class="error-ai-bubble slide-up-animation" role="alert">
+            <div
+              class="error-ai-bubble-text"
+              :dir="getTextDirection(errorWithAiIntervention)"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+              <span v-html="renderMessage(errorWithAiIntervention)"></span>
+            </div>
+          </div>
+
+          <div v-if="isChatClosedAutomatically" :class="['chat-closed-message-bubble', { 'slide-up-animation': !wasSessionRestored }]">
+            <div class="chat-end-separator">
+              <div class="separator-line"></div>
+              <div class="separator-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                  <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+              </div>
+              <div class="separator-line"></div>
+            </div>
+            <div class="chat-closed-content">
+              <div class="chat-closed-text">
+                <p
+                  class="chat-closed-title"
+                  :dir="getTextDirection(chatEndedTitle)"
+                  
+                >
+                  {{ chatEndedTitle }}
+                </p>
+                <p
+                  v-if="reasonForClosingChat"
+                  class="chat-closed-reason"
+                  :dir="getTextDirection(reasonForClosingChat)"
+                  
+                >
+                  {{ reasonForClosingChat }}
+                </p>
+                <button
+                  class="chat-closed-action-btn"
+                  type="button"
+                  :dir="getTextDirection(startNewConversationLabel)"
+                  @click="disconnectChat"
+                >
+                  {{ startNewConversationLabel }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Login Form inside chat-messages (when messages exist) -->
+          <div v-if="showSignFormUnderMessages" class="chat-login-form">
+            <div class="login-form-container">
+              <input v-model="tempEmail" type="email" placeholder="Enter your email" class="email-input"
+                @keyup.enter.stop.prevent="handleEmailContinue" @input="handleTextInput('tempEmail')"
+                :dir="getTextDirection(tempEmail)"
+                :style="{ textAlign: getTextDirection(tempEmail) === 'rtl' ? 'right' : 'left' }" />
+
+              <button @click.stop.prevent="handleEmailContinue" class="email-continue-btn"
+                :disabled="!isValidEmail(tempEmail)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+                </svg>
+                <span>Continue with Email</span>
+              </button>
+
+              <div class="login-separator">
+                <span class="separator-line"></span>
+                <span class="separator-text">or</span>
+                <span class="separator-line"></span>
+              </div>
+
+              <button v-if="loginChannels.includes('email')" class="google-continue-btn"
+                @click.stop.prevent="initiateGoogleOAuth" :disabled="isLoading">
+                <div class="option-icon google-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24">
+                    <path fill="#4285F4"
+                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="#34A853"
+                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="#FBBC05"
+                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                    <path fill="#EA4335"
+                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                  </svg>
+                </div>
+                <span>Continue with Google</span>
+              </button>
+
+              <button v-if="loginChannels.includes('whatsapp')" class="whatsapp-continue-btn"
+                @click.stop.prevent="initiateWhatsAppLogin" :disabled="isLoading">
+                <div class="option-icon whatsapp-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path
+                      d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
+                  </svg>
+                </div>
+                <span>Continue with WhatsApp</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- File upload progress -->
+        <div v-if="isUploading" class="upload-progress">
+          <div class="progress-bar">
+            <div class="progress-fill" :style="{ width: uploadProgress + '%' }"></div>
+          </div>
+          <span class="progress-text">Uploading... {{ uploadProgress }}%</span>
+        </div>
+
+        <!-- Selected files preview -->
+        <div v-if="selectedFiles.length > 0" class="selected-files">
+          <div v-for="(file, index) in selectedFiles" :key="index" class="selected-file">
+            <div class="file-preview">
+              <span class="file-icon">{{ getFileIcon(getFileTypeFromMime(file.type), file.type) }}</span>
+              <span class="file-name">{{ file.name }}</span>
+            </div>
+            <button @click="removeSelectedFile(index)" class="remove-file-btn">×</button>
+          </div>
+        </div>
+
+        <!-- Login Form (shown when no email/phone and no messages, or when showSignInForm is true) -->
+        <div v-if="showSignFormIfNoMessages" class="chat-login-form">
+          <div class="login-form-container">
+            <input v-model="tempEmail" type="email" placeholder="Enter your email" class="email-input"
+              @keyup.enter.stop.prevent="handleEmailContinue" @input="handleTextInput('tempEmail')"
+              :dir="getTextDirection(tempEmail)"
+              :style="{ textAlign: getTextDirection(tempEmail) === 'rtl' ? 'right' : 'left' }" />
+
+            <button @click.stop.prevent="handleEmailContinue" class="email-continue-btn"
+              :disabled="!isValidEmail(tempEmail)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+              </svg>
+              <span>Continue with Email</span>
+            </button>
+
+            <div class="login-separator">
+              <span class="separator-line"></span>
+              <span class="separator-text">or</span>
+              <span class="separator-line"></span>
+            </div>
+
+            <button v-if="loginChannels.includes('email')" class="google-continue-btn"
+              @click.stop.prevent="initiateGoogleOAuth" :disabled="isLoading">
+              <div class="option-icon google-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24">
+                  <path fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                  <path fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                  <path fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                  <path fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                </svg>
+              </div>
+              <span>Continue with Google</span>
+            </button>
+
+            <button v-if="loginChannels.includes('whatsapp')" class="whatsapp-continue-btn"
+              @click.stop.prevent="initiateWhatsAppLogin" :disabled="isLoading">
+              <div class="option-icon whatsapp-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path
+                    d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
+                </svg>
+              </div>
+              <span>Continue with WhatsApp</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Chat Input Area (shown when email/phone exists or no messages) -->
+        <div
+          v-else-if="!showSignFormIfNoMessages && !showSignFormUnderMessages && !errosInChat"
+          class="chat-input-area"
+          :class="{ 'chat-input-area--with-contact-sheet': showAiContactSheet && !isNewAssisDesign }"
+        >
+          <div
+            v-if="orderDetailsPopupOpen && orderPopupMessage"
+            ref="orderDetailsPopup"
+            class="assis-order-popup"
+            :dir="language === 'he' ? 'rtl' : 'ltr'"
+            role="dialog"
+            :aria-label="language === 'he' ? 'פרטי הזמנה' : 'Order details'"
+          >
+            <div class="assis-order-popup-card">
+              <div class="assis-order-popup-head">
+                <h4>{{ language === 'he' ? 'פרטי הזמנה' : 'Order details' }}</h4>
+                <button
+                  v-if="showVerifiedOrderChange(orderPopupMessage)"
+                  type="button"
+                  class="assis-order-popup-change"
+                  @click="clearVerifiedOrderSelection(orderPopupMessage)"
+                >{{ language === 'he' ? 'חזרה להזמנות שלי' : 'Back to my orders' }}</button>
+                <button
+                  type="button"
+                  class="assis-order-popup-close"
+                  :aria-label="language === 'he' ? 'סגירה' : 'Close'"
+                  @click="closeOrderDetailsPopup"
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+                    <path d="M6 6l12 12"></path>
+                    <path d="M18 6L6 18"></path>
+                  </svg>
+                </button>
+              </div>
+              <div class="assis-order-popup-body">
+                <template v-if="needsVerifiedOrderSelection(orderPopupMessage)">
+                  <p class="assis-order-selection-subtitle">{{ language === 'he' ? 'נמצאו כמה הזמנות - בחרו אחת להצגה.' : 'We found a few orders - pick one to view.' }}</p>
+                  <div class="assis-order-selection-list assis-order-selection-list--popup">
+                    <button
+                      v-for="(order, index) in getNormalizedOrders(orderPopupMessage)"
+                      :key="`order-popup-pick-${getOrderCardKey(order, index)}`"
+                      type="button"
+                      class="assis-order-popup-pick"
+                      @click="selectVerifiedOrderFromPopup(orderPopupMessage, index)"
+                    >
+                      <span
+                        class="assis-order-popup-pick-media"
+                        :class="{ 'assis-order-popup-pick-media--empty': !getOrderPreviewImage(order) }"
+                      >
+                        <img
+                          v-if="getOrderPreviewImage(order)"
+                          :src="getOrderPreviewImage(order)"
+                          :alt="getOrderPreviewTitle(order)"
+                        />
+                      </span>
+                      <span class="assis-order-popup-pick-copy">
+                        <span>{{ getOrderDisplayNumber(order) }}</span>
+                        <span v-if="getOrderSelectionSummary(order)">{{ getOrderSelectionSummary(order) }}</span>
+                      </span>
+                    </button>
+                  </div>
+                </template>
+                <template v-else>
+                <article
+                  v-for="(order, index) in getDisplayedOrders(orderPopupMessage)"
+                  :key="`order-popup-${getOrderCardKey(order, index)}`"
+                  class="assis-order-card"
+                  :dir="language === 'he' ? 'rtl' : 'ltr'"
+                >
+                  <div class="assis-order-card-header">
+                    <div class="assis-order-card-heading">
+                      <span class="assis-order-card-number">{{ getOrderDisplayNumber(order) }}</span>
+                      <span
+                        v-if="getOrderFulfillmentStatusLabel(order)"
+                        class="assis-order-card-status"
+                        :data-color="getOrderFulfillmentStatusColor(order)"
+                      >{{ getOrderFulfillmentStatusLabel(order) }}</span>
+                      <span
+                        v-if="getOrderPaymentStatusLabel(order)"
+                        class="assis-order-card-status"
+                        :data-color="getOrderPaymentStatusColor(order)"
+                      >{{ getOrderPaymentStatusLabel(order) }}</span>
+                      <span
+                        v-if="getOrderDeliveryStatusLabel(order)"
+                        class="assis-order-card-status"
+                        :data-color="getOrderDeliveryStatusColor(order)"
+                      >{{ getOrderDeliveryStatusLabel(order) }}</span>
+                    </div>
+                    <span v-if="getOrderDisplayDate(order)" class="assis-order-card-date" dir="ltr">{{ getOrderDisplayDate(order) }}</span>
+                  </div>
+                  <div v-if="getOrderLocationLabel(order)" class="assis-order-card-meta">
+                    <span class="assis-order-card-meta-label">{{ language === 'he' ? 'יעד משלוח' : 'Ship to' }}</span>
+                    {{ getOrderLocationLabel(order) }}
+                  </div>
+                  <ul v-if="getOrderLineItems(order).length" class="assis-order-card-items">
+                    <li
+                      v-for="(item, itemIndex) in getOrderLineItems(order)"
+                      :key="`order-popup-${getOrderCardKey(order, index)}-item-${itemIndex}`"
+                      class="assis-order-card-item assis-order-card-item--ask"
+                      role="button"
+                      tabindex="0"
+                      :aria-label="askAboutOrderItemLabel(item)"
+                      @click="askAboutOrderItem(item)"
+                      @keydown.enter.prevent="askAboutOrderItem(item)"
+                      @keydown.space.prevent="askAboutOrderItem(item)"
+                    >
+                      <div
+                        class="assis-order-card-item-media"
+                        :class="{ 'assis-order-card-item-media--empty': !item.imageUrl }"
+                      >
+                        <img
+                          v-if="item.imageUrl"
+                          :src="item.imageUrl"
+                          :alt="item.title"
+                          class="assis-order-card-item-image"
+                        />
+                      </div>
+                      <div class="assis-order-card-item-main">
+                        <div class="assis-order-card-item-row">
+                          <div class="assis-order-card-item-body">
+                            <div class="assis-order-card-item-title">{{ item.title }}</div>
+                            <div class="assis-order-card-item-meta">
+                              <span dir="ltr">{{ getOrderItemQuantityLabel(item.currentQuantity ?? item.quantity ?? 1) }}</span>
+                              <span
+                                v-if="hasOrderItemUnitDiscount(item)"
+                                class="assis-order-card-item-price-original"
+                              >{{ formatOrderPriceValue(item.originalPrice, item.currency || order.currency) }}</span>
+                              <span>{{ formatOrderPriceValue(item.price, item.currency || order.currency) }}</span>
+                            </div>
+                          </div>
+                          <div
+                            v-if="formatOrderPriceValue(getOrderItemLineTotal(item), item.currency || order.currency)"
+                            class="assis-order-card-item-price"
+                            dir="ltr"
+                          >
+                            {{ formatOrderPriceValue(getOrderItemLineTotal(item), item.currency || order.currency) }}
+                          </div>
+                        </div>
+                        <div
+                          v-for="(discount, discountIndex) in getOrderItemDisplayedDiscounts(item)"
+                          :key="`order-popup-${getOrderCardKey(order, index)}-item-${itemIndex}-discount-${discountIndex}`"
+                          class="assis-order-card-item-discount"
+                        >
+                          <span class="assis-order-card-item-discount-label">{{ getOrderItemDiscountLabel(discount) }}</span>
+                          <span
+                            v-if="formatOrderPriceValue(discount.amount, discount.currency || item.currency || order.currency)"
+                            class="assis-order-card-item-discount-value"
+                            dir="ltr"
+                          >
+                            -{{ formatOrderPriceValue(discount.amount, discount.currency || item.currency || order.currency) }}
+                          </span>
+                        </div>
+                      </div>
+                    </li>
+                  </ul>
+                  <div v-if="getOrderTotals(order).length" class="assis-order-card-totals">
+                    <div
+                      v-for="(row, rowIndex) in getOrderTotals(order)"
+                      :key="`order-popup-${getOrderCardKey(order, index)}-total-${rowIndex}`"
+                      class="assis-order-card-total-row"
+                      :class="{
+                        'assis-order-card-total-row--strong': row.strong,
+                        'assis-order-card-total-row--nested': row.nested,
+                      }"
+                    >
+                      <span>{{ row.label }}</span>
+                      <span dir="ltr">{{ row.value }}</span>
+                    </div>
+                  </div>
+                  <div v-if="getOrderFulfillmentRows(order).length" class="assis-order-card-fulfillment">
+                    <h5 class="assis-order-card-fulfillment-title">{{ orderShippingSectionTitle }}</h5>
+                    <div
+                      v-for="(row, rowIndex) in getOrderFulfillmentRows(order)"
+                      :key="`order-popup-${getOrderCardKey(order, index)}-fulfillment-${rowIndex}`"
+                      class="assis-order-card-fulfillment-row"
+                    >
+                      <span class="assis-order-card-fulfillment-label">{{ row.label }}</span>
+                      <a
+                        v-if="row.href"
+                        class="assis-order-card-fulfillment-link"
+                        :href="row.href"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        @click.stop
+                      >{{ row.value }}</a>
+                      <span v-else class="assis-order-card-fulfillment-value">{{ row.value }}</span>
+                    </div>
+                  </div>
+                </article>
+                </template>
+              </div>
+            </div>
+          </div>
+          <div
+            v-if="isNewAssisDesign && showAssisSuggestChipsRow"
+            class="assis-suggest-chips"
+            :class="{ 'assis-suggest-chips--rtl': assisSuggestChipsRtl }"
+            role="group"
+            :dir="assisSuggestChipsRtl ? 'rtl' : 'ltr'"
+          >
+            <button
+              v-if="showAiContactSheet && aiContactPickerDismissed"
+              type="button"
+              class="agent-card-reopen"
+              @click="openAiContactPicker"
+            >
+              <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" aria-hidden="true"><path d="M19.05 4.91A9.82 9.82 0 0 0 12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.87 9.87 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.91-7.02zm-7.01 15.24h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24 2.2 0 4.27.86 5.82 2.42a8.18 8.18 0 0 1 2.41 5.83c0 4.55-3.7 8.24-8.24 8.24zm4.52-6.16c-.25-.12-1.47-.72-1.7-.81-.23-.08-.39-.12-.56.12-.17.25-.64.81-.78.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-2-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.02-.38.11-.51.11-.11.25-.29.37-.43.12-.14.17-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.34-.76-1.84-.2-.48-.4-.42-.56-.42h-.48c-.17 0-.43.06-.66.31-.23.25-.87.85-.87 2.07 0 1.22.89 2.4 1.01 2.56.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.67-1.18.21-.58.21-1.07.14-1.18-.07-.1-.25-.17-.5-.29z"/></svg>
+              <span>{{ agentCardReopenLabel }}</span>
+            </button>
+            <button
+              v-for="chip in visibleAssisConversationChips"
+              :key="chip.text"
+              type="button"
+              :dir="chip.dir || insideChipDir(chip.text)"
+              :style="chip.chipStyle || { textAlign: insideChipDir(chip.text) === 'rtl' ? 'right' : 'left' }"
+              @click="sendSuggestedChip(chip.textToSend || chip.text)"
+            >
+              <span class="assis-chip-icon" aria-hidden="true">
+                <outside-bubble-icon :name="chip.icon" />
+              </span>
+              <span class="assis-chip-label">{{ chip.text }}</span>
+            </button>
+          </div>
+          <div
+            v-if="showAiContactSheet"
+            @click="noteAgentSheetClick"
+            :class="[
+              'ai-human-contact-sheet',
+              {
+                'ai-human-contact-sheet--v2': isNewAssisDesign,
+                'ai-human-contact-sheet--collapsed': aiContactPickerDismissed,
+                'slide-up-animation': !wasSessionRestored
+              }
+            ]"
+            :dir="isNewAssisDesign && language === 'he' ? 'rtl' : undefined"
+          >
+            <template v-if="isNewAssisDesign">
+              <button
+                type="button"
+                class="agent-card-minimize"
+                :aria-label="aiContactPickerDismissed ? contactSheetOpenLabel : contactSheetCloseLabel"
+                :title="aiContactPickerDismissed ? contactSheetOpenLabel : contactSheetCloseLabel"
+                :aria-expanded="aiContactPickerDismissed ? 'false' : 'true'"
+                @click="toggleAiContactPicker"
+              >
+                <span class="agent-card-minimize-bar" aria-hidden="true"></span>
+                <span v-if="aiContactPickerDismissed" class="agent-card-minimize-label">
+                  <span class="agent-card-minimize-icons" aria-hidden="true">
+                    <svg v-if="hasWhatsappCommunicationChannel" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.582-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z"/></svg>
+                    <svg v-if="hasEmailCommunicationChannel" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5.5" width="18" height="13" rx="2"></rect><path d="m4.5 7.5 7.5 5.7 7.5-5.7"></path></svg>
+                  </span>
+                  <span>{{ agentCardReopenLabel }}</span>
+                </span>
+              </button>
+            </template>
+            <button
+              v-else
+              type="button"
+              class="ai-contact-sheet-handle"
+              :aria-label="aiContactPickerDismissed ? contactSheetOpenLabel : contactSheetCloseLabel"
+              :aria-expanded="aiContactPickerDismissed ? 'false' : 'true'"
+              @click="toggleAiContactPicker"
+            >
+              <span class="ai-contact-sheet-handle-bar" aria-hidden="true"></span>
+            </button>
+
+            <div
+              class="ai-human-contact-sheet-body"
+              :class="{ 'ai-human-contact-sheet-body--prefix-open': showPhonePrefixDropdown }"
+            >
+            <div
+              v-if="showAiContactChannelContent && (isNewAssisDesign || (showAiContactChannelPicker && !aiContactChannel))"
+              :class="isNewAssisDesign ? 'agent-card-actions' : 'ai-contact-channel-buttons'"
+            >
+              <button
+                v-if="hasWhatsappCommunicationChannel"
+                type="button"
+                :class="isNewAssisDesign ? 'agent-pill' : 'ai-contact-channel-btn ai-contact-channel-btn--whatsapp'"
+                :data-active="isNewAssisDesign && activeAiContactChannel === 'whatsapp' ? 'true' : null"
+                @click="selectAiContactChannel('whatsapp')"
+              >
+                <svg v-if="isNewAssisDesign" viewBox="0 0 24 24" width="11" height="11" fill="currentColor" aria-hidden="true"><path d="M19.05 4.91A9.82 9.82 0 0 0 12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.87 9.87 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.91-7.02zm-7.01 15.24h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24 2.2 0 4.27.86 5.82 2.42a8.18 8.18 0 0 1 2.41 5.83c0 4.55-3.7 8.24-8.24 8.24zm4.52-6.16c-.25-.12-1.47-.72-1.7-.81-.23-.08-.39-.12-.56.12-.17.25-.64.81-.78.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-2-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.02-.38.11-.51.11-.11.25-.29.37-.43.12-.14.17-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.34-.76-1.84-.2-.48-.4-.42-.56-.42h-.48c-.17 0-.43.06-.66.31-.23.25-.87.85-.87 2.07 0 1.22.89 2.4 1.01 2.56.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.67-1.18.21-.58.21-1.07.14-1.18-.07-.1-.25-.17-.5-.29z"/></svg>
+                <div v-else class="ai-contact-channel-icon ai-contact-channel-icon--whatsapp">
+                <svg class="" width="12" height="12" viewBox="0 0 24 24" fill="#25d366" aria-hidden="true">
+                  <path
+                    d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.582-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"
+                  />
+                </svg>
+                </div>
+                <span :class="isNewAssisDesign ? null : 'ai-contact-channel-label'">WhatsApp</span>
+              </button>
+              <button
+                v-if="hasEmailCommunicationChannel"
+                type="button"
+                :class="isNewAssisDesign ? 'agent-pill' : 'ai-contact-channel-btn ai-contact-channel-btn--email'"
+                :data-active="isNewAssisDesign && activeAiContactChannel === 'email' ? 'true' : null"
+                @click="selectAiContactChannel('email')"
+              >
+                <svg v-if="isNewAssisDesign" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="6.5" width="16" height="11" rx="2"></rect><path d="m5.5 8.5 6.5 5 6.5-5"></path></svg>
+                <div v-else class="ai-contact-channel-icon ai-contact-channel-icon--email">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                    <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
+                  </svg>
+                </div>
+                <span :class="isNewAssisDesign ? null : 'ai-contact-channel-label'">{{ isNewAssisDesign && language === 'he' ? 'אימייל' : 'Email' }}</span>
+              </button>
+            </div>
+
+            <div
+              v-if="showAiContactChannelContent && activeAiContactChannel === 'whatsapp' && (isNewAssisDesign || aiContactChannel || !showAiContactChannelPicker)"
+              class="ai-human-contact-input-panel"
+              :class="{ 'agent-card-form-wrap': isNewAssisDesign }"
+            >
+              <div class="ai-whatsapp-input-container ai-whatsapp-input-container--footer">
+                <div class="ai-whatsapp-input-field" :class="{ 'ai-whatsapp-input-field--rtl': direction === 'rtl' }">
+                  <div
+                    class="ai-phone-input-group"
+                    :class="{
+                      'ai-phone-input-group--valid': (guestPhone || '').trim() && isValidPhone(guestPhone),
+                      'ai-phone-input-group--invalid': (guestPhone || '').trim() && !isValidPhone(guestPhone),
+                      'ai-phone-input-group--prefix-open': showPhonePrefixDropdown
+                    }"
+                  >
+                    <div class="ai-phone-prefix-select">
+                      <button
+                        type="button"
+                        class="ai-phone-prefix-trigger"
+                        :aria-expanded="showPhonePrefixDropdown ? 'true' : 'false'"
+                        aria-haspopup="listbox"
+                        @click.stop="togglePhonePrefixDropdown"
+                      >
+                        <span
+                          v-if="isNewAssisDesign"
+                          class="ai-phone-prefix-flag"
+                          aria-hidden="true"
+                        >{{ countryCodeToFlag(selectedPhoneCountryIso) }}</span>
+                        <span class="ai-phone-prefix-code">+{{ selectedPhonePrefix }}</span>
+                        <svg class="ai-phone-prefix-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                      </button>
+                    </div>
+                    <input
+                      ref="aiWhatsappInput"
+                      :class="['ai-whatsapp-input', {
+                        'invalid': (guestPhone || '').trim() && !isValidPhone(guestPhone),
+                        'valid': (guestPhone || '').trim() && isValidPhone(guestPhone),
+                        'ai-whatsapp-input--he-placeholder': language === 'he' && !String(guestPhoneLocal || '').trim()
+                      }]"
+                      type="text"
+                      v-model="guestPhoneLocal"
+                      :placeholder="isNewAssisDesign ? agentCardWhatsappPlaceholder : phoneLocalPlaceholder"
+                      maxlength="24"
+                      :dir="language === 'he' && !String(guestPhoneLocal || '').trim() ? 'rtl' : 'ltr'"
+                      @focus="ensureDefaultGuestPhonePrefix()"
+                      @input="handleTextInput('guestPhone')"
+                    />
+                    <div
+                      v-if="showPhonePrefixDropdown"
+                      class="ai-phone-prefix-dropdown"
+                      @click.stop
+                    >
+                      <div class="ai-phone-prefix-search-wrap">
+                        <input
+                          v-model="phonePrefixSearch"
+                          type="text"
+                          class="ai-phone-prefix-search"
+                          :placeholder="phonePrefixSearchPlaceholder"
+                          @keydown.stop
+                          @click.stop
+                        />
+                      </div>
+                      <ul class="ai-phone-prefix-list" role="listbox">
+                        <li
+                          v-for="country in filteredCountryPhonePrefixes"
+                          :key="country.iso"
+                          role="option"
+                          :aria-selected="country.iso === selectedPhoneCountryIso ? 'true' : 'false'"
+                          :class="['ai-phone-prefix-option', { selected: country.iso === selectedPhoneCountryIso }]"
+                          @click="selectPhoneCountry(country)"
+                        >
+                          <span
+                            class="ai-phone-prefix-flag"
+                            aria-hidden="true"
+                          >{{ countryCodeToFlag(country.iso) }}</span>
+                          <span class="ai-phone-prefix-label">{{ formatCountryPrefixLabel(country) }}</span>
+                        </li>
+                        <li v-if="filteredCountryPhonePrefixes.length === 0" class="ai-phone-prefix-empty">
+                          {{ phonePrefixNoResultsLabel }}
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                  <button
+                    :class="isNewAssisDesign ? 'agent-card-submit' : ['ai-whatsapp-send-btn', direction === 'rtl' ? 'flex-rtl' : '']"
+                    type="button"
+                    :disabled="!isValidPhone(guestPhone) || loadingUpdateContactInfo"
+                    @click="sendWhatsAppNumber"
+                  >
+                    <svg v-if="!isNewAssisDesign" class="ai-whatsapp-send-icon" width="12" height="12" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true">
+                      <path
+                        d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.582-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"
+                      />
+                    </svg>
+                    <span class="ai-whatsapp-send-label">{{ isNewAssisDesign ? agentCardContinueLabel : whatsappSendLabel }}</span>
+                  </button>
+                </div>
+              </div>
+              <button
+                v-if="showAiContactChannelPicker && !isNewAssisDesign"
+                type="button"
+                class="ai-contact-back-btn"
+                @click="backFromAiContactChannel"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M19 12H5"></path>
+                  <path d="m12 19-7-7 7-7"></path>
+                </svg>
+                <span>{{ contactBackLabel }}</span>
+              </button>
+            </div>
+
+            <div
+              v-if="showAiContactChannelContent && activeAiContactChannel === 'email' && (isNewAssisDesign || aiContactChannel || !showAiContactChannelPicker)"
+              class="ai-human-contact-input-panel"
+              :class="{ 'agent-card-form-wrap': isNewAssisDesign }"
+            >
+              <div class="ai-whatsapp-input-container ai-whatsapp-input-container--footer">
+                <div class="ai-whatsapp-input-field" :class="{ 'ai-whatsapp-input-field--rtl': direction === 'rtl' }">
+                  <input
+                    ref="aiEmailContactInput"
+                    v-model="guestEmailLocal"
+                    type="email"
+                    class="ai-email-contact-input"
+                    :class="{
+                      invalid: guestEmailLocal.trim() && !isValidEmail(guestEmailLocal),
+                      valid: guestEmailLocal.trim() && isValidEmail(guestEmailLocal)
+                    }"
+                    :placeholder="isNewAssisDesign ? agentCardEmailPlaceholder : emailInputPlaceholder"
+                    @input="handleTextInput('guestEmail')"
+                    :dir="getTextDirection(guestEmailLocal)"
+                  />
+                  <button
+                    :class="isNewAssisDesign ? 'agent-card-submit' : ['ai-email-send-btn', direction === 'rtl' ? 'flex-rtl' : '']"
+                    type="button"
+                    :disabled="!isValidEmail(guestEmailLocal) || loadingUpdateContactInfo"
+                    @click="sendEmailContact"
+                  >
+                    <svg v-if="!isNewAssisDesign" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                      <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
+                    </svg>
+                    <span class="ai-whatsapp-send-label">{{ isNewAssisDesign ? agentCardContinueLabel : whatsappSendLabel }}</span>
+                  </button>
+                </div>
+              </div>
+              <button
+                v-if="showAiContactChannelPicker && !isNewAssisDesign"
+                type="button"
+                class="ai-contact-back-btn"
+                @click="backFromAiContactChannel"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M19 12H5"></path>
+                  <path d="m12 19-7-7 7-7"></path>
+                </svg>
+                <span>{{ contactBackLabel }}</span>
+              </button>
+            </div>
+            <p v-if="isNewAssisDesign && showAiContactChannelContent" class="agent-card-note">{{ agentCardNote }}</p>
+            </div>
+          </div>
+
+
+
+          <div
+            class="chat-input-row"
+            :class="{ 'chat-input-row--with-contact-sheet': showAiContactSheet && !isNewAssisDesign }"
+          >
+          <div v-if="!guestEmail && !guestPhone && loginChannels !== 'ai'" class="guest-notice">
+            You're chatting as a guest. <a @click="showSignInForm = true" class="sign-in-link">Sign in</a> to save your
+            conversation.
+          </div>
+          <div class="flex gap-2" :class="[direction === 'rtl' ? 'flex-rtl' : '', { 'chat-input-multiline': chatInputMultiline }]">
+            <div class="input-container" :class="direction === 'rtl' ? 'flex-rtl' : ''" :style="direction === 'rtl' ? 'padding: 0px 8px 0px 8px;' : 'padding: 0px 8px 0px 8px;'">
+             
+              <!-- Emoji  picker -->
+              <div class="emoji-picker" @click.stop>
+                <button
+                  type="button"
+                  class="emoji-btn"
+                  ref="emojiBtn"
+                  :disabled="isChatClosedAutomatically"
+                  :title="language === 'he' ? 'בחרו אמוג׳י' : 'Pick an emoji'"
+                  @click="toggleEmojiPicker"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    class="lucide lucide-smile w-5 h-5">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+                    <path d="M9 9h.01"></path>
+                    <path d="M15 9h.01"></path>
+                  </svg>
+                </button>
+              </div>
+
+              <teleport v-if="resolvedTeleportTarget" :to="resolvedTeleportTarget">
+                <div
+                  v-if="showEmojiPicker"
+                  class="emoji-popover emoji-popover-fixed"
+                  :style="emojiPopoverStyle"
+                  @click.stop
+                  ref="emojiPopover"
+                >
+                  <EmojiPicker
+                    :native="true"
+                    :hide-search="true"
+                    :hide-group-names="true"
+                    :disable-skin-tones="true"
+                    :display-recent="true"
+                    @select="onSelectEmoji"
+                  />
+                </div>
+              </teleport>
+
+              <input ref="fileInput" type="file" multiple
+                accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv" @change="handleFileSelect"
+                style="display: none;" />
+              <textarea ref="chatInput" v-model="newMessage" :placeholder="isNewAssisDesign ? (language === 'he' ? 'כתבו הודעה...' : 'Ask anything...') : (language === 'he' ? 'כתבו כאן הודעה…' : 'Write a message here...')" class="chat-input"
+                :disabled="(!guestEmail && !guestPhone && chatMessages.length > 0 && loginChannels !== 'ai') || isChatClosedAutomatically || planSubscription === 'off'"
+                enterkeyhint="enter"
+                @keydown.enter="handleEnterKey" @input="handleTextInput('newMessage')"
+                :dir="getTextDirection(newMessage)"
+                :style="{ textAlign: getTextDirection(newMessage) === 'rtl' ? 'right' : 'left' }" rows="1"></textarea>
+              <button @click="triggerFileSelect" class="attach-btn" title="Attach files" :disabled="isChatClosedAutomatically">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                  class="lucide lucide-plus w-5 h-5">
+                  <path d="M5 12h14"></path>
+                  <path d="M12 5v14"></path>
+                </svg>
+              </button>
+            </div>
+            <button @click="sendMessage" class="send-btn" :disabled="(!newMessage.trim() && selectedFiles.length === 0) || isChatClosedAutomatically || planSubscription === 'off'">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+              </svg>
+            </button>
+          </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Welcome Section (shown when not in guest input mode) -->
+      <div v-else class="welcome-section">
+        <h1 class="welcome-title">Welcome to Assis 💙</h1>
+        <h2 class="welcome-subtitle">Customer Care for {{ resolvedBusinessName }}</h2>
+        <p class="welcome-description">
+          We're here to provide you with personal, reliable, and accurate Care ✨
+        </p>
+      </div>
+
+      <!-- Chat Options (shown when not in guest input mode) -->
+      <div v-if="!showGuestInput" class="chat-options">
+        <p class="options-intro">
+          Choose the way you'd like to chat with us 👇
+        </p>
+
+        <!-- WhatsApp Sign In Button -->
+        <button v-if="loginChannels.includes('whatsapp')" class="chat-option whatsapp-option"
+          @click="initiateWhatsAppLogin" :disabled="isLoading">
+          <div class="option-icon whatsapp-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
+            </svg>
+          </div>
+          <span class="option-text">WhatsApp</span>
+        </button>
+
+        <!-- Google Sign In Button -->
+        <button v-if="loginChannels.includes('email')" class="chat-option google-option" @click="initiateGoogleOAuth"
+          :disabled="isLoading">
+          <div class="option-icon google-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24">
+              <path fill="#4285F4"
+                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+              <path fill="#34A853"
+                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+              <path fill="#FBBC05"
+                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+              <path fill="#EA4335"
+                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+            </svg>
+          </div>
+          <span class="option-text">{{ isLoading ? 'Signing in...' : 'Continue with Google' }}</span>
+        </button>
+
+        <!-- Authenticated User Info (shown when user is signed in) -->
+        <!-- <div v-if="isAuthenticated && user" class="authenticated-user">
+          <div class="user-info">
+            <div class="user-avatar">
+              <img v-if="user.picture" :src="user.picture" :alt="user.name" class="user-picture" />
+              <div v-else class="user-initial">{{ user.name.charAt(0).toUpperCase() }}</div>
+            </div>
+            <div class="user-details">
+              <div class="user-name">{{ user.name }}</div>
+              <div class="user-email">{{ user.email }}</div>
+            </div>
+          </div>
+          <button @click="signOut" class="sign-out-btn" title="Sign Out">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16,17 21,12 16,7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+          </button>
+        </div> -->
+
+        <!-- Guest Option -->
+        <div class="guest-section">
+          <p v-if="loginChannels.includes('email')" class="guest-text">Or continue without signing in</p>
+          <button v-if="loginChannels.includes('email')" @click="showGuestInputForm" class="chat-option guest-option">
+            <div class="option-icon guest-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                class="lucide lucide-message-circle w-4 h-4 mr-2" data-filename="layout" data-linenumber="1242"
+                data-visual-selector-id="layout1242" data-source-location="layout:1242:30" data-dynamic-content="false">
+                <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path>
+              </svg>
+            </div>
+            <span class="option-text">Continue as Guest</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat Footer -->
+    <div
+      v-if="isNewAssisDesign && !showPoweredByAssisHome"
+      class="chat-footer assis-chat-footer"
+      :class="{ 'assis-footer-credit-off': !showAssisCredit }"
+      :dir="language === 'he' ? 'rtl' : 'ltr'"
+    >
+      <p
+        class="assis-home-mistakes"
+        :dir="getTextDirection(assisFooterMistakesLabel)"
+      >{{ assisFooterMistakesLabel }}</p>
+      <p
+        class="assis-home-powered"
+        :class="{ 'assis-home-powered--reserved': !showAssisCredit }"
+        :dir="getTextDirection(planSubscription === 'powered_by_assis' ? assisFooterPoweredLabel : assisFooterCareLabel)"
+      >
+        <a
+          v-if="showAssisCredit"
+          href="https://www.assis.care"
+          target="_blank"
+          rel="nofollow noopener noreferrer"
+          @click="onPluginFooterLogoClick"
+        >{{ assisFooterCreditText }}</a>
+        <span v-else aria-hidden="true">{{ assisFooterCreditText }}</span>
+      </p>
+      <a
+        class="assis-home-privacy"
+        href="https://assis.care/EndUserTerms"
+        target="_blank"
+        rel="nofollow noopener noreferrer"
+        @click="onPluginFooterTermsClick"
+        :dir="getTextDirection(assisFooterPrivacyLabel)"
+      >{{ assisFooterPrivacyLabel }}</a>
+    </div>
+    <transition v-else-if="!isNewAssisDesign" name="footer-message">
+      <div v-if="footerMessage && !showPoweredByAssisHome" class="chat-footer">
+        <span class="footer-text">{{ footerMessage }}</span>
+      </div>
+    </transition>
+
+    <div
+      v-if="isStoreCart"
+      id="assis-furisport-cart-panel"
+      :data-open="showShopifyCartPanel ? 'true' : 'false'"
+      :dir="language === 'he' ? 'rtl' : 'ltr'"
+      @click.stop
+    >
+      <div class="cart-head">
+        <h3>{{ shopifyCartPanelTitle }}</h3>
+        <button
+          type="button"
+          class="cart-close"
+          data-cart-close
+          :aria-label="language === 'he' ? 'סגור סל' : 'Close bag'"
+          @click.stop.prevent="closeShopifyCartPanel"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true">
+            <path d="M6 6l12 12M18 6 6 18"></path>
+          </svg>
+        </button>
+      </div>
+      <template v-if="!shopifyCartPanelLines.length">
+        <p class="cart-empty">{{ shopifyCartEmptyLabel }}</p>
+        <div v-if="appliedDiscountCode" class="cart-coupon">
+          {{ appliedDiscountCode }}
+        </div>
+      </template>
+      <template v-else>
+        <div class="cart-body">
+          <div
+            v-for="line in shopifyCartVisibleLines"
+            :key="line.key"
+            class="cart-row"
+            :data-id="line.key"
+            role="button"
+            tabindex="0"
+            @click="openCartLineDetail(line, 'cart')"
+            @keydown.enter.prevent="openCartLineDetail(line, 'cart')"
+          >
+            <img v-if="line.image" :src="line.image" alt="" />
+            <div v-else class="cart-row-placeholder" aria-hidden="true"></div>
+            <div class="cart-row-main">
+              <div class="cart-row-top">
+                <div class="cart-row-meta">
+                  <strong :dir="getTextDirection(line.title)">{{ line.title }}</strong>
+                  <span
+                    v-if="line.variantLabel"
+                    class="cart-row-variant"
+                    :dir="getTextDirection(line.variantLabel)"
+                  >{{ line.variantLabel }}</span>
+                  <span class="cart-row-price">{{ line.priceLabel }}</span>
+                </div>
+                <button
+                  type="button"
+                  class="cart-remove"
+                  :data-remove="line.key"
+                  :aria-label="language === 'he' ? 'הסר' : 'Remove'"
+                  @click.stop.prevent="removeShopifyCartLine(line.key)"
+                >
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+                    <path d="M4 4l8 8M12 4 4 12"></path>
+                  </svg>
+                </button>
+              </div>
+              <div class="cart-qty-step">
+                <button
+                  type="button"
+                  class="cart-qty-btn"
+                  :aria-label="language === 'he' ? 'הפחת כמות' : 'Remove one'"
+                  @click.stop.prevent="changeShopifyCartLineQuantity(line.key, line.quantity - 1)"
+                >
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
+                    <path d="M4 8h8"></path>
+                  </svg>
+                </button>
+                <span class="cart-qty">{{ line.quantity }}</span>
+                <button
+                  type="button"
+                  class="cart-qty-btn"
+                  :aria-label="language === 'he' ? 'הוסף כמות' : 'Add one'"
+                  @click.stop.prevent="changeShopifyCartLineQuantity(line.key, line.quantity + 1)"
+                >
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
+                    <path d="M8 4v8M4 8h8"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+          <button
+            v-if="shopifyCartMoreCount"
+            type="button"
+            class="cart-more"
+            @click.stop.prevent="shopifyCartListExpanded = true"
+          >{{ language === 'he' ? `עוד ${shopifyCartMoreCount}` : `+${shopifyCartMoreCount} more` }}</button>
+        </div>
+        <div class="cart-foot">
+          <div v-if="appliedDiscountCode" class="cart-coupon">
+            {{ appliedDiscountCode }}
+          </div>
+          <div class="cart-total">
+            <span>{{ shopifyCartTotalLabel }}</span>
+            <strong>{{ shopifyCartFormattedTotal }}</strong>
+          </div>
+          <button
+            v-if="shopifyCartItemCount > 0"
+            type="button"
+            class="cart-checkout"
+            data-cart-checkout
+            @click.stop.prevent="openShopifyCheckout"
+          >{{ shopifyCartCheckoutLabel }}</button>
+          <p v-if="shopifyCartItemCount > 0" class="cart-foot-note">{{ shopifyCartFootNote }}</p>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- Image Modal -->
+  <div v-if="showImageModal" class="image-modal" @click="closeImageModal">
+    <div class="modal-content" @click.stop>
+      <button class="modal-close" @click="closeImageModal">×</button>
+      <img :src="modalImageUrl" alt="Full size image" class="modal-image" />
+    </div>
+  </div>
+
+  <!-- Error Toast -->
+  <div v-if="errorContactUpdate" class="error-toast">
+    <div class="toast-content">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" class="toast-icon">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+      <span class="toast-message">{{ errorContactUpdate }}</span>
+    </div>
+  </div>
+
+  </div>
+
+</template>
+
+<script>
+import { io } from 'socket.io-client';
+import { createClient } from '@supabase/supabase-js';
+import { FileUploadService } from './fileUploadService.js';
+import shopifyCartMixin from './shopifyCart.js';
+import woocommerceCartMixin from './woocommerceCart.js';
+import pluginEventsMixin from './pluginEvents.js';
+import proactiveBubblesMixin from './proactiveBubbles.js';
+import EmojiPicker from 'vue3-emoji-picker';
+import 'vue3-emoji-picker/css';
+import AssisHeartLogo from './AssisHeartLogo.vue';
+import OutsideBubbleIcon from './OutsideBubbleIcon.vue';
+import OrderVerificationCard from './OrderVerificationCard.vue';
+import { normalizeOrderVerification, normalizeOrderVerificationChannelsMode, normalizeOrders, extractCustomerNameFromOrders, findExplicitlyMentionedOrderIndex } from './orderVerification.js';
+import { computed, ref, toRaw } from 'vue';
+import {
+  COUNTRY_PHONE_PREFIXES,
+  countryCodeToFlag as isoToFlagEmoji,
+  findCountryByDialCode,
+  findCountryFromPhone,
+} from './countryPhonePrefixes.js';
+
+const DEFAULT_ERROR_MESSAGE_EN = `*Oops, looks like I missed you for a moment* 😅
+Can you write again what you wanted to check or ask?
+
+If you want to speak with a human agent, you can leave your phone number here and we’ll immediately send you a WhatsApp message.
+`;
+
+const DEFAULT_ERROR_MESSAGE_HE = `*אוי, נראה שפספסתי אותך לרגע* 😅 
+אפשר לכתוב לי שוב מה רצית לבדוק או לשאול? 
+
+אם תרצה לדבר עם נציג אנושי, אפשר להשאיר כאן מספר טלפון ונשלח לך מיד הודעת וואטסאפ. 
+`
+
+const CHAT_WINDOW_POS_KEY = 'assis-widget-chat-pos';
+const CHAT_DRAG_THRESHOLD_SQ = 36;
+const THINKING_PHRASE_INITIAL_DELAY_MS = 2500;
+const THINKING_PHRASE_HOLD_MS = 8000;
+const THINKING_FALLBACK_EN = [
+  'One moment ✨',
+  "I'll be right back with something good",
+];
+const THINKING_FALLBACK_HE = [
+  'רגע אחד ✨',
+  'תכף חוזרת עם משהו טוב',
+];
+const THINKING_PRODUCT_STOPWORDS = new Set([
+  'the', 'a', 'an', 'my', 'your', 'this', 'that', 'these', 'those', 'for', 'with',
+  'from', 'about', 'what', 'which', 'how', 'when', 'where', 'why', 'who', 'is',
+  'are', 'do', 'does', 'did', 'you', 'have', 'has', 'can', 'could', 'please',
+  'want', 'need', 'like', 'looking', 'look', 'check', 'checking', 'order',
+  'shipping', 'delivery', 'return', 'returns', 'price', 'prices', 'stock',
+  'size', 'sizes', 'spec', 'specs', 'help', 'hello', 'hi', 'hey', 'thanks',
+  'and', 'or', 'but', 'not', 'any', 'some', 'one', 'get', 'got', 'buy',
+]);
+const THINKING_CITY_ALIASES = [
+  { keys: ['תל אביב', 'ת״א', 'ת"א', 'tel aviv', 'tel-aviv'], he: 'תל אביב', en: 'Tel Aviv' },
+  { keys: ['ירושלים', 'jerusalem'], he: 'ירושלים', en: 'Jerusalem' },
+  { keys: ['חיפה', 'haifa'], he: 'חיפה', en: 'Haifa' },
+  { keys: ['באר שבע', 'beer sheva', 'beersheba'], he: 'באר שבע', en: 'Beer Sheva' },
+  { keys: ['ראשון לציון', 'rishon'], he: 'ראשון לציון', en: 'Rishon LeZion' },
+  { keys: ['פתח תקווה', 'פתח תקוה', 'petah tikva'], he: 'פתח תקווה', en: 'Petah Tikva' },
+  { keys: ['נתניה', 'netanya'], he: 'נתניה', en: 'Netanya' },
+  { keys: ['רמת גן', 'ramat gan'], he: 'רמת גן', en: 'Ramat Gan' },
+  { keys: ['חולון', 'holon'], he: 'חולון', en: 'Holon' },
+  { keys: ['בני ברק', 'bnei brak'], he: 'בני ברק', en: 'Bnei Brak' },
+  { keys: ['אשדוד', 'ashdod'], he: 'אשדוד', en: 'Ashdod' },
+  { keys: ['אשקלון', 'ashkelon'], he: 'אשקלון', en: 'Ashkelon' },
+  { keys: ['רחובות', 'rehovot'], he: 'רחובות', en: 'Rehovot' },
+  { keys: ['הרצליה', 'herzliya'], he: 'הרצליה', en: 'Herzliya' },
+  { keys: ['כפר סבא', 'kfar saba'], he: 'כפר סבא', en: 'Kfar Saba' },
+  { keys: ['רעננה', 'raanana', "ra'anana"], he: 'רעננה', en: 'Ra\'anana' },
+  { keys: ['מודיעין', 'modiin', "modi'in"], he: 'מודיעין', en: "Modi'in" },
+  { keys: ['אילת', 'eilat'], he: 'אילת', en: 'Eilat' },
+  { keys: ['בת ים', 'bat yam'], he: 'בת ים', en: 'Bat Yam' },
+  { keys: ['גבעתיים', 'givatayim'], he: 'גבעתיים', en: 'Givatayim' },
+  { keys: ['הוד השרון', 'hod hasharon'], he: 'הוד השרון', en: 'Hod Hasharon' },
+  { keys: ['רמת השרון', 'ramat hasharon'], he: 'רמת השרון', en: 'Ramat Hasharon' },
+  { keys: ['נס ציונה', 'nes ziona'], he: 'נס ציונה', en: 'Nes Ziona' },
+  { keys: ['ראש העין', 'rosh haayin'], he: 'ראש העין', en: 'Rosh HaAyin' },
+  { keys: ['בית שמש', 'beit shemesh'], he: 'בית שמש', en: 'Beit Shemesh' },
+  { keys: ['נהריה', 'nahariya'], he: 'נהריה', en: 'Nahariya' },
+  { keys: ['עפולה', 'afula'], he: 'עפולה', en: 'Afula' },
+  { keys: ['טבריה', 'tiberias'], he: 'טבריה', en: 'Tiberias' },
+  { keys: ['עכו', 'akko'], he: 'עכו', en: 'Akko' },
+  { keys: ['צפת', 'safed'], he: 'צפת', en: 'Safed' },
+  { keys: ['קריית גת', 'קרית גת', 'kiryat gat'], he: 'קריית גת', en: 'Kiryat Gat' },
+  { keys: ['קריית שמונה', 'קרית שמונה', 'kiryat shmona'], he: 'קריית שמונה', en: 'Kiryat Shmona' },
+];
+const THINKING_INTENT_KEYWORDS = {
+  order: [
+    'סטטוס ההזמנה', 'סטטוס הזמנה', 'מעקב הזמנה', 'מעקב אחר', 'ההזמנה שלי',
+    'מספר הזמנה', 'איפה ההזמנה', 'מה עם ההזמנה', 'tracking', 'order status',
+    'where is my order', 'track my order', 'order number', 'my order',
+  ],
+  returns: [
+    'החזרות', 'החזרה', 'מדיניות ההחזר', 'מדיניות החזר', 'להחזיר', 'ביטול הזמנה',
+    'לבטל הזמנה', 'ביטול רכישה', 'ביטול', 'refund', 'return policy', 'returns', 'return it',
+    'cancellation', 'cancel my order', 'cancel the order', 'cancel', 'exchange policy',
+  ],
+  contact: [
+    'יצירת קשר', 'פרטי קשר', 'מספר טלפון', 'כתובת המייל', 'שעות פעילות',
+    'איך יוצרים קשר', 'contact details', 'contact info', 'phone number',
+    'email address', 'customer service', 'customer support', 'opening hours',
+    'business hours', 'whatsapp number',
+  ],
+  comparison: [
+    'השוואה', 'להשוות', 'משווה', 'מה עדיף', 'מה ההבדל', 'מה יותר טוב',
+    'compare', 'comparison', 'versus', 'vs', 'difference between', 'which is better',
+    'which one is better',
+  ],
+  recommendation: [
+    'המלצה', 'תמליצי', 'תמליץ', 'מומלץ', 'מה הכי מתאים', 'מה כדאי',
+    'מה מתאים לי', 'שמתאימה לי', 'recommend', 'recommendation', 'suggest',
+    'what should i get', 'what’s best for me', "what's best for me",
+    'best for me',
+  ],
+  stock: [
+    'במלאי', 'מהמלאי', 'יש במלאי', 'זמין במלאי', 'מלאי', 'אזל', 'כמה נשאר',
+    'in stock', 'out of stock', 'availability', 'sold out',
+  ],
+  price: [
+    'מחירים', 'מחיר', 'כמה עולה', 'כמה זה עולה', 'הנחה', 'הנחות', 'מבצע',
+    'מבצעים', 'קופון', 'discount', 'discounts', 'promo', 'promotion',
+    'sale', 'price', 'prices', 'how much', 'coupon', 'deal', 'deals',
+  ],
+  delivery: [
+    'זמני אספקה', 'זמן אספקה', 'זמני משלוח', 'זמן משלוח', 'מתי מגיע',
+    'מתי יגיע', 'מתי אקבל', 'כמה זמן לוקח', 'כמה ימי משלוח', 'ימי עסקים',
+    'delivery time', 'delivery times', 'how long to deliver', 'when will it arrive',
+    'when does it arrive', 'shipping time', 'lead time', 'eta',
+  ],
+  shipping: [
+    'אפשרויות המשלוח', 'אפשרויות משלוח', 'דמי משלוח', 'עלות משלוח',
+    'איך שולחים', 'משלוחים', 'משלוח', 'שילוח', 'שליח',
+    'shipping options', 'shipping cost', 'do you ship', 'can you ship',
+    'do you deliver', 'delivery options', 'courier', 'shipping', 'deliver',
+  ],
+  specs: [
+    'מפרט', 'מידות', 'מידה', 'ספציפיקציה', 'משקל', 'מידות המוצר',
+    'specification', 'specifications', 'specs', 'dimensions', 'what size',
+    'sizes', 'measurements',
+  ],
+};
+
+function normalizeThinkingMessage(text) {
+  return String(text || '')
+    .replace(/[״«»“”]/g, '"')
+    .replace(/[׳’]/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function thinkingMessageHasKeyword(haystack, keyword) {
+  const needle = String(keyword || '').toLowerCase();
+  if (!needle) return false;
+  const text = haystack.toLowerCase();
+  if (/^[a-z0-9]/.test(needle) && /[a-z0-9]$/.test(needle)) {
+    const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(text);
+  }
+  return text.includes(needle);
+}
+
+function thinkingMessageHasAny(haystack, keywords) {
+  return (keywords || []).some((keyword) => thinkingMessageHasKeyword(haystack, keyword));
+}
+
+function extractThinkingCity(messageText, language) {
+  const haystack = normalizeThinkingMessage(messageText).toLowerCase();
+  if (!haystack) return '';
+  let best = null;
+  let bestLen = 0;
+  THINKING_CITY_ALIASES.forEach((city) => {
+    city.keys.forEach((key) => {
+      const needle = String(key || '').toLowerCase();
+      if (needle.length > bestLen && haystack.includes(needle)) {
+        best = city;
+        bestLen = needle.length;
+      }
+    });
+  });
+  if (!best) return '';
+  return language === 'he' ? best.he : best.en;
+}
+
+function extractThinkingProductName(messageText) {
+  const text = normalizeThinkingMessage(messageText);
+  if (!text) return '';
+
+  const quoted = text.match(/"([^"]{2,50})"/);
+  if (quoted?.[1]) return quoted[1].trim();
+
+  const hebrewObject = text.match(/את\s+(?:ה-)?([A-Za-z0-9][A-Za-z0-9][\w \-]{0,40})/);
+  if (hebrewObject?.[1]) {
+    const cleaned = hebrewObject[1].replace(/[?!.]+$/g, '').trim();
+    if (cleaned.length >= 2) return cleaned;
+  }
+
+  const capsRun = text.match(/\b([A-Z]{2,}(?:[\s\-]+[A-Z0-9]{2,}){0,4})\b/);
+  if (capsRun?.[1] && !THINKING_PRODUCT_STOPWORDS.has(capsRun[1].toLowerCase())) {
+    return capsRun[1].trim();
+  }
+
+  const latinTokens = [];
+  const tokenRe = /[A-Za-z][A-Za-z0-9\-]*/g;
+  let match;
+  while ((match = tokenRe.exec(text))) {
+    const token = match[0];
+    if (THINKING_PRODUCT_STOPWORDS.has(token.toLowerCase())) {
+      if (latinTokens.length) break;
+      continue;
+    }
+    latinTokens.push(token);
+    if (latinTokens.length >= 4) break;
+  }
+  if (latinTokens.length >= 2 || (latinTokens.length === 1 && latinTokens[0].length >= 4)) {
+    const looksLikeProduct = latinTokens.some((token) => (
+      /[A-Z]/.test(token) || /[0-9]/.test(token) || token.length >= 5
+    ));
+    if (looksLikeProduct) return latinTokens.join(' ');
+  }
+  return '';
+}
+
+function buildThinkingIntentPhrase(intent, language, extras = {}) {
+  const isHe = language === 'he';
+  const product = String(extras.product || '').trim();
+  const city = String(extras.city || '').trim();
+  const heCity = city ? (city.startsWith('ל') ? city : `ל${city}`) : '';
+
+  switch (intent) {
+    case 'shipping':
+      return isHe ? 'רגע, בודקת את אפשרויות המשלוח ✨' : 'One moment, checking shipping options ✨';
+    case 'delivery':
+      if (isHe) return city ? `תכף, בודקת זמני אספקה ${heCity}` : 'תכף, בודקת זמני אספקה';
+      return city ? `One moment, checking delivery times to ${city}` : 'One moment, checking delivery times';
+    case 'returns':
+      return isHe ? 'רגע, מסדרת לך את מדיניות ההחזרות' : 'One moment, pulling up the return policy';
+    case 'product':
+      if (product) {
+        return isHe ? `רגע, מחפשת את ${product}…` : `One moment, looking up ${product}…`;
+      }
+      return isHe ? 'רגע, מחפשת את המוצר…' : 'One moment, looking up that product…';
+    case 'price':
+      return isHe ? 'רגע, בודקת מחירים על המוצר' : 'One moment, checking prices on this product';
+    case 'stock':
+      return isHe ? 'שנייה, מסתכלת מה יש במלאי' : "One sec, checking what's in stock";
+    case 'comparison':
+      return isHe ? 'רגע, משווה בין האפשרויות' : 'One moment, comparing the options';
+    case 'recommendation':
+      return isHe ? 'רגע, מחפשת מה הכי מתאים לך' : 'One moment, looking for the best match for you';
+    case 'specs':
+      return isHe ? 'רגע, מוציאה את המפרט' : 'One moment, pulling up the specs';
+    case 'order':
+      return isHe ? 'רגע, בודקת את סטטוס ההזמנה' : 'One moment, checking the order status';
+    case 'contact':
+      return isHe ? 'רגע, מוציאה פרטי יצירת קשר' : 'One moment, pulling up the contact details';
+    default:
+      return '';
+  }
+}
+
+function detectThinkingIntent(messageText) {
+  const text = normalizeThinkingMessage(messageText);
+  if (!text) return { intent: 'fallback', product: '' };
+
+  const product = extractThinkingProductName(text);
+  const hasCity = Boolean(extractThinkingCity(text, 'he'));
+  const has = (intent) => thinkingMessageHasAny(text, THINKING_INTENT_KEYWORDS[intent]);
+
+  if (has('order')) return { intent: 'order', product };
+  if (has('returns')) return { intent: 'returns', product };
+  if (has('contact')) return { intent: 'contact', product };
+  if (has('comparison')) return { intent: 'comparison', product };
+  if (has('recommendation')) return { intent: 'recommendation', product };
+  if (has('stock')) return { intent: 'stock', product };
+  if (has('price')) return { intent: 'price', product };
+  if (has('delivery') || (has('shipping') && hasCity)) return { intent: 'delivery', product };
+  if (has('shipping')) return { intent: 'shipping', product };
+  if (has('specs')) return { intent: 'specs', product };
+  if (product) return { intent: 'product', product };
+  return { intent: 'fallback', product };
+}
+
+function getContextualThinkingPhrases(messageText, language) {
+  const fallbacks = language === 'he' ? THINKING_FALLBACK_HE : THINKING_FALLBACK_EN;
+  const { intent, product } = detectThinkingIntent(messageText);
+  if (intent === 'fallback') return fallbacks.slice();
+  const phrase = buildThinkingIntentPhrase(intent, language, {
+    city: extractThinkingCity(messageText, language),
+    product,
+  });
+  return phrase ? [phrase, ...fallbacks] : fallbacks.slice();
+}
+
+export default {
+  name: 'App',
+  mixins: [shopifyCartMixin, woocommerceCartMixin, pluginEventsMixin, proactiveBubblesMixin],
+  components: {
+    EmojiPicker,
+    AssisHeartLogo,
+    OutsideBubbleIcon,
+    OrderVerificationCard,
+  },
+  props: {
+    teleportTarget: {
+      type: [String, Object],
+      default: null,
+    },
+    businessName: {
+      type: String,
+      default: 'Business'
+    },
+    heartPosition: {
+      type: String,
+      default: 'right'
+    },
+    heartSize: {
+      type: String,
+      default: 'small'
+    },
+    assisBackendUrl: {
+      type: String,
+      default: 'https://backend.assis.care'
+    },
+    buttonLabel: {
+      type: String,
+      default: 'Here for you!'
+    },
+    loginChannels: {
+      type: String,
+      default: 'ai'
+    },
+    businessLogo: {
+      type: String,
+      default: null
+    },
+    language: {
+      type: String,
+      default: 'en'
+    },
+    phonePrefix: {
+      type: String,
+      default: '972'
+    },
+    communicationChannels: {
+      type: [Array, String],
+      default: () => ['whatsapp', 'email']
+    },
+    shouldBeOpenedOnDesktopOnLoad: {
+      type: Boolean,
+      default: false
+    },
+    isShopifyWebsite: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  setup(props) {
+    // plugin_language: force_he|force_en = always that language;
+    // auto / legacy he|en|auto_* = follow page <html lang> (he|en were fallback-only before force_*).
+    // Host data-language / auto_* fallback apply only in auto mode when the page has no he/en lang.
+    const pluginLanguage = ref(null);
+
+    const normalizeForcedLanguage = (value) => {
+      const mode = String(value || '').trim().toLowerCase();
+      if (mode === 'force_he') return 'he';
+      if (mode === 'force_en') return 'en';
+      return null;
+    };
+
+    const normalizeAutoFallback = (value) => {
+      const mode = String(value || '').trim().toLowerCase();
+      if (mode === 'he' || mode === 'auto_he') return 'he';
+      if (mode === 'en' || mode === 'auto' || mode === 'auto_en') return 'en';
+      return null;
+    };
+
+    const detectPageLanguage = () => {
+      try {
+        const root = document.documentElement;
+        const body = document.body;
+        const tag = String(root?.lang || body?.lang || '').trim().toLowerCase();
+        if (tag === 'he' || tag.startsWith('he-') || tag === 'iw' || tag.startsWith('iw-')) {
+          return 'he';
+        }
+        // Many Hebrew storefronts set dir=rtl but leave lang empty or as en.
+        const dir = String(
+          root?.getAttribute?.('dir')
+          || body?.getAttribute?.('dir')
+          || (root ? window.getComputedStyle(root).direction : '')
+          || ''
+        ).trim().toLowerCase();
+        if (dir === 'rtl') return 'he';
+        if (tag === 'en' || tag.startsWith('en-')) return 'en';
+        return null;
+      } catch (_) {
+        return null;
+      }
+    };
+
+    const language = computed(() => {
+      const forced = normalizeForcedLanguage(pluginLanguage.value);
+      if (forced) return forced;
+
+      const fromPage = detectPageLanguage();
+      if (fromPage) return fromPage;
+
+      let fromHost = null;
+      try {
+        // Host data-language he|en is an explicit embed override (fallback when page has no lang).
+        fromHost = normalizeAutoFallback(
+          document.getElementById('assis-plugin-app')?.dataset?.language
+        );
+      } catch (_) {
+        fromHost = null;
+      }
+      const fromBackend = normalizeAutoFallback(pluginLanguage.value);
+      let isLocalHost = false;
+      try {
+        const host = String(window.location.hostname || '').toLowerCase();
+        isLocalHost = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+      } catch (_) {
+        isLocalHost = false;
+      }
+      if (fromHost) return fromHost;
+      if (fromBackend) return fromBackend;
+      if (isLocalHost) {
+        const fromProp = normalizeForcedLanguage(props.language) || normalizeAutoFallback(props.language);
+        if (fromProp) return fromProp;
+      }
+      return 'en';
+    });
+    return { pluginLanguage, language };
+  },
+  data() {
+    return {
+      defaultErrorMessage: DEFAULT_ERROR_MESSAGE_HE,
+      isChatOpen: false,
+      showQuickActions: true,
+      showHeaderMenu: false,
+      pendingQuickActionMessage: null,
+      isFlushingQuickAction: false,
+      outboundDebounceMs: 1500,
+      outboundTypingHoldMs: 5000,
+      outboundQueue: [],
+      outboundFlushTimer: null,
+      outboundTypingHoldTimer: null,
+      debugOutboundBatching: false,
+      aiWelcomeContextSent: false,
+      showGuestInput: false,
+      guestName: '',
+      guestEmail: '',
+      guestPhone: '',
+      selectedPhoneCountryIso: 'IL',
+      showPhonePrefixDropdown: false,
+      phonePrefixSearch: '',
+      phoneSubmitted: false,
+      emailSubmitted: false,
+      editingContactSubmissionId: null,
+      aiContactChannel: null,
+      aiContactPickerDismissed: false,
+      currentStep: 'name', // 'name', 'contact', 'complete'
+      isUserInteracting: false, // New flag to track user interaction
+      userAcknowledgment: false, // New data property for acknowledgment
+      chatMessages: [], // New data property for chat messages
+      newMessage: '', // New data property for new message input
+      chatInputMultiline: false,
+      isLoading: false, // New data property for loading state
+      loadingUpdateContactInfo: false, // New data property for loading state
+      skipRequireAgentFromOrderVerification: false,
+      isAuthenticated: false, // New data property for authenticated state
+      user: null, // New data property for user object
+      ASSIS_BACKEND_URL: '',
+      SUPABASE_URL: 'https://ftnbrshhkwpdyulgslop.supabase.co',
+      SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ0bmJyc2hoa3dwZHl1bGdzbG9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcyOTU0OTYsImV4cCI6MjA2Mjg3MTQ5Nn0.WQ3ZRHsq9A0SxbO3zKXXGvY6ykj_ahG9MDXd3hsy1eo',
+      SUPABASE_STORAGE_BUCKET: 'chat-media',
+      careRequestId: null,
+      socket: null, // Socket instance
+      isSocketConnected: false, // Socket connection status
+      isSocketInitialized: false, // Track if socket has been initialized
+      products: [], // Store products from dataFromWebsite
+      highlightedProducts: [], // Home-screen products from plugin-messages
+      pluginMessagesFetched: false,
+      // File upload related
+      isUploading: false,
+      uploadProgress: 0,
+      selectedFiles: [],
+      supabaseClient: null, // Will be initialized when needed
+      showImageModal: false,
+      modalImageUrl: '',
+      isSuppressClickOutside: false,
+      isWhatsAppMode: false, // Flag to track if user is logging in via WhatsApp
+      tempEmail: '', // Temporary email for login form
+      showSignInForm: false, // Flag to show sign in form
+      errorContactUpdate: null, // Flag to show sign in form
+      generatedEmail: '',
+      token: null, // Token for user authentication
+      isMaximized: false, // Chat size state
+      businessWhatsAppNumber: null, // WhatsApp number from backend
+      businessEmail: null, // Business email from backend
+      businessNameFromApi: null, // Business name from /api/shopify/plugin-plan-subscription
+      // From /api/whatsapp/phone when provided; otherwise fall back to communicationChannels prop
+      widgetCommunicationChannels: null,
+      isWhatsAppNumberFetched: false, // Track if WhatsApp number has been fetched
+      clientId: null, // Persistent client ID for socket connection
+      errosInChat: null, // Track if there are errors in the chat
+      errorsInRequestAgent: null, // Track if there are errors in request agent
+      errorWithAiIntervention: null, // Track if there are errors with ai intervention
+      agentRequested: false, // Track if agent requested
+      agentRequestedSuccess: false, // Track if agent requested successfully
+      productCarouselPages: {}, // per-message page index for discount carousel
+      productCarouselOverflow: {}, // per-message: product carousel arrows only when cards overflow
+      productCarouselScrollState: {}, // per-message: { canScrollLeft, canScrollRight }
+      ordersPanelExpanded: false,
+      orderDetailsPopupOpen: false,
+      pinnedOrderPickerOpen: false,
+      pinnedOrderHoverOpen: false,
+      productSelectedOptions: {}, // per-message/product option selections
+      productCardPickedVariants: {},
+      productCardOptionMenuKey: '',
+      productVariantMenu: {
+        visible: false,
+        key: '',
+        top: 0,
+        left: 0,
+        width: 0,
+        selectedKey: '',
+        choices: [],
+        messageKey: '',
+        productIndex: 0,
+      },
+      // Raw DOM node for Teleport (set in mounted). Avoids body stacking fights on host sites.
+      internalTeleportEl: null,
+      discountCarouselOverflow: {}, // per-message: arrows only when cards overflow
+      copiedDiscountCode: '',
+      _copiedDiscountTimer: 0,
+      productImageErrors: {}, // per-message/product image load failures
+      productDetail: null,
+      productDetailDescOpen: false,
+      productDetailDescClamped: false,
+      checkoutChatAnchorId: '',
+      checkoutChatForcedOpen: false,
+      checkoutChatClosing: false,
+      productSheetTop: 52,
+      productSheetRight: 14,
+      productSheetBottom: 12,
+      productSheetLeft: 14,
+      isChatClosedAutomatically: false, // Track if chat is closed automatically
+      reasonForClosingChat: null, // Track reason for closing chat
+      loadingIndicator: false, // Track if loading indicator is shown
+      streamBuffer: '',
+      streamingCareRequestId: null,
+      streamingMessage: null, // In-progress AI bubble for assis:* stream events
+      streamStatusStage: null, // 'thinking' | 'tool' | null
+      streamStatusTool: null,
+      streamRevealToken: 0,
+      streamRevealFinalize: false,
+      lastAssisEventAt: 0,
+      typewriterToken: 0,
+      typewriterMessage: null,
+      typewriterText: '',
+      thinkingPhraseToken: 0,
+      thinkingPhraseText: '',
+      headerInfoTooltipPortal: {
+        visible: false,
+        top: 0,
+        left: 0,
+      },
+      showEmojiPicker: false,
+      emojiPopoverPos: { top: 0, left: 0 },
+      emojiPopoverAnchor: 'center',
+      disableInitialAnimations: false,
+      disableInitialAnimationsTimer: null,
+      wasSessionRestored: false,
+      shouldAnimateChatOpen: false,
+      chatOpenAnimationTimer: null,
+      restoredMessagesCount: 0,
+      chatScrollTop: null,
+      chatScrollBottomOffset: null,
+      scrollRestoreRetryTimer: null,
+      lastViewportHeight: null,
+      welcomeAiMessages: null, // null until /plugin-messages resolves; then string[]
+      pluginAllowDownloadConversation: false, // from /plugin-messages plugin_allow_download_conversation
+      // from /plugin-messages; effective = ecommerce connected && admin toggle
+      pluginAllowOrderVerification: false,
+      pluginOrderVerificationChannels: 'both',
+      pluginAllowAgentTransfer: true,
+      // Dual Israel + Eilat prices when the business sells in Eilat (no VAT)
+      pluginEilatPricing: { enabled: false, mode: 'exclude_israel_vat', rate: 18 },
+      proactiveTriggers: null,
+      pluginBubbleLayout: 'above',
+      pluginOutsideBubbles: null, // from /plugin-messages; [{text, clickable, textToSendOnClick?}]
+      pluginOutsideBubblesByLang: { he: [], en: [] }, // from /plugin-messages; { he: [], en: [] } or legacy array
+      // from /plugin-messages; [{label:{he,en}, icon, link}] - link "assis://default-whatsapp" = built-in WA switch
+      pluginSpecificMenu: [{ label: '', icon: 'whatsapp', link: 'assis://default-whatsapp' }],
+      pluginBottomOffsetMobileRequested: 0, // host mobile setting: + up, - down (px)
+      pluginBottomOffsetDesktopRequested: 0, // host desktop setting: + up, - down (px)
+      pluginBottomOffsetRequested: 0, // active host setting for current viewport
+      pluginBottomOffset: 0, // applied after viewport clamp so UI stays on-screen
+      pluginMessageWhenChatClosed: null, // Store plugin message when chat closed
+      pluginPlaceholderWhenSwitchingToWhatsapp: null, // Store plugin placeholder when switching to whatsapp
+      poweredByAssisHomeDismissed: false,
+      poweredByAssisForceHome: false,
+      poweredByAssisHomeDraft: '',
+      planSubscription: null, // Store plan subscription from backend
+      businessPictureFromDb: null, // Optional picture from plan subscription API
+      businessPictureFromDbResolved: false, // True after API returned (even if picture is empty)
+      businessPictureFromDbFailed: false,
+      headerLogoFailed: false,
+      bannerContent: null, // Store banner content from backend
+      bannerContentIndex: 0,
+      bannerContentRotationTimer: null,
+      clubBadgeShowEilat: false,
+      clubBadgeRotationTimer: null,
+    }
+  },
+  computed: {
+    direction() {
+      return this.language === 'he' ? 'rtl' : 'ltr';
+    },
+    // Prefer an explicit host (e.g. shadow teleports), then the in-widget root.
+    // Never use the Vue mount root, and never pass a reactive DOM proxy to Teleport
+    // — that breaks insertBefore. Avoid defaulting to body: host pages often raise
+    // #assis-plugin-app above body, so variant menus would render under the chat footer.
+    resolvedTeleportTarget() {
+      const target = this.teleportTarget;
+      if (target && typeof target === 'object') {
+        const el = toRaw(target);
+        if (el && el.nodeType === 1) return el;
+      }
+      if (typeof target === 'string') {
+        const trimmed = target.trim();
+        if (trimmed && trimmed !== '#assis-plugin-app') return trimmed;
+      }
+      if (this.internalTeleportEl && this.internalTeleportEl.nodeType === 1) {
+        return this.internalTeleportEl;
+      }
+      return 'body';
+    },
+    headerLogo() {
+      if (this.headerLogoFailed) return null;
+      if (this.businessPictureFromDb && !this.businessPictureFromDbFailed) return this.businessPictureFromDb;
+      return this.businessLogo;
+    },
+    resolvedBusinessName() {
+      const fromApi = typeof this.businessNameFromApi === 'string' ? this.businessNameFromApi.trim() : '';
+      return fromApi || this.businessName;
+    },
+    // WordPress sets data-show-assis-credit to 0 or 1. Missing attribute keeps the Shopify footer.
+    showAssisCredit() {
+      try {
+        const host = document.getElementById('assis-plugin-app');
+        const raw = host ? host.getAttribute('data-show-assis-credit') : null;
+        if (raw == null) return true;
+        const value = String(raw).trim().toLowerCase();
+        return value === '1' || value === 'true';
+      } catch (_) {
+        return true;
+      }
+    },
+    footerMessage() {
+      if (!this.showAssisCredit) return '';
+      if (this.planSubscription === 'powered_by_assis') return 'Powered by Assis 💙';
+      if (this.planSubscription === 'care_by_assis') return 'Care by Assis 💙';
+      return '';
+    },
+    hasClientChatMessages() {
+      return (this.chatMessages || []).some((msg) => String(msg?.sender || '').toLowerCase() === 'client');
+    },
+    showPoweredByAssisHome() {
+      return this.isNewAssisDesign
+        && this.isChatOpen
+        && !this.showSignInForm
+        && (this.poweredByAssisForceHome
+          || (!this.poweredByAssisHomeDismissed && !this.hasClientChatMessages));
+    },
+    /** Care and Powered share the white open-button shell (pill + chat hint). */
+    usesPoweredOpenButton() {
+      return this.planSubscription === 'powered_by_assis' || this.planSubscription === 'care_by_assis';
+    },
+    isNewAssisDesign() {
+      return this.usesPoweredOpenButton && this.loginChannels === 'ai';
+    },
+    poweredByAssisHomeTitle() {
+      if (this.hasClientChatMessages) {
+        const name = (this.guestName || '').trim();
+        if (name && name.toLowerCase() !== 'customer') {
+          return this.language === 'he' ? `כיף שחזרת, ${name}!` : `Good to see you, ${name}!`;
+        }
+        return this.language === 'he' ? 'כיף שחזרת!' : 'Good to see you again!';
+      }
+      const name = (this.guestName || '').trim();
+      if (name && name.toLowerCase() !== 'customer') {
+        return this.language === 'he' ? `היי ${name}!` : `Hi ${name}!`;
+      }
+      return this.language === 'he' ? 'היי!' : 'Hi there!';
+    },
+    poweredByAssisHomeBody() {
+      if (this.hasClientChatMessages) {
+        return this.language === 'he'
+          ? 'השיחה שלך עדיין כאן - אפשר להמשיך בדיוק מאיפה שהפסקת, או לשאול משהו חדש.'
+          : 'Your chat is still here - continue right where you left off, or ask something new.';
+      }
+      return this.language === 'he'
+        ? 'אפשר לשאול על מוצרים, משלוחים, החזרות או כל דבר אחר - אני כאן לעזור.'
+        : "Ask about products, shipping, returns, or anything else - I'm here to help.";
+    },
+    shownOutsideBubbles() {
+      const list = this.orderedPluginOutsideBubbles;
+      const layout = this.pluginBubbleLayout;
+      if (layout === 'side_one' || layout === 'above_one') return list.slice(0, 1);
+      if (layout === 'side_two' || layout === 'above_two') return list.slice(0, 2);
+      if (layout === 'side_long') {
+        return list.slice(0, 3).map((bubble, index) => (
+          index === 0
+            ? { ...bubble, face: 'long' }
+            : { ...bubble, face: 'chip' }
+        ));
+      }
+      return list.slice(0, 3);
+    },
+    pluginOutsideBubblesClickable() {
+      return this.orderedPluginOutsideBubbles.filter((bubble) => bubble.clickable);
+    },
+    orderedPluginOutsideBubbles() {
+      const byLang = this.pluginOutsideBubblesByLang || { he: [], en: [] };
+      const lang = this.language === 'he' ? 'he' : 'en';
+      const configured = Array.isArray(byLang[lang]) ? byLang[lang] : [];
+      const list = Array.isArray(this.proactiveOutsideBubbles) ? this.proactiveOutsideBubbles : configured;
+      let clickableIndex = 0;
+      return list
+        .filter((bubble) => bubble && typeof bubble === 'object' && !!String(bubble.text || '').trim())
+        .map((bubble, index) => {
+          const text = String(bubble.text || '').trim();
+          const plainText = this.stripQuickActionHtml(text);
+          const clickable = bubble.clickable === true
+            || bubble.clickable === 'true'
+            || bubble.clickable === 1
+            || bubble.clickable === '1';
+          const textToSend = String(bubble.textToSendOnClick || plainText).trim() || plainText;
+          // Intro card only for multi-block greetings. A single styled line stays a chip.
+          const blockCount = (text.match(/<(?:p|div)(?:\s|>)/gi) || []).length;
+          const textStyles = this.extractQuickActionChipStyles(text);
+          const lines = Array.isArray(bubble.lines)
+            ? bubble.lines.map((line) => String(line || '').trim()).filter(Boolean).slice(0, 2)
+            : [];
+          const lineHtml = index === 0
+            ? (lines.length >= 2 ? lines : this.introLineHtml(text))
+            : [];
+          // Direction from bubble copy, not plugin language - English "?" stays on the right in a Hebrew plugin.
+          const titlePlain = lines[0]
+            || (lineHtml[0] ? this.stripQuickActionHtml(lineHtml[0]) : '')
+            || plainText;
+          const subPlain = lines[1]
+            || (lineHtml[1] ? this.stripQuickActionHtml(lineHtml[1]) : '');
+          const titleDir = this.getTextDirection(titlePlain);
+          const subDir = subPlain ? this.getTextDirection(subPlain) : titleDir;
+          const dir = this.getTextDirection(plainText || titlePlain);
+          const item = {
+            text,
+            plainText,
+            textToSend,
+            clickable,
+            lines,
+            lineHtml,
+            isIntroHtml: index === 0 && blockCount >= 2,
+            dir,
+            titleDir,
+            subDir,
+            chipStyle: {
+              textAlign: dir === 'rtl' ? 'right' : 'left',
+              ...(textStyles.fontSize ? { fontSize: textStyles.fontSize } : {}),
+              ...(textStyles.color ? { color: textStyles.color } : {}),
+              ...(textStyles.fontWeight ? { fontWeight: textStyles.fontWeight } : {}),
+            },
+            clickableIndex: clickable ? clickableIndex : -1,
+            icon: this.bubbleIcon(bubble.icon, plainText, clickable ? clickableIndex : 0),
+          };
+          if (clickable) clickableIndex += 1;
+          return item;
+        });
+    },
+    quickActionIntroTitle() {
+      return this.language === 'he' ? 'נשמח לעזור לך לבחור 🙂' : 'Happy to help you choose 🙂';
+    },
+    quickActionIntroSub() {
+      return this.language === 'he'
+        ? 'שאלו על התאמה, מידות או מבצעים'
+        : 'Ask about fit, options, or deals';
+    },
+    quickActionIntroDir() {
+      return this.getTextDirection(`${this.quickActionIntroTitle} ${this.quickActionIntroSub}`);
+    },
+    quickActionPrompts() {
+      if (this.pluginOutsideBubblesClickable.length) {
+        return this.pluginOutsideBubblesClickable.map((bubble) => ({
+          text: bubble.text,
+          plainText: bubble.plainText,
+          textToSend: bubble.textToSend,
+          dir: bubble.dir,
+        }));
+      }
+      const discountPrompt = this.language === 'he' ? 'יש הנחה מהצ׳אט?' : 'Any discount from chat?';
+      return [{
+        text: discountPrompt,
+        plainText: discountPrompt,
+        textToSend: discountPrompt,
+        dir: this.getTextDirection(discountPrompt),
+      }];
+    },
+    assisFooterMistakesLabel() {
+      return this.language === 'he' ? 'מענה ע״י AI, ייתכנו טעויות' : 'Assis AI can make mistakes';
+    },
+    assisFooterPoweredLabel() {
+      return 'Powered by ';
+    },
+    assisFooterCareLabel() {
+      return 'Care by ';
+    },
+    assisFooterCreditText() {
+      const prefix = this.planSubscription === 'powered_by_assis'
+        ? this.assisFooterPoweredLabel
+        : this.assisFooterCareLabel;
+      return `${prefix}Assis 💙`;
+    },
+    assisFooterPrivacyLabel() {
+      return this.language === 'he' ? 'מדיניות פרטיות' : 'Privacy policy';
+    },
+    assisProductsSectionLabel() {
+      return this.language === 'he' ? 'המוצרים המומלצים לך' : 'Recommended for you';
+    },
+    assisDiscountSectionLabel() {
+      return this.language === 'he' ? 'קוד קופון' : 'Coupon code';
+    },
+    assisDiscountsSectionLabel() {
+      return this.language === 'he' ? 'קודי קופון' : 'Coupon codes';
+    },
+    pageBubbleQuestions() {
+      const seen = new Set();
+      const questions = [];
+      this.shownOutsideBubbles.forEach((bubble) => {
+        if (!bubble || !bubble.clickable || bubble.face === 'long' || bubble.isIntroHtml) return;
+        const text = String(bubble.plainText || '').trim();
+        if (!text || seen.has(text)) return;
+        seen.add(text);
+        questions.push({
+          text,
+          textToSend: bubble.textToSend || text,
+          icon: bubble.icon,
+          chipStyle: bubble.chipStyle,
+          dir: bubble.dir,
+        });
+      });
+      return questions.slice(0, 3);
+    },
+    poweredByAssisHomeChips() {
+      const dynamic = this.pageBubbleQuestions;
+      if (dynamic.length) return dynamic;
+      const fallback = (this.language === 'he'
+        ? [
+            'מה אפשרויות המשלוח?',
+            'מה מדיניות ההחזרות?',
+            'אפשר המלצה שמתאימה לי?',
+          ]
+        : [
+            'Shipping options?',
+            'Return policy?',
+            'Recommend something?',
+          ]).map((text, index) => ({ text, icon: this.starterChipIcon(text, index) }));
+      return fallback;
+    },
+    assisConversationChips() {
+      const moreText = this.language === 'he' ? 'ספרי לי עוד' : 'Tell me more';
+      const more = { text: moreText, icon: 'chat' };
+      const fallback = (this.language === 'he'
+        ? [
+            'מה אפשרויות המשלוח?',
+            'מה מדיניות ההחזרות?',
+            'יש מבצעים עכשיו?',
+          ]
+        : [
+            'Shipping options?',
+            'Return policy?',
+            'Any current deals?',
+          ]).map((text, index) => ({ text, icon: this.starterChipIcon(text, index) }));
+      const dynamic = this.pageBubbleQuestions;
+      const chips = [more];
+      (dynamic.length ? dynamic : fallback).forEach((item) => {
+        if (chips.length >= 4 || chips.some((chip) => chip.text === item.text)) return;
+        chips.push(item);
+      });
+      if (dynamic.length) {
+        fallback.forEach((item) => {
+          if (chips.length >= 4 || chips.some((chip) => chip.text === item.text)) return;
+          chips.push(item);
+        });
+      }
+      return chips.slice(0, 4);
+    },
+    shouldHideSuggestChipsForProducts() {
+      const messages = this.chatMessages || [];
+      for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const message = messages[i];
+        const sender = String(message?.sender || '').toLowerCase();
+        if (sender === 'client') continue;
+        return Array.isArray(message?.products) && message.products.length > 0;
+      }
+      return false;
+    },
+    hasSavedVerifiedOrders() {
+      const messages = Array.isArray(this.chatMessages) ? this.chatMessages : [];
+      return messages.some((message) => {
+        const verification = message?.orderVerification;
+        if (verification && (!verification.verified || verification.expired)) return false;
+        if (verification?.deferOrderUi) return false;
+        return this.getNormalizedOrders(message).length > 0;
+      });
+    },
+    hasActiveOrderVerificationForm() {
+      const messages = Array.isArray(this.chatMessages) ? this.chatMessages : [];
+      return messages.some((message) => {
+        const verification = message?.orderVerification;
+        if (!verification || verification.verified || verification.expired) return false;
+        return this.showOrderVerificationCard(message);
+      });
+    },
+    shouldHideSuggestChipsForOrders() {
+      if (this.hasActiveOrderVerificationForm) return true;
+      if (this.orderDetailsPopupOpen) return true;
+      if (this.hasSavedVerifiedOrders) return true;
+      return false;
+    },
+    visibleAssisConversationChips() {
+      if (this.shouldHideSuggestChipsForProducts) return [];
+      if (this.shouldHideSuggestChipsForOrders) return [];
+      return this.assisConversationChips;
+    },
+    showAssisSuggestChipsRow() {
+      const showReopen = this.showAiContactSheet && this.aiContactPickerDismissed;
+      return showReopen
+        || this.visibleAssisConversationChips.length > 0;
+    },
+    assisSuggestChipsRtl() {
+      return this.language === 'he';
+    },
+    poweredByAssisHomeProducts() {
+      const pickImage = (product) => {
+        if (!product || typeof product !== 'object') return '';
+        const candidates = [
+          product.image,
+          product.featured_image,
+          product.featuredImage,
+          product.image_url,
+          product.imageUrl,
+          product.img,
+          product.picture,
+          product.thumbnail,
+          product.product_image,
+          product.src,
+          product.images?.[0],
+          product.media?.[0],
+        ];
+        for (const candidate of candidates) {
+          if (!candidate) continue;
+          if (typeof candidate === 'string') return candidate;
+          const url = candidate.url || candidate.src || candidate.originalSrc || candidate.transformedSrc || candidate.preview_image?.src;
+          if (typeof url === 'string' && url) return url;
+        }
+        return '';
+      };
+
+      return (this.highlightedProducts || []).map((item, index) => {
+        const product = item?.product && typeof item.product === 'object' ? { ...item, ...item.product } : item;
+        if (!product || typeof product !== 'object') return null;
+        const handle = product.handle || product.product_handle;
+        const title = product.title || product.name || product.product_title || product.productTitle || '';
+        const image = pickImage(product);
+        return {
+          ...product,
+          id: product.id || handle || title || `highlighted-${index}`,
+          title: title || 'Product',
+          image,
+          images: Array.isArray(product.images) && product.images.length
+            ? product.images
+            : (image ? [image] : []),
+          href: product.url || product.href || product.link || (handle ? `/products/${handle}` : ''),
+          handle,
+          url: product.url || product.href || product.link,
+          variant_id: product.variant_id || product.variantId,
+          variants: product.variants,
+          isOutOfStock: product.isOutOfStock,
+        };
+      }).filter(Boolean).slice(0, 3);
+    },
+    countryPhonePrefixes() {
+      return COUNTRY_PHONE_PREFIXES;
+    },
+    filteredCountryPhonePrefixes() {
+      const query = (this.phonePrefixSearch || '').trim().toLowerCase();
+      if (!query) return COUNTRY_PHONE_PREFIXES;
+
+      const digitsQuery = query.replace(/^\+/, '').replace(/\D/g, '');
+
+      return COUNTRY_PHONE_PREFIXES.filter((country) => {
+        if (country.name.toLowerCase().includes(query)) return true;
+        if (country.iso.toLowerCase().includes(query)) return true;
+        if (digitsQuery && country.dialCode.includes(digitsQuery)) return true;
+        if (query.startsWith('+') && `+${country.dialCode}`.startsWith(query)) return true;
+        return false;
+      });
+    },
+    phonePrefixSearchPlaceholder() {
+      return this.language === 'he' ? 'חיפוש מדינה או קידומת...' : 'Search country or prefix...';
+    },
+    phonePrefixNoResultsLabel() {
+      return this.language === 'he' ? 'לא נמצאו מדינות' : 'No countries found';
+    },
+    selectedPhoneCountry() {
+      return COUNTRY_PHONE_PREFIXES.find((country) => country.iso === this.selectedPhoneCountryIso)
+        || findCountryByDialCode(this.phonePrefix)
+        || COUNTRY_PHONE_PREFIXES[0];
+    },
+    selectedPhonePrefix() {
+      return this.selectedPhoneCountry.dialCode;
+    },
+    phoneLocalPlaceholder() {
+      return this.selectedPhoneCountry.placeholder || 'XX-XXX-XXXX';
+    },
+    guestPhoneLocal: {
+      get() {
+        const phone = (this.guestPhone || '').trim();
+        if (!phone) return '';
+
+        const dialCode = this.selectedPhonePrefix;
+        const plusMatch = phone.match(new RegExp(`^\\+${dialCode}\\s*(.*)$`));
+        if (plusMatch) return plusMatch[1];
+
+        const detectedCountry = findCountryFromPhone(phone);
+        if (detectedCountry) {
+          const detectedMatch = phone.match(new RegExp(`^\\+${detectedCountry.dialCode}\\s*(.*)$`));
+          if (detectedMatch) return detectedMatch[1];
+        }
+
+        if (phone.startsWith('0')) return phone;
+        return phone;
+      },
+      set(value) {
+        const local = typeof value === 'string' ? value : '';
+        const prefix = `+${this.selectedPhonePrefix}`;
+        this.guestPhone = local.trim() ? `${prefix} ${local}` : `${prefix} `;
+      },
+    },
+    guestEmailLocal: {
+      get() {
+        if (this.isTemporaryCustomerEmail(this.guestEmail)) return '';
+        return this.guestEmail || '';
+      },
+      set(value) {
+        this.guestEmail = typeof value === 'string' ? value : '';
+      },
+    },
+    emojiPopoverStyle() {
+      return {
+        top: `${this.emojiPopoverPos.top}px`,
+        left: `${this.emojiPopoverPos.left}px`,
+        transform: this.emojiPopoverAnchor === 'right'
+          ? 'translate(-100%, -100%)'
+          : this.emojiPopoverAnchor === 'left'
+            ? 'translate(0%, -100%)'
+            : 'translate(-50%, -100%)',
+      };
+    },
+    showLoaderBubble() {
+      if (this.loginChannels !== 'ai') return;
+      return this.loadingIndicator; //this.allowAiResponse && this.loginChannels === 'ai' && !this.agentRequestedSuccess && (this.chatMessages?.length ? this.chatMessages[this.chatMessages.length - 1].sender === 'client' : true);
+    },
+    hasValidContact() {
+      // In WhatsApp mode, only phone is required
+      if (this.isWhatsAppMode) {
+        return Boolean((this.guestPhone || '').trim() && this.isValidPhone(this.guestPhone));
+      }
+
+      // Check if at least one valid contact method is provided
+      const email = (this.guestEmail || '').trim();
+      const phone = (this.guestPhone || '').trim();
+      const hasValidEmail = email && this.isValidEmail(this.guestEmail);
+      const hasValidPhone = phone && this.isValidPhone(this.guestPhone);
+
+      if (email && phone) {
+        return hasValidEmail && hasValidPhone;
+      } else if (email) {
+        return hasValidEmail;
+      } else if (phone) {
+        return hasValidPhone;
+      }
+
+      return false;
+    },
+    showSignFormUnderMessages() {
+      return ((!this.guestEmail && !this.guestPhone && this.chatMessages.length > 0) || (this.showSignInForm && this.chatMessages.length > 0)) && this.loginChannels !== 'ai'
+    },
+    showSignFormIfNoMessages() {
+      return (!this.guestEmail && !this.guestPhone && this.chatMessages.length === 0) && (this.showSignInForm && this.chatMessages.length === 0)
+    },
+    allowAiResponse() {
+      const agentHasReplied = this.chatMessages?.some(message => message.sender === 'agent' || message.sender === 'business') || false;
+      return !agentHasReplied;
+    },
+    infoTooltip() {
+      return this.language === 'he' ? 'אסיס מפעילה את שירות הלקוחות עבור החנות ועוזרת לנהל את השיחה בינך לבין המותג.' : 'Assis runs the customer service for the store and helps manage the conversation between you and the brand.';
+    },
+    startNewConversationLabel() {
+      return this.language === 'he' ? 'פתח שיחה חדשה' : 'Start a new conversation';
+    },
+    disconnectLabel() {
+      return this.language === 'he' ? 'איפוס שיחה' : 'Reset conversation';
+    },
+    homeScreenLabel() {
+      return this.language === 'he' ? 'מסך ראשי' : 'Home';
+    },
+    conversationScreenLabel() {
+      return this.language === 'he' ? 'חזרה לשיחה' : 'Back to conversation';
+    },
+    continueConversationLabel() {
+      return this.language === 'he' ? 'המשך שיחה' : 'Continue';
+    },
+    assisHomeContinueChipText() {
+      const text = String(this.lastClientMessageText || '').trim();
+      if (text) {
+        return text.length > 42 ? `${text.slice(0, 42).trim()}...` : text;
+      }
+      return this.language === 'he' ? 'יש לך שיחה פתוחה' : 'You have an open chat';
+    },
+    expandLabel() {
+      const isHe = this.language === 'he';
+      if (this.isMaximized) return isHe ? 'הקטנה' : 'Reduce';
+      return isHe ? 'הרחבה' : 'Expand';
+    },
+    switchToWhatsappLabel() {
+      return this.language === 'he' ? 'וואטסאפ' : 'WhatsApp';
+    },
+    visiblePluginSpecificMenu() {
+      return (this.pluginSpecificMenu || []).filter((item) => {
+        if (this.isPluginDefaultWhatsappItem(item)) return true;
+        return Boolean(this.pluginSpecificMenuItemLabel(item));
+      });
+    },
+    switchToEmailLabel() {
+      return this.language === 'he' ? 'מייל' : 'Email';
+    },
+    downloadConversationLabel() {
+      return this.language === 'he' ? 'הורדת שיחה' : 'Download conversation';
+    },
+    displayableBannerContent() {
+      if (!Array.isArray(this.bannerContent)) return [];
+      return this.bannerContent.filter((item) => this.hasBannerItemContent(item));
+    },
+    hasBannerContentItems() {
+      return this.displayableBannerContent.length > 0;
+    },
+    activeBannerItem() {
+      const items = this.displayableBannerContent;
+      if (!items.length) return null;
+      return items[this.bannerContentIndex % items.length];
+    },
+    showActiveWhatsAppBanner() {
+      return this.isWhatsAppBannerEnabled(this.activeBannerItem);
+    },
+    activeBannerContent() {
+      const item = this.activeBannerItem;
+      if (!item || this.isWhatsAppBannerEnabled(item)) return '';
+      return item?.content || '';
+    },
+    activeBannerContentKey() {
+      const item = this.activeBannerItem;
+      if (!item) return 'banner-empty';
+      return item?.id ?? `banner-${this.bannerContentIndex}`;
+    },
+    activeBannerPromoText() {
+      const item = this.activeBannerItem;
+      if (!item) return '';
+      if (this.isWhatsAppBannerEnabled(item)) return this.whatsappBannerLabel;
+      const raw = item.content || item.text || item.title || '';
+      const stripped = String(raw).replace(/<[^>]*>/g, ' ');
+      return this.decodeBannerHtmlEntities(stripped).replace(/\s+/g, ' ').trim();
+    },
+    activeBannerPromoHtml() {
+      const item = this.activeBannerItem;
+      if (!item || this.isWhatsAppBannerEnabled(item)) return '';
+      const raw = String(item.content || '');
+      if (!/<a\b/i.test(raw)) return '';
+      const kept = raw.replace(/<(?!\/?(a|b|strong|em|i)\b)[^>]*>/gi, '');
+      return kept.replace(/<a\b([^>]*)>/gi, (match, attrs) => {
+        let next = attrs || '';
+        if (!/\btarget\s*=/i.test(next)) next += ' target="_blank"';
+        if (!/\brel\s*=/i.test(next)) next += ' rel="noopener noreferrer"';
+        return `<a${next}>`;
+      });
+    },
+    activeBannerHasLinks() {
+      return Boolean(this.activeBannerPromoHtml);
+    },
+    activeBannerTone() {
+      return this.showActiveWhatsAppBanner ? 'whatsapp' : 'gold';
+    },
+    whatsappBannerLabel() {
+      return this.language === 'he' ? 'זמינים גם בוואטסאפ' : 'Also available on WhatsApp';
+    },
+    activeBannerTextDirection() {
+      const text = this.showActiveWhatsAppBanner
+        ? this.whatsappBannerLabel
+        : this.activeBannerContent;
+      return this.getTextDirection(text);
+    },
+    whatsappSendLabel() {
+      return this.language === 'he' ? 'שלח' : 'Send';
+    },
+    contactBackLabel() {
+      return this.language === 'he' ? 'חזרה' : 'Back';
+    },
+    contactSheetCloseLabel() {
+      return this.language === 'he' ? 'מזעור' : 'Minimize';
+    },
+    contactSheetOpenLabel() {
+      return this.language === 'he' ? 'הרחבה' : 'Expand';
+    },
+    emailInputPlaceholder() {
+      return this.language === 'he' ? 'your.email@example.com' : 'your.email@example.com';
+    },
+    agentCardNote() {
+      const isEmail = this.activeAiContactChannel === 'email';
+      if (this.language === 'he') {
+        return isEmail
+          ? 'השאירו כתובת מייל ונשלח לכם הודעה כדי להמשיך את השיחה משם'
+          : 'השאירו מספר טלפון ונשלח לכם הודעה בוואטסאפ כדי להמשיך את השיחה משם';
+      }
+      return isEmail
+        ? "Leave your email address and we'll email you to continue the conversation there"
+        : "Leave your phone number and we'll message you on WhatsApp to continue the conversation there";
+    },
+    contactSubmissionEditedLabel() {
+      return this.language === 'he' ? 'נערך' : 'Edited';
+    },
+    agentCardContinueLabel() {
+      return this.language === 'he' ? 'שלח' : 'Send';
+    },
+    agentCardReopenLabel() {
+      return this.language === 'he' ? 'דבר עם נציג' : 'Talk to an agent';
+    },
+    agentCardWhatsappPlaceholder() {
+      return this.language === 'he' ? 'מספר טלפון' : 'Phone number';
+    },
+    agentCardEmailPlaceholder() {
+      return this.language === 'he' ? 'כתובת מייל' : 'Email address';
+    },
+    hasActiveHumanContactRequest() {
+      if (this.loginChannels !== 'ai') return false;
+      return this.chatMessages.some((msg) =>
+        msg.sender?.toLowerCase() === 'ai'
+        && msg.isHumanRequested === true
+        && msg.hideWhatsappInput !== true
+      );
+    },
+    normalizedCommunicationChannels() {
+      // Prefer backend widget_communication_channels when the phone API provided them.
+      const raw = Array.isArray(this.widgetCommunicationChannels)
+        ? this.widgetCommunicationChannels
+        : this.communicationChannels;
+
+      if (Array.isArray(raw)) {
+        return raw.map((channel) => String(channel).trim().toLowerCase()).filter(Boolean);
+      }
+
+      if (typeof raw === 'string' && raw.trim()) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            return parsed.map((channel) => String(channel).trim().toLowerCase()).filter(Boolean);
+          }
+        } catch {
+          // Fall through to comma-separated parsing.
+        }
+
+        return raw.split(/[,;\s]+/).map((channel) => channel.trim().toLowerCase()).filter(Boolean);
+      }
+
+      return ['whatsapp'];
+    },
+    hasWhatsappCommunicationChannel() {
+      return this.normalizedCommunicationChannels.includes('whatsapp');
+    },
+    hasEmailCommunicationChannel() {
+      return this.normalizedCommunicationChannels.includes('email');
+    },
+    showAiContactChannelPicker() {
+      return this.hasWhatsappCommunicationChannel && this.hasEmailCommunicationChannel;
+    },
+    singleAiContactChannel() {
+      if (this.showAiContactChannelPicker) return null;
+      if (this.hasWhatsappCommunicationChannel) return 'whatsapp';
+      if (this.hasEmailCommunicationChannel) return 'email';
+      return null;
+    },
+    activeAiContactChannel() {
+      return this.singleAiContactChannel || this.aiContactChannel;
+    },
+    /**
+     * Contact satisfied for the configured widget channels.
+     * - Both channels: phone OR email is enough
+     * - WhatsApp only: need phone (email from order verification is not enough)
+     * - Email only: need email (phone from order verification is not enough)
+     */
+    hasSatisfiedAiContactRequirement() {
+      if (this.showAiContactChannelPicker) {
+        return this.phoneSubmitted || this.emailSubmitted;
+      }
+      if (this.singleAiContactChannel === 'whatsapp') {
+        return this.phoneSubmitted;
+      }
+      if (this.singleAiContactChannel === 'email') {
+        return this.emailSubmitted;
+      }
+      return this.phoneSubmitted || this.emailSubmitted;
+    },
+    showAiContactSheet() {
+      const channelsOk = Boolean(this.singleAiContactChannel || this.showAiContactChannelPicker);
+      if (this.editingContactSubmissionId && channelsOk) return true;
+      if (!this.pluginAllowAgentTransfer) return false;
+
+      const needsContactInput = this.hasActiveHumanContactRequest
+        || (this.loginChannels === 'ai' && Boolean(this.errorWithAiIntervention));
+      return needsContactInput
+        && !this.agentRequested
+        && !this.hasSatisfiedAiContactRequirement
+        && channelsOk;
+    },
+    showAiContactChannelContent() {
+      return this.showAiContactSheet && !this.aiContactPickerDismissed;
+    },
+    chatEndedTitle() {
+      return this.language === 'he' ? 'אנחנו איתך בוואטסאפ 💙' : 'We are with you on WhatsApp 💙';
+    },
+    lastClientMessageText() {
+      const messages = this.chatMessages || [];
+      for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const message = messages[i];
+        if (String(message?.sender || '').toLowerCase() !== 'client') continue;
+        const text = String(message?.message || '').trim();
+        if (!text) continue;
+        if (typeof this.isMediaFile === 'function' && this.isMediaFile(text)) continue;
+        return text;
+      }
+      return '';
+    },
+    orderShippingSectionTitle() {
+      return this.language === 'he' ? 'פרטי משלוח' : 'Shipping information';
+    },
+    activeOrdersMessage() {
+      const messages = Array.isArray(this.chatMessages) ? this.chatMessages : [];
+      for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const message = messages[i];
+        if (this.getNormalizedOrders(message).length > 0) return message;
+      }
+      return null;
+    },
+    showOrdersDock() {
+      return Boolean(this.activeOrdersMessage);
+    },
+    showOrderPinnedTab() {
+      if (!this.isNewAssisDesign || this.showPoweredByAssisHome) return false;
+      if (!this.hasSavedVerifiedOrders) return false;
+      if (this.hasActiveOrderVerificationForm) return false;
+      return Boolean(this.pinnedOrderNumber);
+    },
+    pinnedOrderSource() {
+      const message = this.activeOrdersMessage;
+      if (!message) return null;
+      const orders = this.getDisplayedOrders(message);
+      return orders[0] || this.getNormalizedOrders(message)[0] || null;
+    },
+    pinnedOrderNumber() {
+      const order = this.pinnedOrderSource;
+      return order ? this.getOrderDisplayNumber(order) : '';
+    },
+    pinnedOrderExtraCount() {
+      const message = this.activeOrdersMessage;
+      if (!message) return 0;
+      const total = this.getNormalizedOrders(message).length;
+      return total > 1 ? total - 1 : 0;
+    },
+    pinnedOrderExtraAriaLabel() {
+      const count = this.pinnedOrderExtraCount;
+      if (count <= 0) return '';
+      return this.language === 'he'
+        ? `עוד ${count} הזמנות`
+        : `${count} more orders`;
+    },
+    showPinnedOrderHoverCard() {
+      return Boolean(
+        this.pinnedOrderHoverOpen
+        && !this.pinnedOrderPickerOpen
+        && this.pinnedOrderSource
+      );
+    },
+    pinnedOrderHoverSummary() {
+      const order = this.pinnedOrderSource;
+      return order ? this.getOrderSelectionSummary(order) : '';
+    },
+    pinnedOrderHoverLocation() {
+      const order = this.pinnedOrderSource;
+      return order ? this.getOrderLocationLabel(order) : '';
+    },
+    pinnedOrderHoverItemCountLabel() {
+      const order = this.pinnedOrderSource;
+      if (!order) return '';
+      if (this.pinnedOrderHoverLineItems.length) return '';
+      return this.getInlineOrderPreviewItemCountLabel(order);
+    },
+    pinnedOrderHoverLineItems() {
+      const order = this.pinnedOrderSource;
+      if (!order) return [];
+      return this.getOrderLineItems(order).slice(0, 4).map((item) => {
+        const qty = Number(item?.currentQuantity ?? item?.quantity ?? 1) || 1;
+        return {
+          title: String(item?.title || '').trim() || (this.language === 'he' ? 'פריט' : 'Item'),
+          imageUrl: item?.imageUrl || '',
+          qtyLabel: this.getOrderItemQuantityLabel(qty),
+        };
+      });
+    },
+    pinnedOrderPickerEntries() {
+      const message = this.activeOrdersMessage;
+      if (!message) return [];
+      const orders = this.getNormalizedOrders(message);
+      const selected = message?.orderVerification?.selectedOrderIndex;
+      return orders.map((order, index) => {
+        const status = this.getOrderFulfillmentStatusLabel(order)
+          || this.getOrderDeliveryStatusLabel(order)
+          || this.getOrderPaymentStatusLabel(order)
+          || '';
+        let statusColor = '';
+        if (this.getOrderFulfillmentStatusLabel(order)) statusColor = this.getOrderFulfillmentStatusColor(order);
+        else if (this.getOrderDeliveryStatusLabel(order)) statusColor = this.getOrderDeliveryStatusColor(order);
+        else if (this.getOrderPaymentStatusLabel(order)) statusColor = this.getOrderPaymentStatusColor(order);
+        return {
+          index,
+          number: this.getOrderDisplayNumber(order),
+          status,
+          statusColor,
+          summary: this.getOrderSelectionSummary(order),
+          active: selected != null && Number(selected) === index,
+        };
+      });
+    },
+    pinnedOrderStatus() {
+      const order = this.pinnedOrderSource;
+      if (!order) return '';
+      return this.getOrderFulfillmentStatusLabel(order)
+        || this.getOrderDeliveryStatusLabel(order)
+        || this.getOrderPaymentStatusLabel(order)
+        || '';
+    },
+    pinnedOrderStatusColor() {
+      const order = this.pinnedOrderSource;
+      if (!order) return '';
+      if (this.getOrderFulfillmentStatusLabel(order)) return this.getOrderFulfillmentStatusColor(order);
+      if (this.getOrderDeliveryStatusLabel(order)) return this.getOrderDeliveryStatusColor(order);
+      if (this.getOrderPaymentStatusLabel(order)) return this.getOrderPaymentStatusColor(order);
+      return '';
+    },
+    pinnedOrderTabAriaLabel() {
+      const num = this.pinnedOrderNumber;
+      const status = this.pinnedOrderStatus;
+      const extra = this.pinnedOrderExtraCount;
+      const base = this.language === 'he' ? 'ההזמנה שלך' : 'Your order';
+      const extraLabel = extra > 0
+        ? (this.language === 'he' ? ` ועוד ${extra}` : ` and ${extra} more`)
+        : '';
+      if (num && status) return `${base} ${num}${extraLabel}, ${status}`;
+      if (num) return `${base} ${num}${extraLabel}`;
+      return base;
+    },
+    orderPopupMessage() {
+      const messages = Array.isArray(this.chatMessages) ? this.chatMessages : [];
+      const visible = messages.find((message) => this.showOrderInMessage(message));
+      return visible || this.activeOrdersMessage;
+    },
+    enlargeOrderLabel() {
+      return this.language === 'he' ? 'הרחבה' : 'Expand';
+    },
+    reduceOrderLabel() {
+      return this.language === 'he' ? 'כיווץ' : 'Collapse';
+    },
+    orderVerifiedCaption() {
+      return this.language === 'he'
+        ? 'הנה פרטי ההזמנה שאומתה.'
+        : 'Here are the details for your verified order.';
+    },
+    orderVerificationKnownPhone() {
+      if (!this.phoneSubmitted) return '';
+      const phone = String(this.guestPhone || '').trim();
+      if (!phone || !this.isValidPhone(phone)) return '';
+      return phone;
+    },
+    orderVerificationKnownEmail() {
+      if (!this.emailSubmitted) return '';
+      const email = String(this.guestEmail || '').trim();
+      if (!email || !this.isValidEmail(email)) return '';
+      if (this.isTemporaryCustomerEmail(email)) return '';
+      return email;
+    },
+    thinkingPhrases() {
+      const typed = String(this.newMessage || '').trim();
+      const source = (this.loadingIndicator && typed) ? typed : this.lastClientMessageText;
+      return getContextualThinkingPhrases(source, this.language);
+    },
+    thinkingLineDir() {
+      if (this.language === 'he') return 'rtl';
+      return this.getTextDirection(this.thinkingPhraseText);
+    },
+    typewriterLiveHtml() {
+      const source = this.typewriterMessage?.message || this.typewriterText;
+      const dir = this.language === 'he' ? 'rtl' : this.getTextDirection(source);
+      const caret = `<span class="assis-gemini-caret" dir="${dir}" aria-hidden="true"></span>`;
+      let text = this.normalizeTypewriterText(this.typewriterText)
+        .replace(/\*\*\s*\n+\s*\*\*/g, '\n\n')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+      text = text.replace(/\*\*(.+?)\*\*/g, '<strong style="font-weight: 700;">$1</strong>');
+      text = text.replace(/\*\*([\s\S]*)$/, '<strong style="font-weight: 700;">$1</strong>');
+
+      const body = text.replace(/\n/g, '<br/>');
+      return dir === 'rtl' ? `${caret}${body}` : `${body}${caret}`;
+    },
+  },
+  watch: {
+    isChatOpen() {
+      this.scheduleFitPluginBottomOffset();
+    },
+    // Watch for changes in chat messages to update text directions
+    chatMessages: {
+      handler(messages) {
+        this.notePluginCatalog(messages);
+        this.scheduleProductRatings();
+        this.keepCheckoutChatAnchor(messages);
+        if (this.typewriterMessage) return;
+        this.$nextTick(() => {
+          this.updateMessageDirections();
+          this.scheduleProductCarouselOverflowSync();
+        });
+        this.schedulePersistChatSession();
+        // Clear the error bubble whenever a new message arrives or is sent.
+        if (this.errorWithAiIntervention) {
+          this.errorWithAiIntervention = null;
+        }
+
+        // Only reopen the human-contact sheet when a new AI human-request message
+        // appears — not when nested fields (e.g. orderVerification) mutate.
+        const lastMessage = messages?.[messages.length - 1];
+        const lastKey = lastMessage
+          ? `${lastMessage.id || ''}|${lastMessage.datetime || ''}|${lastMessage.isHumanRequested ? 1 : 0}|${lastMessage.hideWhatsappInput ? 1 : 0}`
+          : '';
+        const prevKey = this._lastAiContactSheetMessageKey || '';
+        this._lastAiContactSheetMessageKey = lastKey;
+
+        if (
+          lastKey
+          && lastKey !== prevKey
+          && lastMessage?.sender?.toLowerCase() === 'ai'
+          && lastMessage?.isHumanRequested === true
+          && lastMessage?.hideWhatsappInput !== true
+        ) {
+          this.aiContactPickerDismissed = false;
+          this._agentSheetClickNoted = false;
+          this.trackPluginEvent('agent_sheet_opened', { source: 'assistant' });
+        }
+      },
+      deep: true
+    },
+    showGoToCheckout(shown) {
+      if (shown) this.pinCheckoutChatAnchor();
+      else this.checkoutChatAnchorId = '';
+    },
+    shopifyCartItemCount(count, previous) {
+      if (!count) {
+        this.checkoutChatAnchorId = '';
+        return;
+      }
+      if (previous != null && count > previous && this.showGoToCheckout) {
+        this.pinCheckoutChatAnchor();
+      }
+    },
+    showOrdersDock(hasOrders, hadOrders) {
+      if (hasOrders && !hadOrders) {
+        const message = this.activeOrdersMessage;
+        if (message && this.needsVerifiedOrderSelection(message)) {
+          this.ordersPanelExpanded = true;
+        }
+        this.$nextTick(() => this.scheduleProductCarouselOverflowSync());
+      } else if (!hasOrders) {
+        this.ordersPanelExpanded = false;
+        this.closeOrderDetailsPopup();
+      }
+    },
+    $data: {
+      handler() {
+        if (this.typewriterMessage) return;
+        this.schedulePersistChatSession();
+      },
+      deep: true
+    },
+    showLoaderBubble(newVal) {
+      if (newVal) {
+        this.scrollToBottom();
+        this.startThinkingPhrases();
+      } else {
+        this.stopThinkingPhrases();
+      }
+    },
+    showAiContactChannelContent(isOpen) {
+      if (!isOpen) return;
+      if (this.isNewAssisDesign) this.ensureDefaultAiContactChannel();
+      if (this.activeAiContactChannel === 'whatsapp') {
+        this.ensureDefaultGuestPhonePrefix();
+      }
+      this.focusAiContactInput();
+    },
+    errorWithAiIntervention(error) {
+      if (error && this.loginChannels === 'ai') {
+        this.aiContactPickerDismissed = false;
+      }
+    },
+    isSocketConnected(newVal) {
+      if (!newVal) return;
+      this.flushPendingQuickAction();
+    },
+    isChatOpen(newVal) {
+      // Lock / unlock body scroll on mobile so the parent page never shows
+      // behind the widget when the keyboard opens on iOS Safari.
+      if (newVal) {
+        if (this.shouldLockMobilePageScroll()) {
+          this.lockMobilePageScroll();
+          this.$nextTick(() => this.handleViewportResize());
+        }
+        this.$nextTick(() => this.syncChatWindowPosToElement());
+        this.syncClubBadgeRotation();
+      } else {
+        this.unlockMobilePageScroll();
+        this.clearMobileSheetLayout();
+        this.endChatWindowDrag();
+        this.stopClubBadgeRotation();
+      }
+
+      if (!newVal) return;
+      this.scheduleRestoreChatScrollPosition();
+      this.$nextTick(() => this.scheduleProductCarouselOverflowSync());
+    },
+    isMaximized() {
+      if (this.isChatOpen) this.$nextTick(() => this.handleViewportResize());
+      this.$nextTick(() => this.scheduleDiscountCarouselOverflowSync());
+    },
+    showPoweredByAssisHome() {
+      if (this.isChatOpen) this.$nextTick(() => this.handleViewportResize());
+    },
+    showGuestInput(newVal) {
+      if (!newVal) return;
+      this.scheduleRestoreChatScrollPosition();
+    },
+    currentStep(newVal) {
+      if (newVal !== 'chat') return;
+      this.scheduleRestoreChatScrollPosition();
+    },
+    bannerContent() {
+      this.bannerContentIndex = 0;
+      this.stopBannerContentRotation();
+      if (this.displayableBannerContent.length > 1) {
+        this.startBannerContentRotation();
+      }
+    },
+  },
+  methods: {
+    bubbleHasTail(index, total) {
+      const layout = this.pluginBubbleLayout;
+      if (layout === 'one_down' || layout === 'pair_down') return index === 0;
+      if (layout === 'one_up') return index === total - 1;
+      return false;
+    },
+    insideChipDir(text) {
+      if (this.language === 'he') return 'rtl';
+      return this.getTextDirection(text);
+    },
+    onOutsideBubbleClick(bubble) {
+      if (bubble && bubble.clickable) {
+        this.sendOutsideBubble(bubble);
+        return;
+      }
+      this._pluginOpenSource = 'bubble';
+      if (!this.isChatOpen) this.toggleChat();
+    },
+    normalizeDelayMs(value, fallbackMs) {
+      if (typeof value === 'string') {
+        const raw = value.trim().toLowerCase();
+        // Accept values like: "10", "10s", "10sec", "10 seconds", "10000ms"
+        const m = raw.match(/^(\d+(?:\.\d+)?)\s*(ms|s|sec|secs|second|seconds)?$/i);
+        if (m) {
+          const num = Number(m[1]);
+          if (!Number.isFinite(num) || num <= 0) return fallbackMs;
+          const unit = (m[2] || '').toLowerCase();
+          if (unit === 'ms') return Math.round(num);
+          return Math.round(num * 1000);
+        }
+      }
+
+      const n = typeof value === 'number' ? value : Number(value);
+      if (!Number.isFinite(n) || n <= 0) return fallbackMs;
+      // Allow configuring in seconds (e.g. 10) or milliseconds (e.g. 10000).
+      // Heuristic: values < 1000 are treated as seconds.
+      return n < 1000 ? Math.round(n * 1000) : Math.round(n);
+    },
+
+    outboundDebug(...args) {
+      if (!this.debugOutboundBatching) return;
+      try {
+        console.log('[assis][outbound-batching]', ...args);
+      } catch {
+        // ignore
+      }
+    },
+
+    scheduleOutboundFlush() {
+      if (this.outboundFlushTimer) {
+        clearTimeout(this.outboundFlushTimer);
+        this.outboundFlushTimer = null;
+      }
+
+      if (this.outboundTypingHoldTimer) {
+        clearTimeout(this.outboundTypingHoldTimer);
+        this.outboundTypingHoldTimer = null;
+      }
+
+      const delayMs = this.normalizeDelayMs(this.outboundDebounceMs, 1500);
+      this.outboundDebug('scheduleOutboundFlush', { delayMs, outboundDebounceMs: this.outboundDebounceMs, at: Date.now() });
+
+      this.outboundFlushTimer = setTimeout(() => {
+        this.outboundFlushTimer = null;
+        this.outboundDebug('flushOutboundQueue (debounce)', { at: Date.now() });
+        this.flushOutboundQueue();
+      }, delayMs);
+    },
+
+    scheduleOutboundTypingHoldFlush() {
+      if (this.outboundFlushTimer) {
+        clearTimeout(this.outboundFlushTimer);
+        this.outboundFlushTimer = null;
+      }
+
+      if (this.outboundTypingHoldTimer) {
+        clearTimeout(this.outboundTypingHoldTimer);
+        this.outboundTypingHoldTimer = null;
+      }
+
+      const delayMs = this.normalizeDelayMs(this.outboundTypingHoldMs, 5000);
+      this.outboundDebug('scheduleOutboundTypingHoldFlush', { delayMs, outboundTypingHoldMs: this.outboundTypingHoldMs, at: Date.now() });
+
+      this.outboundTypingHoldTimer = setTimeout(() => {
+        this.outboundTypingHoldTimer = null;
+        this.outboundDebug('flushOutboundQueue (typingHold)', { at: Date.now() });
+        // Flush only already-queued messages (exclude current draft `newMessage`)
+        this.flushOutboundQueue();
+      }, delayMs);
+    },
+
+    flushOutboundQueue() {
+      if (!this.outboundQueue?.length) return;
+      if (!this.socket || !this.isSocketConnected) {
+        // Keep queued messages; they'll flush when the user sends again or connection returns.
+        return;
+      }
+
+      this.outboundDebug('flushOutboundQueue start', {
+        at: Date.now(),
+        queuedCount: this.outboundQueue.length,
+        loginChannels: this.loginChannels,
+      });
+
+      let name = this.guestName || 'Customer';
+      let phone = null;
+      if ((this.loginChannels === 'ai' && this.guestPhone && this.phoneSubmitted) || (this.loginChannels !== 'ai' && this.guestPhone)) {
+        phone = this.guestPhone?.replace(/[^\d]/g, '')?.length > 5 ? this.guestPhone?.replace(/[^\d]/g, '') : null;
+      }
+
+      const message = {
+        type: 'message',
+        message: '',
+        datetime: new Date().toISOString(),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        from: name,
+        website: window.location.origin,
+        isShopify: true,
+        careRequestId: this.careRequestId || null,
+        sender: "client",
+        isTemporaryCustomer: (!this.guestEmail && !this.guestPhone) || (this.generatedEmail && this.generatedEmail === this.guestEmail),
+        userInfo: {
+          name: name,
+          email: this.guestEmail || this.generatedEmail,
+          phone: phone,
+          websiteUrl: window.location.origin,
+        },
+        messages: [],
+        language: this.language,
+      };
+
+      const verifiedOrders = this.getVerifiedOrdersForOutbound();
+      if (Array.isArray(verifiedOrders) && verifiedOrders.length) {
+        message.orders = verifiedOrders;
+      }
+
+      const pageContext = this.pluginPageContextForCare();
+      if (pageContext) {
+        if (pageContext.pluginPageUrl) message.pluginPageUrl = pageContext.pluginPageUrl;
+        if (pageContext.pluginPageType) message.pluginPageType = pageContext.pluginPageType;
+        if (pageContext.pluginPageTitle) message.pluginPageTitle = pageContext.pluginPageTitle;
+      }
+
+      const queued = this.outboundQueue.slice();
+      this.outboundQueue = [];
+
+      const texts = queued.map(q => (q?.text || '').trim()).filter(Boolean);
+      const mediaUrls = queued.flatMap(q => (Array.isArray(q?.mediaUrls) ? q.mediaUrls : [])).filter(Boolean);
+
+      if (this.loginChannels === 'ai') {
+        const initialContext = [];
+        if (!this.aiWelcomeContextSent) {
+          for (const msg of this.chatMessages || []) {
+            if (msg?.sender !== 'ai') break;
+            initialContext.push({
+              text: msg.message,
+              sender: "ai",
+              datetime: msg.datetime,
+            });
+          }
+        }
+
+        message.messages = [
+          ...initialContext,
+          ...texts.map(t => ({ text: t, sender: "client", datetime: new Date().toISOString() })),
+          ...mediaUrls.map(url => ({ text: url, sender: "client", datetime: new Date().toISOString() })),
+        ].filter(m => m?.text?.trim());
+
+        if (!message.messages.length) return;
+
+        message.allowAiResponse = this.allowAiResponse;
+        this.socket.emit('customer_to_agent_via_widget_with_ai', message);
+        this.outboundDebug('socket.emit customer_to_agent_via_widget_with_ai', { at: Date.now(), messagesCount: message.messages?.length });
+        this.aiWelcomeContextSent = true;
+      } else {
+        message.message = [...texts, ...mediaUrls].filter(Boolean).join('\n');
+        if (!message.message.trim()) return;
+        this.socket.emit('customer_to_agent_via_widget', message);
+        this.outboundDebug('socket.emit customer_to_agent_via_widget', { at: Date.now(), length: message.message.length });
+      }
+    },
+
+    shouldAnimateMessage(index) {
+      if (!this.wasSessionRestored) return true;
+      return index >= this.restoredMessagesCount;
+    },
+
+    getMessageCarouselKey(message) {
+      if (message?.id != null && message.id !== '') return String(message.id);
+      if (message?.datetime) return String(message.datetime);
+      return String(message);
+    },
+
+    getProductImageErrorKey(message, productIndex) {
+      return `${this.getMessageCarouselKey(message)}::${productIndex}`;
+    },
+
+    isProductImageErrored(message, productIndex) {
+      const key = this.getProductImageErrorKey(message, productIndex);
+      return Boolean(this.productImageErrors?.[key]);
+    },
+
+    markProductImageError(message, productIndex) {
+      const key = this.getProductImageErrorKey(message, productIndex);
+      this.productImageErrors = {
+        ...(this.productImageErrors || {}),
+        [key]: true,
+      };
+    },
+
+    isHomeProductImageErrored(product, productIndex) {
+      return Boolean(this.productImageErrors?.[`home::${product?.id}::${productIndex}`]);
+    },
+
+    markHomeProductImageError(product, productIndex) {
+      const key = `home::${product?.id}::${productIndex}`;
+      this.productImageErrors = {
+        ...(this.productImageErrors || {}),
+        [key]: true,
+      };
+    },
+
+    unwrapProduct(product) {
+      if (product?.product && typeof product.product === 'object') {
+        return { ...product, ...product.product };
+      }
+      return product || {};
+    },
+
+    getProductDisplayId(product, index = 0) {
+      const item = this.unwrapProduct(product);
+      return item.id || item.handle || item.product_handle || item.title || item.name || `product-${index}`;
+    },
+
+    getProductDisplayTitle(product) {
+      const item = this.unwrapProduct(product);
+      return item.title || item.name || item.product_title || item.productTitle || 'Product';
+    },
+
+    normalizeProductMentionText(text) {
+      const lower = String(text || '').toLowerCase().replace(/https?:\/\/\S+/g, ' ');
+      try {
+        return lower
+          .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      } catch (_) {
+        // Older engines without Unicode property escapes.
+        return lower
+          .replace(/[^a-z0-9\u00c0-\u024f\s]+/gi, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+    },
+
+    tokenizeProductMention(text) {
+      return this.normalizeProductMentionText(text)
+        .split(' ')
+        .filter(Boolean);
+    },
+
+    /** Collect named product mentions in message order (labels only — never URLs). */
+    extractProductMentionsFromMessage(messageText) {
+      const text = this.normalizeTypewriterText(messageText);
+      if (!text.trim()) return [];
+      const mentions = [];
+      const seen = new Set();
+
+      const pushMention = (label, index) => {
+        const trimmed = String(label || '').trim();
+        const normalized = this.normalizeProductMentionText(trimmed);
+        if (!trimmed || !normalized || seen.has(`${index}:${normalized}`)) return;
+        seen.add(`${index}:${normalized}`);
+        mentions.push({ label: trimmed, index, normalized });
+      };
+
+      // Markdown links: [Product Name](any-url-or-empty)
+      const linkRe = /\[([^\]]+)\]\([^)]*\)/g;
+      let match;
+      while ((match = linkRe.exec(text)) !== null) {
+        pushMention(match[1], match.index);
+      }
+
+      // Bullet / numbered lines without markdown links
+      const lineRe = /^[\t ]*(?:[-*•]|\d+[.)])[\t ]+(.+)$/gm;
+      while ((match = lineRe.exec(text)) !== null) {
+        const line = String(match[1] || '').trim();
+        if (!line || /\[[^\]]+\]\([^)]*\)/.test(line)) continue;
+        pushMention(line.replace(/\s*[—–-]\s+https?:\/\/\S+$/i, '').trim(), match.index);
+      }
+
+      mentions.sort((a, b) => a.index - b.index);
+      return mentions;
+    },
+
+    scoreProductMentionMatch(productTitle, mentionLabel) {
+      const titleNorm = this.normalizeProductMentionText(productTitle);
+      const mentionNorm = this.normalizeProductMentionText(mentionLabel);
+      if (!titleNorm || !mentionNorm || titleNorm === 'product') return 0;
+      if (titleNorm === mentionNorm) return 1;
+
+      // One name fully contains the other (any language).
+      if (mentionNorm.includes(titleNorm) || titleNorm.includes(mentionNorm)) {
+        const shorter = Math.min(titleNorm.length, mentionNorm.length);
+        const longer = Math.max(titleNorm.length, mentionNorm.length);
+        return 0.86 + (0.1 * (shorter / longer));
+      }
+
+      const titleTokens = this.tokenizeProductMention(productTitle);
+      const mentionTokens = this.tokenizeProductMention(mentionLabel);
+      if (titleTokens.length < 2 || mentionTokens.length < 2) return 0;
+
+      const mentionSet = new Set(mentionTokens);
+      const shared = titleTokens.filter((token) => mentionSet.has(token)).length;
+      if (shared < 2) return 0;
+
+      // Dice coefficient — language-agnostic token overlap, no synonym tables.
+      return (2 * shared) / (titleTokens.length + mentionTokens.length);
+    },
+
+    /**
+     * Order products by where their name/title is mentioned in the AI message.
+     * Matches markdown link labels or plain bullet text (not URLs).
+     * Near-matches use shared-token overlap (works across catalogs/languages).
+     */
+    sortProductsByMessageOrder(products, messageText) {
+      if (!Array.isArray(products) || products.length < 2) {
+        return Array.isArray(products) ? products.slice() : [];
+      }
+      const rawText = this.normalizeTypewriterText(messageText);
+      if (!rawText.trim()) return products.slice();
+
+      const mentions = this.extractProductMentionsFromMessage(rawText);
+      const ranked = products.map((product, index) => ({
+        product,
+        index,
+        title: String(this.getProductDisplayTitle(product) || '').trim(),
+        mentionIndex: -1,
+      }));
+
+      // Longer titles first so a short title doesn't steal a longer product's mention.
+      const byTitleLen = ranked
+        .slice()
+        .sort((a, b) => b.title.length - a.title.length || a.index - b.index);
+
+      const usedMentions = new Set();
+
+      const assignFromMentions = (minScore, exactOnly) => {
+        byTitleLen.forEach((entry) => {
+          if (entry.mentionIndex >= 0 || !entry.title || entry.title === 'Product') return;
+          let best = null;
+          mentions.forEach((mention, mentionIdx) => {
+            if (usedMentions.has(mentionIdx)) return;
+            const score = exactOnly
+              ? (this.normalizeProductMentionText(entry.title) === mention.normalized ? 1 : 0)
+              : this.scoreProductMentionMatch(entry.title, mention.label);
+            if (score < minScore) return;
+            if (!best || score > best.score || (score === best.score && mention.index < best.index)) {
+              best = { mentionIdx, score, index: mention.index };
+            }
+          });
+          if (!best) return;
+          usedMentions.add(best.mentionIdx);
+          entry.mentionIndex = best.index;
+        });
+      };
+
+      if (mentions.length) {
+        assignFromMentions(1, true);
+        assignFromMentions(0.6, false);
+      }
+
+      // Fallback: first plain-text occurrence of the product title.
+      byTitleLen.forEach((entry) => {
+        if (entry.mentionIndex >= 0) return;
+        const needle = this.normalizeProductMentionText(entry.title);
+        if (!needle || needle === 'product') return;
+        // Search original lowercased text with simple needle (spaces already normalized in needle).
+        const looseHaystack = this.normalizeProductMentionText(rawText);
+        const idx = looseHaystack.indexOf(needle);
+        if (idx >= 0) entry.mentionIndex = idx;
+      });
+
+      ranked.sort((a, b) => {
+        const aFound = a.mentionIndex >= 0;
+        const bFound = b.mentionIndex >= 0;
+        if (aFound && bFound && a.mentionIndex !== b.mentionIndex) {
+          return a.mentionIndex - b.mentionIndex;
+        }
+        if (aFound !== bFound) return aFound ? -1 : 1;
+        return a.index - b.index;
+      });
+
+      return ranked.map((entry) => entry.product);
+    },
+
+    getProductDisplayImage(product) {
+      return this.getProductGalleryImages(product)[0] || '';
+    },
+
+    getProductGalleryImages(product) {
+      const item = this.unwrapProduct(product);
+      const urls = [];
+      const seen = new Set();
+      const add = (candidate) => {
+        if (!candidate) return;
+        const url = typeof candidate === 'string'
+          ? candidate
+          : (candidate.src || candidate.url || candidate.originalSrc || candidate.transformedSrc || '');
+        const clean = String(url || '').trim();
+        if (!clean || seen.has(clean)) return;
+        seen.add(clean);
+        urls.push(clean);
+      };
+      (Array.isArray(item.images) ? item.images : []).forEach(add);
+      if (!urls.length) {
+        [
+          item.image,
+          item.featured_image,
+          item.featuredImage,
+          item.image_url,
+          item.imageUrl,
+          item.img,
+          item.picture,
+          item.thumbnail,
+          item.product_image,
+          item.src,
+          item.media?.[0],
+        ].forEach(add);
+      }
+      return urls.slice(0, 6);
+    },
+
+    getProductGalleryIndex(message, productIndex, product) {
+      const images = this.getProductGalleryImages(product);
+      if (images.length < 2) return 0;
+      const key = this.getProductSelectionKey(message, productIndex);
+      const current = Number(this.productGalleryIndex?.[key]) || 0;
+      return Math.min(Math.max(current, 0), images.length - 1);
+    },
+
+    getProductGalleryImage(product, message, productIndex) {
+      const images = this.getProductGalleryImages(product);
+      const galleryIndex = this.getProductGalleryIndex(message, productIndex, product);
+      const variantSrc = this.variantImageSrc(this.getSelectedVariant(product, message, productIndex));
+      // Primary slot follows the selected variant image when it has one.
+      if (variantSrc && galleryIndex === 0) return variantSrc;
+      if (!images.length) return variantSrc || '';
+      return images[galleryIndex] || images[0] || variantSrc || '';
+    },
+
+    setProductGalleryIndex(message, productIndex, imageIndex) {
+      const key = this.getProductSelectionKey(message, productIndex);
+      this.productGalleryIndex = {
+        ...(this.productGalleryIndex || {}),
+        [key]: imageIndex,
+      };
+    },
+
+    stepProductGallery(message, productIndex, product, delta) {
+      const images = this.getProductGalleryImages(product);
+      if (images.length < 2) return;
+      const current = this.getProductGalleryIndex(message, productIndex, product);
+      const next = Math.min(images.length - 1, Math.max(0, current + delta));
+      if (next === current) return;
+      this.setProductGalleryIndex(message, productIndex, next);
+    },
+
+    onProductGalleryPointerDown(event) {
+      if (event.target?.closest?.('.lh-media-nav, .lh-media-dot')) return;
+      this._productGalleryPointer = { x: event.clientX, y: event.clientY };
+    },
+
+    onProductGalleryPointerUp(message, productIndex, product, event) {
+      const start = this._productGalleryPointer;
+      this._productGalleryPointer = null;
+      if (!start) return;
+      if (this.getProductGalleryImages(product).length < 2) return;
+      const dx = event.clientX - start.x;
+      const dy = event.clientY - start.y;
+      if (Math.abs(dx) < 28 || Math.abs(dx) < Math.abs(dy)) return;
+      const forward = this.getProductCardDirection(product, productIndex) === 'rtl' ? dx > 0 : dx < 0;
+      this._productGallerySwiped = true;
+      this.stepProductGallery(message, productIndex, product, forward ? 1 : -1);
+      setTimeout(() => {
+        this._productGallerySwiped = false;
+      }, 350);
+    },
+
+    onProductGalleryPointerCancel() {
+      this._productGalleryPointer = null;
+    },
+
+    readProductRating(product) {
+      const item = this.unwrapProduct(product);
+      const rating = item?.rating;
+      if (rating && typeof rating === 'object') {
+        return this.ratingFromNumbers(rating.value, rating.count);
+      }
+      return this.ratingFromNumbers(
+        item?.average_rating ?? item?.averageRating,
+        item?.review_count ?? item?.reviewCount
+      );
+    },
+    ratingFromNumbers(value, count) {
+      const score = value == null || value === '' ? NaN : Number(value);
+      const reviews = count == null || count === '' ? NaN : Number(count);
+      const hasScore = Number.isFinite(score) && score > 0;
+      const hasReviews = Number.isFinite(reviews) && reviews > 0;
+      if (!hasScore && !hasReviews) return null;
+      return {
+        value: hasScore ? Math.min(5, score) : null,
+        count: hasReviews ? Math.max(0, Math.round(reviews)) : null,
+      };
+    },
+    productRatingHandle(product) {
+      const handle = this.getShopifyProductHandle(product);
+      if (handle) return handle;
+      const item = this.unwrapProduct(product);
+      const url = item.url || item.href || item.link || '';
+      const match = String(url).match(/\/product\/([^/?#]+)/);
+      try {
+        return match ? decodeURIComponent(match[1]) : '';
+      } catch {
+        return match ? match[1] : '';
+      }
+    },
+    assignProductRating(product, rating) {
+      if (!product || typeof product !== 'object' || !rating) return;
+      product.rating = rating;
+      if (product.product && typeof product.product === 'object') {
+        product.product.rating = rating;
+      }
+    },
+    scheduleProductRatings() {
+      if (this._ratingScheduled) return;
+      this._ratingScheduled = true;
+      this.$nextTick(() => {
+        this._ratingScheduled = false;
+        this.hydrateVisibleProductRatings();
+      });
+    },
+    hydrateVisibleProductRatings() {
+      if (!this.isStoreCart) return;
+      const products = [];
+      (this.chatMessages || []).forEach((message) => {
+        (message.products || []).forEach((product) => products.push(product));
+      });
+      if (this.productDetail?.product) products.push(this.productDetail.product);
+      const groups = new Map();
+      products.forEach((product) => {
+        if (this.readProductRating(product)) return;
+        const handle = this.productRatingHandle(product);
+        if (!handle) return;
+        const key = `${this.isWooCommerceWebsite() ? 'woo' : 'shop'}:${handle}`;
+        if (!this._ratedHandles) this._ratedHandles = new Set();
+        if (this._ratedHandles.has(key)) return;
+        if (!groups.has(key)) groups.set(key, { handle, products: [] });
+        groups.get(key).products.push(product);
+      });
+      groups.forEach((group, key) => {
+        if (!this.isWooCommerceWebsite() && !this.shopifyRatingPageUrl(group.handle)) return;
+        this._ratedHandles.add(key);
+        this.loadStoreProductRating(group.handle).then((rating) => {
+          if (!rating) return;
+          group.products.forEach((product) => this.assignProductRating(product, rating));
+        });
+      });
+    },
+    async loadStoreProductRating(handle) {
+      if (!this._productRatingLoads) this._productRatingLoads = new Map();
+      const platform = this.isWooCommerceWebsite() ? 'woo' : 'shop';
+      const key = `${platform}:${handle}`;
+      if (this._productRatingLoads.has(key)) return this._productRatingLoads.get(key);
+      const task = (platform === 'woo'
+        ? this.fetchWooProductRating(handle)
+        : this.fetchShopifyProductRating(handle)
+      ).catch(() => null);
+      this._productRatingLoads.set(key, task);
+      return task;
+    },
+    async fetchWooProductRating(handle) {
+      const listed = await this.wooStore(`/products?slug=${encodeURIComponent(handle)}`);
+      const product = Array.isArray(listed) ? listed[0] : listed;
+      if (!product) return null;
+      return this.ratingFromNumbers(product.average_rating, product.review_count);
+    },
+    shopifyRatingPageUrl(handle) {
+      if (!handle) return '';
+      const host = String(window.location.hostname || '');
+      const onShop = Boolean(window.Shopify?.shop) || /\.myshopify\.com$/i.test(host);
+      if (!onShop) return '';
+      return `${this.shopifyStoreRoot()}products/${encodeURIComponent(handle)}`;
+    },
+    async fetchShopifyProductRating(handle) {
+      const page = this.shopifyRatingPageUrl(handle);
+      if (!page) return null;
+      const response = await fetch(page, {
+        credentials: 'same-origin',
+        headers: { Accept: 'text/html' },
+      });
+      if (!response.ok) return null;
+      const html = await response.text();
+      const ratingJson = html.match(/\{[^{}]*"scale_max"\s*:\s*"[\d.]+"[^{}]*\}/);
+      let ratingScore = null;
+      if (ratingJson) {
+        try { ratingScore = JSON.parse(ratingJson[0]).value; } catch { ratingScore = null; }
+      }
+      const value = ratingScore != null
+        ? [null, ratingScore]
+        : html.match(/"ratingValue"\s*:\s*"?([\d.]+)"?/)
+          || html.match(/itemprop=["']ratingValue["'][^>]*content=["']([\d.]+)["']/)
+          || html.match(/data-average-rating=["']([\d.]+)["']/)
+          || html.match(/aria-label=["']([\d.]+)\s+out of\s+5/i)
+          || html.match(/data-rating=["']([\d.]+)["']/);
+      const count = html.match(/"(?:reviewCount|ratingCount|rating_count)"\s*:\s*"?(\d+)"?/)
+        || html.match(/itemprop=["']reviewCount["'][^>]*content=["'](\d+)["']/)
+        || html.match(/data-number-of-reviews=["'](\d+)["']/)
+        || html.match(/data-raters=["'](\d+)["']/);
+      return this.ratingFromNumbers(value?.[1], count?.[1]);
+    },
+    checkoutAlignEnd() {
+      // Always on the assistant / store side - not the shopper bubble.
+      // Hebrew he-flip: assistant is right (flex-end). English: assistant is left (flex-start).
+      return this.language === 'he';
+    },
+    messageAnchorKeys(message) {
+      if (!message) return [];
+      return [message.id, message.datetime]
+        .filter((value) => value != null && value !== '')
+        .map((value) => String(value));
+    },
+    pinCheckoutChatAnchor() {
+      const messages = Array.isArray(this.chatMessages) ? this.chatMessages : [];
+      const keys = this.messageAnchorKeys(messages[messages.length - 1]);
+      if (keys.length) this.checkoutChatAnchorId = keys[0];
+    },
+    keepCheckoutChatAnchor(messages) {
+      if (!this.isStoreCart || !this.showGoToCheckout || !this.shopifyCartItemCount) {
+        this.checkoutChatAnchorId = '';
+        this.checkoutChatForcedOpen = false;
+        this.finishCheckoutChatClose();
+        return;
+      }
+      const list = Array.isArray(messages) ? messages : [];
+      const present = new Set(list.flatMap((message) => this.messageAnchorKeys(message)));
+      if (!this.checkoutChatAnchorId || !present.has(this.checkoutChatAnchorId)) {
+        this.pinCheckoutChatAnchor();
+      }
+      const last = list[list.length - 1];
+      const lastKey = this.messageAnchorKeys(last)[0] || '';
+      const previousKey = this._checkoutLastMessageKey || '';
+      this._checkoutLastMessageKey = lastKey;
+      if (
+        previousKey
+        && lastKey
+        && lastKey !== previousKey
+        && String(last?.sender || '').toLowerCase() === 'client'
+      ) {
+        const cardWasOpen = this.checkoutChatForcedOpen || previousKey === this.checkoutChatAnchorId;
+        this.checkoutChatForcedOpen = false;
+        if (cardWasOpen) this.beginCheckoutChatClose();
+      }
+    },
+    beginCheckoutChatClose() {
+      const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+      if (reduce) {
+        this.finishCheckoutChatClose();
+        return;
+      }
+      this.checkoutChatClosing = true;
+      if (this._checkoutCloseTimer) clearTimeout(this._checkoutCloseTimer);
+      this._checkoutCloseTimer = setTimeout(() => {
+        this._checkoutCloseTimer = null;
+        this.checkoutChatClosing = false;
+      }, 420);
+    },
+    finishCheckoutChatClose() {
+      if (this._checkoutCloseTimer) {
+        clearTimeout(this._checkoutCloseTimer);
+        this._checkoutCloseTimer = null;
+      }
+      this.checkoutChatClosing = false;
+    },
+    checkoutChatReady() {
+      return Boolean(this.isStoreCart && this.showGoToCheckout && this.shopifyCartItemCount > 0);
+    },
+    checkoutHasFollowUp() {
+      const messages = Array.isArray(this.chatMessages) ? this.chatMessages : [];
+      const index = messages.findIndex((message) => (
+        this.messageAnchorKeys(message).includes(this.checkoutChatAnchorId)
+      ));
+      return index >= 0 && index < messages.length - 1;
+    },
+    isCheckoutChatAnchor(message) {
+      return this.messageAnchorKeys(message).includes(this.checkoutChatAnchorId);
+    },
+    showCheckoutChatCard(message) {
+      if (!this.checkoutChatReady() || !this.isCheckoutChatAnchor(message)) return false;
+      return !this.checkoutHasFollowUp() || this.checkoutChatForcedOpen || this.checkoutChatClosing;
+    },
+    showCheckoutChatButton(message) {
+      if (!this.checkoutChatReady() || !this.isCheckoutChatAnchor(message)) return false;
+      return this.checkoutHasFollowUp() && !this.checkoutChatForcedOpen && !this.checkoutChatClosing;
+    },
+    openCheckoutChatCard() {
+      this.finishCheckoutChatClose();
+      this.checkoutChatForcedOpen = true;
+    },
+    formatRatingScore(value) {
+      if (value == null || !Number.isFinite(value)) return '';
+      const rounded = Math.round(value * 10) / 10;
+      const shown = rounded >= 5 && value < 5 ? Math.floor(value * 10) / 10 : rounded;
+      return shown.toFixed(1);
+    },
+    readProductRatingStarFill(product, star) {
+      const value = this.readProductRating(product)?.value;
+      if (value == null) return 0;
+      return Math.max(0, Math.min(100, (value - (star - 1)) * 100));
+    },
+    readProductRatingValue(product) {
+      return this.formatRatingScore(this.readProductRating(product)?.value);
+    },
+    readProductRatingLabel(product) {
+      const rating = this.readProductRating(product);
+      if (!rating) return '';
+      const score = this.formatRatingScore(rating.value);
+      const count = rating.count == null ? '' : String(rating.count);
+      if (this.language === 'he') {
+        return count ? `דירוג ${score}, ${count} ביקורות` : `דירוג ${score}`;
+      }
+      return count ? `Rated ${score}, ${count} reviews` : `Rated ${score}`;
+    },
+    onProductCardActivate(product, message = null, index = 0) {
+      if (this._productGallerySwiped) {
+        this._productGallerySwiped = false;
+        return;
+      }
+      this._pluginProductSource = 'chat';
+      this.openProductDetail(product, message, index);
+    },
+
+    getProductDisplayHref(product) {
+      const item = this.unwrapProduct(product);
+      const handle = item.handle || item.product_handle;
+      return item.url || item.href || item.link || (handle ? `/products/${handle}` : '');
+    },
+
+    getProductDisplayDescription(product) {
+      const item = this.unwrapProduct(product);
+      const sources = [
+        item.description,
+        item.body_html,
+        item.descriptionHtml,
+        item.bodyHtml,
+        item.body,
+        item.subtitle,
+        item.product_description,
+      ];
+      for (const source of sources) {
+        let raw = source;
+        if (raw && typeof raw === 'object') raw = raw.html || raw.value || raw.body || '';
+        const text = String(raw || '')
+          .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+          .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+          .replace(/<[^>]*>/g, ' ')
+          .replace(/&nbsp;/gi, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (text) return text;
+      }
+      return '';
+    },
+
+    getProductRecommendationReason(product) {
+      const item = this.unwrapProduct(product);
+      const candidates = [
+        item.recommendation_reason,
+        item.recommendationReason,
+        item.reason,
+        item.why_recommended,
+        item.whyRecommended,
+        item.match_reason,
+        item.matchReason,
+        item.pitch,
+        item.tagline,
+        item.short_description,
+        item.shortDescription,
+        item.subtitle,
+      ];
+      let text = '';
+      for (const candidate of candidates) {
+        const next = String(candidate || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (next) {
+          text = next;
+          break;
+        }
+      }
+      if (!text) text = this.getProductDisplayDescription(product);
+      if (!text) return '';
+      return text.length > 72 ? `${text.slice(0, 72).trim()}...` : text;
+    },
+
+    parseProductPriceList(product) {
+      const item = this.unwrapProduct(product);
+      let raw = item.prices;
+      if (typeof raw === 'string') {
+        try {
+          raw = JSON.parse(raw);
+        } catch {
+          raw = raw.split(/[,\s]+/).filter(Boolean);
+        }
+      }
+      if (!Array.isArray(raw)) return [];
+
+      const unique = [];
+      const seen = new Set();
+      raw.forEach((price) => {
+        if (price == null || String(price).trim() === '') return;
+        const numeric = this.parseProductPriceNumber(price);
+        const key = numeric != null ? numeric.toFixed(2) : String(price).trim();
+        if (seen.has(key)) return;
+        seen.add(key);
+        unique.push(numeric != null ? numeric : price);
+      });
+      return unique;
+    },
+
+    parseProductPriceNumber(raw) {
+      if (raw && typeof raw === 'object') {
+        if (raw.amount != null) return this.parseProductPriceNumber(raw.amount);
+        if (raw.value != null) return this.parseProductPriceNumber(raw.value);
+      }
+      if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+      const text = String(raw ?? '').replace(/[^0-9.-]/g, '');
+      if (!text) return null;
+      const numeric = Number(text);
+      return Number.isFinite(numeric) ? numeric : null;
+    },
+
+    getProductCurrency(product) {
+      const item = this.unwrapProduct(product);
+      return String(item.currency || '').trim();
+    },
+
+    formatProductPriceValue(raw, currency) {
+      if (raw == null || raw === '') return '';
+      const numeric = this.parseProductPriceNumber(raw);
+      if (numeric == null) return String(raw).trim();
+
+      const hasCents = Math.round(Math.abs(numeric) * 100) % 100 !== 0;
+      const fractionDigits = hasCents ? 2 : 0;
+      const amount = hasCents ? numeric.toFixed(2) : String(Math.round(numeric));
+      const currencyValue = String(currency || '').trim();
+      if (!currencyValue) return amount;
+
+      const code = currencyValue.toUpperCase();
+      if (/^[A-Z]{3}$/.test(code)) {
+        try {
+          return new Intl.NumberFormat(this.language === 'he' ? 'he-IL' : 'en-US', {
+            style: 'currency',
+            currency: code,
+            minimumFractionDigits: fractionDigits,
+            maximumFractionDigits: 2,
+          }).format(numeric);
+        } catch {
+          return `${amount} ${code}`;
+        }
+      }
+
+      return `${currencyValue}${amount}`;
+    },
+
+    getProductDisplayPrice(product) {
+      const prices = this.parseProductPriceList(product);
+      const currency = this.getProductCurrency(product);
+      if (prices.length === 1) {
+        return this.formatProductPriceValue(prices[0], currency);
+      }
+      if (prices.length === 2) {
+        const first = this.formatProductPriceValue(prices[0], currency);
+        const second = this.formatProductPriceValue(prices[1], currency);
+        if (first && second && first !== second) return `${first} - ${second}`;
+        return first || second;
+      }
+      if (prices.length > 2) {
+        const nums = prices
+          .map((price) => this.parseProductPriceNumber(price))
+          .filter((value) => value != null);
+        if (!nums.length) return this.formatProductPriceValue(prices[0], currency);
+        const min = Math.min(...nums);
+        const max = Math.max(...nums);
+        if (min === max) return this.formatProductPriceValue(min, currency);
+        return `${this.formatProductPriceValue(min, currency)} - ${this.formatProductPriceValue(max, currency)}`;
+      }
+
+      const item = this.unwrapProduct(product);
+      const raw = item.price ?? item.amount ?? item.price_formatted ?? item.variants?.[0]?.price;
+      return this.formatProductPriceValue(raw, currency);
+    },
+
+    isProductFlagEnabled(value) {
+      return value === true || value === 'true' || value === 1 || value === '1';
+    },
+
+    isProductFullySoldOut(product) {
+      const item = this.unwrapProduct(product);
+      if (this.isProductFlagEnabled(item.isOutOfStock)) return true;
+      const variants = this.getProductVariants(product);
+      if (variants.length && variants.every((variant) => !this.isVariantAvailable(variant))) return true;
+      return false;
+    },
+
+    getProductVariants(product) {
+      const item = this.unwrapProduct(product);
+      if (Array.isArray(item.variants)) return item.variants.filter(Boolean);
+      if (item.variants?.edges) {
+        return item.variants.edges.map((edge) => edge?.node).filter(Boolean);
+      }
+      return [];
+    },
+
+    getVariantKey(variant, fallbackIndex = 0) {
+      if (variant?.id != null && String(variant.id).trim() !== '') return String(variant.id);
+      if (variant?.title != null && String(variant.title).trim() !== '') return `title:${String(variant.title).trim()}`;
+      return `idx:${fallbackIndex}`;
+    },
+
+    getVariantLabel(variant) {
+      return String(variant?.title || variant?.name || variant?.label || '').trim();
+    },
+
+    variantStockKey(variantOrTitle) {
+      const title = typeof variantOrTitle === 'string'
+        ? variantOrTitle
+        : this.getVariantLabel(variantOrTitle);
+      const parts = String(title || '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .split(/\s*[-–|/]\s*/)
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .sort();
+      return parts.join('|');
+    },
+
+    isVariantAvailable(variant) {
+      if (!variant) return false;
+      if (variant.available === false || variant.availableForSale === false) return false;
+      if (this.isProductFlagEnabled(variant.isOutOfStock)) return false;
+      const stockStatus = String(variant.stockStatus || variant.stock_status || '').toLowerCase();
+      if (stockStatus === 'outofstock') return false;
+      const tracked = variant.isTracked ?? variant.inventoryItem?.tracked ?? variant.tracked ?? variant.inventory_tracked;
+      if (tracked === true || tracked === 'true' || tracked === 1 || tracked === '1') {
+        const quantity = variant.inventoryQuantity ?? variant.inventory_quantity;
+        const numericQuantity = quantity == null || quantity === '' ? null : Number(quantity);
+        if (numericQuantity != null && Number.isFinite(numericQuantity) && numericQuantity <= 0) return false;
+      }
+      return true;
+    },
+
+    getProductVariantChoices(product) {
+      return this.getProductVariants(product).map((variant, idx) => {
+        const label = this.getVariantLabel(variant) || `Option ${idx + 1}`;
+        return {
+          key: this.getVariantKey(variant, idx),
+          label,
+          unavailable: !this.isVariantAvailable(variant),
+          variant,
+        };
+      }).filter((entry) => entry.label);
+    },
+
+    productNeedsOptionPicker(product) {
+      return this.getProductVariantChoices(product).length > 1;
+    },
+
+    markProductCardVariantPicked(message, index) {
+      const key = this.getProductSelectionKey(message, index);
+      if (this.productCardPickedVariants?.[key]) return;
+      this.productCardPickedVariants = {
+        ...(this.productCardPickedVariants || {}),
+        [key]: true,
+      };
+    },
+
+    productCardAddsSelectedVariant(product, message, index) {
+      if (!this.productNeedsOptionPicker(product)) return true;
+      if (!this.productCardPickedVariants?.[this.getProductSelectionKey(message, index)]) return false;
+      return this.isSelectedVariantAvailable(product, message, index);
+    },
+
+    getProductCardSelectedOptionLabel(product, message, index) {
+      const group = this.getProductCardOptionGroup(product, message, index);
+      if (!group?.values?.length) return '';
+      const selected = group.values.find((value) => value.selected && !value.unavailable)
+        || group.values.find((value) => value.selected)
+        || group.values.find((value) => !value.unavailable)
+        || group.values[0];
+      return selected?.label || '';
+    },
+
+    getProductCardOptionMenuKey(message, index) {
+      return `${this.getProductSelectionKey(message, index)}:card-opt`;
+    },
+
+    isProductCardOptionMenuOpen(message, index) {
+      return this.productCardOptionMenuKey === this.getProductCardOptionMenuKey(message, index);
+    },
+
+    closeProductCardOptionMenu() {
+      if (!this.productCardOptionMenuKey) return;
+      this.productCardOptionMenuKey = '';
+    },
+
+    toggleProductCardOptionMenu(product, message, index) {
+      const group = this.getProductCardOptionGroup(product, message, index);
+      if (!group?.values?.length) return;
+      const key = this.getProductCardOptionMenuKey(message, index);
+      if (this.productCardOptionMenuKey === key) {
+        this.productCardOptionMenuKey = '';
+        return;
+      }
+      this.closeProductVariantMenu();
+      this.productCardOptionMenuKey = key;
+    },
+
+    selectProductCardOptionFromMenu(product, message, index, optionIndex, label) {
+      const clean = String(label || '').trim();
+      if (!clean) return;
+      this.selectProductCardOption(product, message, index, optionIndex, clean);
+      this.productCardOptionMenuKey = '';
+      this.trackPluginEvent('variant_selected', {
+        ...this.pluginProductProps(product),
+        variant: this.clipPluginEventText(clean, 80),
+      });
+    },
+
+    syncProductCardImageToSelectedVariant(product, message, index) {
+      const key = this.getProductSelectionKey(message, index);
+      if (this.productImageErrors?.[key]) {
+        const next = { ...this.productImageErrors };
+        delete next[key];
+        this.productImageErrors = next;
+      }
+      // Reset to the primary slot so getProductGalleryImage prefers the variant image.
+      this.setProductGalleryIndex(message, index, 0);
+    },
+
+    getProductCardCartLabel(product, index, message) {
+      if (!this.productCardAddsSelectedVariant(product, message, index)) {
+        return this.language === 'he' ? 'בחירת אפשרויות' : 'Choose options';
+      }
+      return this.getAddToCartLabel(this.isProductCardInBag(product, index, message));
+    },
+
+    onProductCardCartClick(product, index, message) {
+      if (!this.productCardAddsSelectedVariant(product, message, index)) {
+        this._pluginProductSource = 'chat';
+        this.openProductDetail(product, message, index);
+        return;
+      }
+      return this.addProductFromCard(product, index, message);
+    },
+
+    onHomeProductAdd(product) {
+      if (this.productNeedsOptionPicker(product)) {
+        this.openProductModal(product);
+        return;
+      }
+      return this.addPoweredByAssisHomeProduct(product);
+    },
+
+    normalizeMediaUrl(raw) {
+      const url = String(raw || '').trim();
+      if (url.startsWith('//')) return `https:${url}`;
+      return url;
+    },
+
+    variantImageSrc(variant) {
+      const image = variant?.featured_image || variant?.image || variant?.featuredImage;
+      if (!image) return '';
+      if (typeof image === 'string') return this.normalizeMediaUrl(image);
+      return this.normalizeMediaUrl(image.src || image.url || image.originalSrc || '');
+    },
+
+    getVariantOptionValues(variant) {
+      const direct = [variant?.option1, variant?.option2, variant?.option3]
+        .map((value) => String(value || '').trim())
+        .filter((value) => value && value.toLowerCase() !== 'default title');
+      if (direct.length) return direct;
+      const title = this.getVariantLabel(variant);
+      if (!title || title.toLowerCase() === 'default title') return [];
+      if (!title.includes('/')) return [title];
+      return title.split(/\s*\/\s*/).map((part) => part.trim()).filter(Boolean);
+    },
+
+    isSizeOptionName(name) {
+      return /size|מידה|taille|größe|grosse|talla|taglia/i.test(String(name || ''));
+    },
+
+    isSizeOptionValue(value) {
+      return /^(xxs|xs|s|m|l|xl|xxl|xxxl|2xl|3xl|4xl|5xl|6xl|\d{1,2}(?:\.\d)?)$/i.test(String(value || '').trim());
+    },
+
+    inferOptionNames(variants) {
+      const width = Math.max(0, ...variants.map((variant) => this.getVariantOptionValues(variant).length));
+      return Array.from({ length: width }, (_, index) => {
+        const column = variants
+          .map((variant) => this.getVariantOptionValues(variant)[index])
+          .filter(Boolean);
+        const unique = new Set(column);
+        const sizeCount = [...unique].filter((value) => this.isSizeOptionValue(value)).length;
+        if (sizeCount >= Math.max(1, Math.ceil(unique.size / 2))) {
+          return this.language === 'he' ? 'מידה' : 'Size';
+        }
+        if (index === 0) return this.language === 'he' ? 'אפשרות' : 'Option';
+        return this.language === 'he' ? `אפשרות ${index + 1}` : `Option ${index + 1}`;
+      });
+    },
+
+    getProductOptionNames(product) {
+      const item = this.unwrapProduct(product);
+      const variants = this.getProductVariants(product);
+      const width = Math.max(0, ...variants.map((variant) => this.getVariantOptionValues(variant).length));
+      if (!width) return [];
+      const stored = Array.isArray(item.optionNames)
+        ? item.optionNames.map((name) => String(name || '').trim()).filter(Boolean)
+        : [];
+      if (stored.length >= width) return stored.slice(0, width);
+      const inferred = this.inferOptionNames(variants);
+      return Array.from({ length: width }, (_, index) => stored[index] || inferred[index]);
+    },
+
+    isOptionValueAvailable(product, optionIndex, label) {
+      return this.getProductVariants(product).some((variant) => {
+        const values = this.getVariantOptionValues(variant);
+        return values[optionIndex] === label && this.isVariantAvailable(variant);
+      });
+    },
+
+    getProductOptionGroups(product, message, index) {
+      const variants = this.getProductVariants(product);
+      const names = this.getProductOptionNames(product);
+      if (!names.length) return [];
+      const selected = this.getVariantOptionValues(this.getSelectedVariant(product, message, index));
+      return names.map((name, optionIndex) => {
+        const labels = [];
+        variants.forEach((variant) => {
+          const label = this.getVariantOptionValues(variant)[optionIndex];
+          if (!label || labels.includes(label)) return;
+          labels.push(label);
+        });
+        if (labels.length < 2) return null;
+        const values = labels.map((label) => {
+          const withImage = variants.find((variant) => (
+            this.getVariantOptionValues(variant)[optionIndex] === label && this.variantImageSrc(variant)
+          ));
+          return {
+            label,
+            image: withImage ? this.variantImageSrc(withImage) : '',
+            selected: selected[optionIndex] === label,
+            unavailable: !this.isOptionValueAvailable(product, optionIndex, label),
+          };
+        });
+        const uniqueImages = new Set(values.map((value) => value.image).filter(Boolean));
+        const kind = !this.isSizeOptionName(name) && uniqueImages.size >= 2 ? 'swatch' : 'pill';
+        return { name, index: optionIndex, kind, values };
+      }).filter(Boolean);
+    },
+
+    getProductCardOptionGroup(product, message, index) {
+      this.scheduleCardProductLiveOptions(product, message, index);
+      const group = this.getProductOptionGroups(product, message, index)[0] || null;
+      if (!group) return null;
+      // Card strip: hide out-of-stock options instead of showing disabled pills.
+      const values = (group.values || []).filter((value) => !value.unavailable);
+      if (values.length < 2) return null;
+      return { ...group, values };
+    },
+    scheduleCardProductLiveOptions(product, message, index) {
+      if (!this.isStoreCart || !message || index == null) return;
+      const item = this.unwrapProduct(product);
+      if (item?._assisLiveStock) return;
+      const handle = this.getShopifyProductHandle(product);
+      if (!handle) return;
+      const flightKey = `${message.id || message.tempId || 'msg'}:${index}:${handle}`;
+      if (!this._cardLiveOptionFlights) this._cardLiveOptionFlights = new Set();
+      if (this._cardLiveOptionFlights.has(flightKey)) return;
+      this._cardLiveOptionFlights.add(flightKey);
+      void this.refreshCardProductLiveOptions(product, message, index, handle, flightKey);
+    },
+    async refreshCardProductLiveOptions(product, message, index, handle, flightKey) {
+      try {
+        const cacheKey = `${this.isWooCommerceWebsite() ? 'woo' : 'shop'}:${handle}`;
+        if (!this._productOptionCache) this._productOptionCache = new Map();
+        let storefront = this._productOptionCache.get(cacheKey);
+        if (storefront === undefined) {
+          try {
+            storefront = this.isWooCommerceWebsite()
+              ? await this.fetchWooProductOptions(handle)
+              : await this.fetchShopifyProductOptions(handle);
+          } catch {
+            storefront = null;
+          }
+          this._productOptionCache.set(cacheKey, storefront || null);
+        }
+        const products = Array.isArray(message.products) ? [...message.products] : null;
+        if (!products || !products[index]) return;
+        // Mark even when the store returns nothing — otherwise every render reschedules.
+        products[index] = storefront
+          ? { ...this.mergeStorefrontProduct(products[index], storefront), _assisLiveStock: true }
+          : { ...this.unwrapProduct(products[index]), _assisLiveStock: true };
+        message.products = products;
+        const msgIndex = (this.chatMessages || []).indexOf(message);
+        if (msgIndex >= 0) {
+          const next = [...this.chatMessages];
+          next[msgIndex] = { ...message, products };
+          this.chatMessages = next;
+        }
+      } finally {
+        this._cardLiveOptionFlights?.delete(flightKey);
+      }
+    },
+    messageHasCardVariants(message) {
+      const products = Array.isArray(message?.products) ? message.products : [];
+      return products.some((product, index) => this.getProductCardOptionGroup(product, message, index));
+    },
+    messageHasCardRating(message) {
+      const products = Array.isArray(message?.products) ? message.products : [];
+      return products.some((product) => this.readProductRating(product));
+    },
+    selectProductCardOption(product, message, index, optionIndex, label) {
+      const variants = this.getProductVariants(product);
+      const current = this.getSelectedVariant(product, message, index);
+      const currentValues = this.getVariantOptionValues(current);
+      if (currentValues[optionIndex] === label) {
+        const key = this.getSelectedVariantKey(message, index, product);
+        if (key) this.setSelectedVariantKey(message, index, key);
+        this.markProductCardVariantPicked(message, index);
+        this.syncProductCardImageToSelectedVariant(product, message, index);
+        return;
+      }
+      const width = Math.max(this.getProductOptionNames(product).length, currentValues.length);
+      const next = Array.from({ length: width }, (_, option) => (
+        option === optionIndex ? label : (currentValues[option] || '')
+      ));
+      const matches = variants.filter((variant) => {
+        const values = this.getVariantOptionValues(variant);
+        return next.every((value, option) => !value || values[option] === value);
+      });
+      const pool = matches.length
+        ? matches
+        : variants.filter((variant) => this.getVariantOptionValues(variant)[optionIndex] === label);
+      const chosen = pool.find((variant) => this.isVariantAvailable(variant)) || pool[0];
+      if (!chosen) return;
+      this.setSelectedVariantKey(message, index, this.getVariantKey(chosen, variants.indexOf(chosen)));
+      this.markProductCardVariantPicked(message, index);
+      this.syncProductCardImageToSelectedVariant(product, message, index);
+    },
+    getProductDetailOptionGroups() {
+      const detail = this.productDetail;
+      if (!detail) return [];
+      return this.getProductOptionGroups(detail.product, detail.message, detail.index);
+    },
+
+    storefrontDecimal(raw) {
+      const numeric = Number(raw);
+      if (!Number.isFinite(numeric)) return null;
+      return (numeric / 100).toFixed(2);
+    },
+
+    normalizeStorefrontOptionNames(raw, variants) {
+      const width = Math.max(0, ...variants.map((variant) => this.getVariantOptionValues(variant).length));
+      if (!width) return [];
+      const fromStore = Array.isArray(raw)
+        ? raw.map((entry) => (
+          typeof entry === 'string' ? entry.trim() : String(entry?.name || '').trim()
+        )).filter(Boolean)
+        : [];
+      const inferred = this.inferOptionNames(variants);
+      return Array.from({ length: width }, (_, index) => fromStore[index] || inferred[index]);
+    },
+
+    mergeStorefrontProduct(product, storefront) {
+      const item = { ...this.unwrapProduct(product) };
+      const catalog = this.getProductVariants(product);
+      const liveList = Array.isArray(storefront?.variants) ? storefront.variants : [];
+      const byCatalogId = new Map();
+      const byCatalogStockKey = new Map();
+      catalog.forEach((variant) => {
+        const id = this.shopifyNumericId(variant?.id);
+        if (id) byCatalogId.set(String(id), variant);
+        const stockKey = this.variantStockKey(variant);
+        if (stockKey) byCatalogStockKey.set(stockKey, variant);
+      });
+      const catalogVariantOut = (catalogVariant) => Boolean(
+        catalogVariant
+        && !this.isVariantAvailable(catalogVariant)
+      );
+      const fromLive = (live) => {
+        const liveId = this.shopifyNumericId(live?.id);
+        const catalogVariant = (liveId && byCatalogId.get(String(liveId)))
+          || byCatalogStockKey.get(this.variantStockKey(live))
+          || null;
+        const base = catalogVariant
+          ? { ...catalogVariant }
+          : {
+            id: live.id,
+            title: live.title,
+            price: this.storefrontDecimal(live.price),
+          };
+        // Catalog OOS wins over a soft Store API "in stock" (common on Woo with hidden qty).
+        const available = live.available !== false && !catalogVariantOut(catalogVariant);
+        return {
+          ...base,
+          ...(live.option1 ? { option1: live.option1 } : {}),
+          ...(live.option2 ? { option2: live.option2 } : {}),
+          ...(live.option3 ? { option3: live.option3 } : {}),
+          available,
+          availableForSale: available,
+          isOutOfStock: !available,
+          stockStatus: available ? 'instock' : 'outofstock',
+          ...(live.featured_image ? { featured_image: live.featured_image } : {}),
+        };
+      };
+      const variants = liveList.length ? liveList.map(fromLive) : catalog;
+      return {
+        ...item,
+        variants,
+        optionNames: this.normalizeStorefrontOptionNames(storefront?.options, variants),
+      };
+    },
+
+    async fetchShopifyProductOptions(handle) {
+      const response = await fetch(`${this.shopifyStoreRoot()}products/${encodeURIComponent(handle)}.js`, {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) return null;
+      const data = await response.json();
+      const variants = (Array.isArray(data?.variants) ? data.variants : []).map((variant) => ({
+        id: variant.id,
+        title: variant.title,
+        option1: variant.option1,
+        option2: variant.option2,
+        option3: variant.option3,
+        available: variant.available !== false,
+        availableForSale: variant.available !== false,
+        isOutOfStock: variant.available === false,
+        featured_image: variant.featured_image || null,
+        price: variant.price,
+      }));
+      if (variants.length < 2) return null;
+      return { options: data.options || [], variants };
+    },
+
+    isWooStoreVariationAvailable(variation) {
+      if (!variation) return false;
+      if (variation.is_in_stock === false) return false;
+      if (variation.is_purchasable === false) return false;
+      const stockStatus = String(variation.stock_status || '').toLowerCase();
+      if (stockStatus === 'outofstock') return false;
+      const availabilityClass = String(
+        variation.stock_availability?.class
+        || variation.availability?.class
+        || ''
+      ).toLowerCase();
+      if (/(out-of-stock|outofstock)/.test(availabilityClass)) return false;
+      const availabilityText = String(
+        variation.stock_availability?.text
+        || variation.availability?.text
+        || ''
+      ).toLowerCase();
+      if (/(out of stock|אזל|אין במלאי)/.test(availabilityText)) return false;
+      const qty = variation.stock_quantity;
+      if (qty != null && qty !== '') {
+        const numeric = Number(qty);
+        if (Number.isFinite(numeric) && numeric <= 0) return false;
+      }
+      return true;
+    },
+
+    async fetchWooProductOptions(handle) {
+      let slug = String(handle || '').trim();
+      try {
+        slug = decodeURIComponent(slug);
+      } catch {
+        /* keep raw slug */
+      }
+      const listed = await fetch(`/wp-json/wc/store/v1/products?slug=${encodeURIComponent(slug)}`, {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      });
+      if (!listed.ok) return null;
+      const products = await listed.json();
+      const product = Array.isArray(products) ? products[0] : null;
+      if (!product?.id) return null;
+      const variations = [];
+      for (let page = 1; page <= 5; page += 1) {
+        const variationResponse = await fetch(
+          `/wp-json/wc/store/v1/products?type=variation&parent=${encodeURIComponent(product.id)}&per_page=100&page=${page}`,
+          { credentials: 'same-origin', headers: { Accept: 'application/json' } }
+        );
+        if (!variationResponse.ok) break;
+        const batch = await variationResponse.json();
+        if (!Array.isArray(batch) || !batch.length) break;
+        variations.push(...batch);
+        if (batch.length < 100) break;
+      }
+      if (variations.length < 2) return null;
+      const names = [];
+      variations.forEach((variation) => {
+        (variation.attributes || []).forEach((attribute) => {
+          const name = String(attribute?.name || '').trim();
+          if (name && !names.includes(name)) names.push(name);
+        });
+      });
+      const variants = variations.map((variation) => {
+        const attributes = Array.isArray(variation.attributes) ? variation.attributes : [];
+        const values = names.map((name) => String(
+          attributes.find((attribute) => String(attribute?.name || '').trim() === name)?.value || ''
+        ).trim());
+        const image = variation.images?.[0]?.src || variation.images?.[0]?.thumbnail || '';
+        const available = this.isWooStoreVariationAvailable(variation);
+        return {
+          id: variation.id,
+          title: values.filter(Boolean).join(' / ') || variation.name,
+          option1: values[0] || null,
+          option2: values[1] || null,
+          option3: values[2] || null,
+          available,
+          availableForSale: available,
+          isOutOfStock: !available,
+          stockStatus: available ? 'instock' : 'outofstock',
+          featured_image: image ? { src: image } : null,
+          price: variation.prices?.price,
+        };
+      });
+      return { options: names, variants };
+    },
+
+    async loadProductDetailOptions(optionToken) {
+      const detail = this.productDetail;
+      if (!detail || detail.optionToken !== optionToken || !this.isStoreCart) return;
+      if (!this.productNeedsOptionPicker(detail.product)) return;
+      const handle = this.getShopifyProductHandle(detail.product);
+      if (!handle) return;
+      const cacheKey = `${this.isWooCommerceWebsite() ? 'woo' : 'shop'}:${handle}`;
+      if (!this._productOptionCache) this._productOptionCache = new Map();
+      let storefront = this._productOptionCache.get(cacheKey);
+      if (storefront === undefined) {
+        try {
+          storefront = this.isWooCommerceWebsite()
+            ? await this.fetchWooProductOptions(handle)
+            : await this.fetchShopifyProductOptions(handle);
+        } catch {
+          storefront = null;
+        }
+        this._productOptionCache.set(cacheKey, storefront || null);
+      }
+      if (!storefront || this.productDetail?.optionToken !== optionToken) return;
+      this.productDetail = {
+        ...this.productDetail,
+        product: this.mergeStorefrontProduct(this.productDetail.product, storefront),
+      };
+      this.focusProductDetailOnSelectedVariant();
+    },
+
+    focusProductDetailOnSelectedVariant() {
+      const detail = this.productDetail;
+      if (!detail) return;
+      const selected = this.getSelectedVariant(detail.product, detail.message, detail.index);
+      const src = this.variantImageSrc(selected);
+      if (src) this.focusProductDetailImage(src);
+    },
+
+    focusProductDetailImage(src) {
+      const clean = this.normalizeMediaUrl(src);
+      if (!clean || !this.productDetail) return;
+      const current = this.getProductGalleryImages(this.productDetail.product);
+      if (current[0] === clean && (this.productDetail.imageIndex || 0) === 0) return;
+      const item = this.unwrapProduct(this.productDetail.product);
+      this.productDetail = {
+        ...this.productDetail,
+        product: { ...item, images: [clean, ...current.filter((url) => url !== clean)].slice(0, 6) },
+        imageIndex: 0,
+      };
+      this.stopProductDetailSlideshow();
+    },
+
+    selectProductDetailOption(optionIndex, label) {
+      const detail = this.productDetail;
+      if (!detail) return;
+      const variants = this.getProductVariants(detail.product);
+      const current = this.getSelectedVariant(detail.product, detail.message, detail.index);
+      const currentValues = this.getVariantOptionValues(current);
+      if (currentValues[optionIndex] === label) return;
+      const width = Math.max(this.getProductOptionNames(detail.product).length, currentValues.length);
+      const next = Array.from({ length: width }, (_, index) => (
+        index === optionIndex ? label : (currentValues[index] || '')
+      ));
+      const matches = variants.filter((variant) => {
+        const values = this.getVariantOptionValues(variant);
+        return next.every((value, index) => !value || values[index] === value);
+      });
+      const pool = matches.length
+        ? matches
+        : variants.filter((variant) => this.getVariantOptionValues(variant)[optionIndex] === label);
+      const chosen = pool.find((variant) => this.isVariantAvailable(variant)) || pool[0];
+      if (!chosen) return;
+      const variantId = this.shopifyNumericId(chosen.id || chosen.variant_id || chosen.variantId);
+      this.selectProductDetailVariant(this.getVariantKey(chosen, variants.indexOf(chosen)));
+      this.focusProductDetailOnSelectedVariant();
+      this.trackPluginEvent('variant_selected', {
+        ...this.pluginProductProps(detail.product),
+        variant: this.clipPluginEventText(this.getVariantLabel(chosen), 80),
+        ...(variantId ? { variant_id: String(variantId) } : {}),
+      });
+    },
+
+    getProductSelectionKey(message, index) {
+      return `${this.getMessageCarouselKey(message)}::${index}`;
+    },
+
+    getSelectedVariantLabel(message, index, product) {
+      const selectedKey = this.getSelectedVariantKey(message, index, product);
+      const choice = this.getProductVariantChoices(product).find((entry) => entry.key === selectedKey);
+      return choice?.label || '';
+    },
+
+    isProductVariantMenuOpen(message, index) {
+      return Boolean(
+        this.productVariantMenu?.visible
+        && this.productVariantMenu.key === this.getProductSelectionKey(message, index)
+      );
+    },
+
+    closeProductVariantMenu() {
+      if (!this.productVariantMenu?.visible) return;
+      this.productVariantMenu = {
+        ...this.productVariantMenu,
+        visible: false,
+        key: '',
+        choices: [],
+        selectedKey: '',
+        messageKey: '',
+        productIndex: 0,
+      };
+    },
+
+    toggleProductVariantMenu(message, index, product, event) {
+      const key = this.getProductSelectionKey(message, index);
+      if (this.productVariantMenu?.visible && this.productVariantMenu.key === key) {
+        this.closeProductVariantMenu();
+        return;
+      }
+
+      const trigger = event?.currentTarget;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const menuWidth = Math.max(rect.width, 132);
+      const viewportPadding = 8;
+      const estimatedHeight = Math.min(220, (this.getProductVariantChoices(product).length || 1) * 36 + 8);
+      let top = rect.bottom + 6;
+      let left = rect.left;
+
+      if (top + estimatedHeight > window.innerHeight - viewportPadding) {
+        top = Math.max(viewportPadding, rect.top - estimatedHeight - 6);
+      }
+      if (left + menuWidth > window.innerWidth - viewportPadding) {
+        left = Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding);
+      }
+      if (left < viewportPadding) left = viewportPadding;
+
+      this.closeProductCardOptionMenu();
+      this._ignoreProductVariantMenuOutsideClick = true;
+      this.productVariantMenu = {
+        visible: true,
+        key,
+        top,
+        left,
+        width: menuWidth,
+        selectedKey: this.getSelectedVariantKey(message, index, product),
+        choices: this.getProductVariantChoices(product),
+        messageKey: this.getMessageCarouselKey(message),
+        productIndex: index,
+      };
+      this.$nextTick(() => {
+        requestAnimationFrame(() => {
+          this._ignoreProductVariantMenuOutsideClick = false;
+        });
+      });
+    },
+
+    selectProductVariantFromMenu(value) {
+      const menu = this.productVariantMenu;
+      if (!menu?.visible) return;
+      const choice = (menu.choices || []).find((entry) => entry.key === value);
+      const message = (this.chatMessages || []).find(
+        (item) => this.getMessageCarouselKey(item) === menu.messageKey
+      );
+      if (message) {
+        this.setSelectedVariantKey(message, menu.productIndex, value);
+      }
+      const detail = this.productDetail;
+      const sameDetail = detail
+        && this.getMessageCarouselKey(detail.message) === menu.messageKey
+        && detail.index === menu.productIndex;
+      if (sameDetail) this.selectProductDetailVariant(value);
+      const product = (Array.isArray(message?.products) ? message.products[menu.productIndex] : null) || (sameDetail ? detail.product : null);
+      const label = String(choice?.label || '').trim();
+      const rawId = choice?.variant?.id || choice?.variant?.variant_id || choice?.variant?.variantId || '';
+      const variantId = rawId && typeof this.shopifyNumericId === 'function' ? this.shopifyNumericId(rawId) : '';
+      this.closeProductVariantMenu();
+      this.trackPluginEvent('variant_selected', {
+        ...(product ? this.pluginProductProps(product) : {}),
+        variant: this.clipPluginEventText(label || String(value || ''), 80),
+        ...(variantId ? { variant_id: String(variantId) } : {}),
+      });
+    },
+
+    getSelectedVariantKey(message, index, product) {
+      const key = this.getProductSelectionKey(message, index);
+      const stored = this.productSelectedOptions?.[key];
+      const choices = this.getProductVariantChoices(product);
+      if (stored) {
+        const stillAvailable = choices.find((choice) => choice.key === stored && !choice.unavailable);
+        if (stillAvailable) return stored;
+      }
+
+      const firstAvailable = choices.find((choice) => !choice.unavailable);
+      return firstAvailable?.key || '';
+    },
+
+    setSelectedVariantKey(message, index, value) {
+      const key = this.getProductSelectionKey(message, index);
+      const nextValue = String(value ?? '');
+      if (this.productSelectedOptions?.[key] === nextValue) return;
+      this.productSelectedOptions = {
+        ...(this.productSelectedOptions || {}),
+        [key]: nextValue,
+      };
+      if (this.productVariantMenu?.visible && this.productVariantMenu.key === key) {
+        this.productVariantMenu = {
+          ...this.productVariantMenu,
+          selectedKey: nextValue,
+        };
+      }
+    },
+
+    getSelectedVariant(product, message, index) {
+      const choices = this.getProductVariantChoices(product);
+      if (!choices.length) return null;
+      const selectedKey = this.getSelectedVariantKey(message, index, product);
+      return choices.find((choice) => choice.key === selectedKey)?.variant || choices[0]?.variant || null;
+    },
+
+    getSelectedVariantId(product, message, index) {
+      const selected = this.getSelectedVariant(product, message, index);
+      const fromSelected = this.shopifyNumericId(selected?.id || selected?.variant_id || selected?.variantId);
+      if (fromSelected) return fromSelected;
+      return null;
+    },
+
+    getSelectedVariantTitle(product, message, index) {
+      const selected = this.getSelectedVariant(product, message, index);
+      return this.getVariantLabel(selected) || '';
+    },
+
+    isSelectedVariantAvailable(product, message, index) {
+      if (this.isProductFullySoldOut(product)) return false;
+      const selected = this.getSelectedVariant(product, message, index);
+      if (selected) return this.isVariantAvailable(selected);
+      return this.getProductVariantChoices(product).length === 0;
+    },
+
+    getProductCardPriceRaw(product, message, index) {
+      const selected = this.getSelectedVariant(product, message, index);
+      if (selected?.price != null && selected.price !== '') return selected.price;
+      const item = this.unwrapProduct(product);
+      const direct = item?.price ?? item?.amount ?? item?.price_formatted ?? item?.variants?.[0]?.price ?? null;
+      if (direct != null && direct !== '') return direct;
+      const prices = this.parseProductPriceList(product);
+      return prices.length ? prices[0] : null;
+    },
+
+    getProductCardPrice(product, message, index) {
+      const selected = this.getSelectedVariant(product, message, index);
+      if (selected?.price != null && selected.price !== '') {
+        return this.formatProductPriceValue(selected.price, this.getProductCurrency(product));
+      }
+      return this.getProductDisplayPrice(product);
+    },
+
+    pickProductCompareAtRaw(source) {
+      if (!source || typeof source !== 'object') return null;
+      const candidates = [
+        source.compare_at_price,
+        source.compareAtPrice,
+        source.compare_at,
+        source.compareAt,
+        source.original_price,
+        source.originalPrice,
+        source.was_price,
+        source.wasPrice,
+        source.list_price,
+        source.listPrice,
+        source.compareAtPriceV2?.amount,
+        source.compare_at_price_v2?.amount,
+      ];
+      for (const candidate of candidates) {
+        if (candidate == null || candidate === '') continue;
+        return candidate;
+      }
+      return null;
+    },
+
+    getProductCardCompareAtPrice(product, message, index) {
+      const selected = this.getSelectedVariant(product, message, index);
+      const item = this.unwrapProduct(product);
+      let compareRaw = this.pickProductCompareAtRaw(selected) ?? this.pickProductCompareAtRaw(item);
+      if (compareRaw == null) {
+        const variants = this.getProductVariants(product);
+        for (const variant of variants) {
+          compareRaw = this.pickProductCompareAtRaw(variant);
+          if (compareRaw != null) break;
+        }
+      }
+      const compareNum = this.parseProductPriceNumber(compareRaw);
+      if (compareNum == null) return '';
+
+      const currentNum = this.parseProductPriceNumber(this.getProductCardPriceRaw(product, message, index));
+      if (currentNum != null && compareNum <= currentNum) return '';
+
+      return this.formatProductPriceValue(compareRaw, this.getProductCurrency(product));
+    },
+
+    getProductCardDiscountLabel(product, message, index) {
+      const selected = this.getSelectedVariant(product, message, index);
+      const item = this.unwrapProduct(product);
+      let compareRaw = this.pickProductCompareAtRaw(selected) ?? this.pickProductCompareAtRaw(item);
+      if (compareRaw == null) {
+        const variants = this.getProductVariants(product);
+        for (const variant of variants) {
+          compareRaw = this.pickProductCompareAtRaw(variant);
+          if (compareRaw != null) break;
+        }
+      }
+      const compare = this.parseProductPriceNumber(compareRaw);
+      const current = this.parseProductPriceNumber(this.getProductCardPriceRaw(product, message, index));
+      if (compare == null || current == null || compare <= current) return '';
+      const percent = Math.round((1 - current / compare) * 100);
+      if (percent < 1) return '';
+      return this.language === 'he' ? `${percent}% הנחה` : `${percent}% off`;
+    },
+
+    normalizePluginEilatPricing(raw) {
+      const value = raw && typeof raw === 'object' ? raw : {};
+      const enabled = value.enabled === true
+        || value.enabled === 'true'
+        || value.enabled === 1
+        || value.enabled === '1';
+      const mode = value.mode === 'percent_off' ? 'percent_off' : 'exclude_israel_vat';
+      const rateNum = Number(value.rate);
+      const rate = Number.isFinite(rateNum) && rateNum >= 0 && rateNum <= 100
+        ? rateNum
+        : (mode === 'percent_off' ? 0 : 18);
+      return { enabled, mode, rate };
+    },
+
+    isPluginEilatPricingEnabled() {
+      return Boolean(this.pluginEilatPricing?.enabled);
+    },
+
+    computeEilatAmount(israelAmount) {
+      if (!this.isPluginEilatPricingEnabled()) return null;
+      const amount = this.parseProductPriceNumber(israelAmount);
+      if (amount == null || amount < 0) return null;
+      const rate = Number(this.pluginEilatPricing?.rate);
+      const safeRate = Number.isFinite(rate) && rate >= 0 && rate <= 100 ? rate : 18;
+      if (this.pluginEilatPricing?.mode === 'percent_off') {
+        return Math.round(amount * (1 - safeRate / 100) * 100) / 100;
+      }
+      const divisor = 1 + safeRate / 100;
+      if (divisor <= 0) return null;
+      return Math.round((amount / divisor) * 100) / 100;
+    },
+
+    getProductCardEilatPrice(product, message, index) {
+      if (!this.isPluginEilatPricingEnabled()) return '';
+      const israelRaw = this.getProductCardPriceRaw(product, message, index);
+      const eilat = this.computeEilatAmount(israelRaw);
+      if (eilat == null) return '';
+      return this.formatProductPriceValue(eilat, this.getProductCurrency(product));
+    },
+
+    getProductCardIsraelPriceLabel() {
+      return this.language === 'he' ? 'ישראל' : 'Israel price';
+    },
+
+    getProductCardEilatPriceLabel() {
+      return this.language === 'he' ? 'אילת' : 'Eilat price';
+    },
+
+    getProductDetailClubShortLabel() {
+      return this.language === 'he' ? 'מועדון' : 'Club';
+    },
+
+    getProductDetailEilatPrice() {
+      const detail = this.productDetail;
+      if (!detail || !this.isPluginEilatPricingEnabled()) return '';
+      return this.getProductCardEilatPrice(detail.product, detail.message, detail.index);
+    },
+
+    getProductDetailEilatClubPrice() {
+      const detail = this.productDetail;
+      if (!detail || !this.isPluginEilatPricingEnabled()) return '';
+      return this.getProductCardEilatClubPrice(detail.product, detail.message, detail.index);
+    },
+
+    clubPriceRaw(source) {
+      if (!source || typeof source !== 'object') return null;
+      if (source.clubPrice != null && source.clubPrice !== '') return source.clubPrice;
+      return null;
+    },
+
+    resolveProductClubPriceRaw(product, message, index) {
+      const selected = this.getSelectedVariant(product, message, index);
+      const item = this.unwrapProduct(product);
+      let raw = this.clubPriceRaw(selected);
+      if (raw == null && !selected) {
+        raw = this.clubPriceRaw(item);
+        if (raw == null && Array.isArray(item?.clubPrices) && item.clubPrices[0] != null) {
+          raw = item.clubPrices[0];
+        }
+      }
+      const clubNum = this.parseProductPriceNumber(raw);
+      if (clubNum == null || clubNum <= 0) return null;
+      const currentNum = this.parseProductPriceNumber(this.getProductCardPriceRaw(product, message, index));
+      if (currentNum != null && clubNum >= currentNum) return null;
+      return {
+        raw,
+        currency: selected?.clubPriceCurrency || item?.clubPriceCurrency || this.getProductCurrency(product),
+      };
+    },
+
+    getProductCardClubPriceAmount(product, message, index) {
+      const resolved = this.resolveProductClubPriceRaw(product, message, index);
+      if (!resolved) return '';
+      return this.formatProductPriceValue(resolved.raw, resolved.currency);
+    },
+
+    getProductCardEilatClubPrice(product, message, index) {
+      if (!this.isPluginEilatPricingEnabled()) return '';
+      const resolved = this.resolveProductClubPriceRaw(product, message, index);
+      if (!resolved) return '';
+      const eilat = this.computeEilatAmount(resolved.raw);
+      if (eilat == null) return '';
+      return this.formatProductPriceValue(eilat, resolved.currency);
+    },
+
+    getProductCardClubPrice(product, message, index) {
+      const formatted = this.getProductCardClubPriceAmount(product, message, index);
+      if (!formatted) return '';
+      return this.language === 'he' ? `${formatted} מועדון` : `Club ${formatted}`;
+    },
+
+    getProductCardClubBadgeText(product, message, index) {
+      const israelFormatted = this.getProductCardClubPriceAmount(product, message, index);
+      if (!israelFormatted) return '';
+      if (!this.isPluginEilatPricingEnabled()) {
+        return this.language === 'he' ? `${israelFormatted} מועדון` : `Club ${israelFormatted}`;
+      }
+      const eilatFormatted = this.getProductCardEilatClubPrice(product, message, index);
+      if (!eilatFormatted) {
+        return this.language === 'he'
+          ? `${israelFormatted} מועדון בישראל`
+          : `Israel club ${israelFormatted}`;
+      }
+      // English needs the region word on the badge so Eilat vs Israel is clear in LTR.
+      if (this.clubBadgeShowEilat) {
+        return this.language === 'he'
+          ? `${eilatFormatted} מועדון באילת`
+          : `Eilat club ${eilatFormatted}`;
+      }
+      return this.language === 'he'
+        ? `${israelFormatted} מועדון בישראל`
+        : `Israel club ${israelFormatted}`;
+    },
+
+    syncClubBadgeRotation() {
+      this.stopClubBadgeRotation();
+      this.clubBadgeShowEilat = false;
+      // Only while chat is open - no background timer when the plugin is closed.
+      if (!this.isChatOpen || !this.isPluginEilatPricingEnabled()) return;
+      this.clubBadgeRotationTimer = setInterval(() => {
+        this.clubBadgeShowEilat = !this.clubBadgeShowEilat;
+      }, 3200);
+    },
+
+    stopClubBadgeRotation() {
+      if (!this.clubBadgeRotationTimer) return;
+      clearInterval(this.clubBadgeRotationTimer);
+      this.clubBadgeRotationTimer = null;
+    },
+
+    getProductCardAvailabilityTags(product, message, index) {
+      return [];
+    },
+
+    isProductCardPreOrder(product, message, index) {
+      if (this.isProductFullySoldOut(product)) return false;
+      const selected = this.getSelectedVariant(product, message, index);
+      const item = this.unwrapProduct(product);
+      if (selected && this.isProductFlagEnabled(selected.isOutOfStock)) return false;
+      return this.isProductFlagEnabled(selected?.isPreOrder) || this.isProductFlagEnabled(item?.isPreOrder);
+    },
+
+    buildProductCardCartPayload(product, index, message) {
+      const item = this.unwrapProduct(product);
+      const selected = this.getSelectedVariant(product, message, index);
+      const variantId = this.getSelectedVariantId(product, message, index)
+        || this.shopifyNumericId(selected?.id || selected?.variant_id || selected?.variantId)
+        || null;
+      const variantTitle = this.getSelectedVariantTitle(product, message, index);
+      return {
+        ...item,
+        id: this.getProductDisplayId(product, index),
+        variant_id: variantId,
+        variantId,
+        selectedVariantId: variantId,
+        selectedVariantTitle: variantTitle,
+        variant_title: variantTitle,
+        selectedVariant: selected || null,
+      };
+    },
+
+    addProductFromCard(product, index, message) {
+      if (!product || this.isProductCardInBag(product, index, message)) return;
+      return this.addPoweredByAssisHomeProduct(this.buildProductCardCartPayload(product, index, message), 'chat');
+    },
+
+    isProductCardInBag(product, index, message) {
+      return this.isProductInBag(this.buildProductCardCartPayload(product, index, message), index);
+    },
+
+    getProductAvailabilityTags(product) {
+      const item = this.unwrapProduct(product);
+      const isHe = this.language === 'he';
+      if (this.isProductFullySoldOut(product)) {
+        return [{ key: 'oos', kind: 'oos', text: isHe ? 'אזל מהמלאי' : 'Out of stock' }];
+      }
+      if (this.isProductFlagEnabled(item.isPreOrder)) {
+        return [{ key: 'preorder', kind: 'preorder', text: isHe ? 'הזמנה מוקדמת' : 'Pre-order' }];
+      }
+      return [];
+    },
+
+    normalizeDiscountCode(raw) {
+      return String(raw || '')
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9_-]/g, '')
+        .replace(/[_-]+/g, (match) => match[0])
+        .replace(/^[_-]+|[_-]+$/g, '');
+    },
+
+    normalizeDiscount(raw) {
+      if (raw == null || raw === '') return null;
+      if (typeof raw === 'string') {
+        const text = raw.trim();
+        if (!text) return null;
+        return { id: text, title: text, code: text, summary: '', type: 'discount_code' };
+      }
+      if (typeof raw !== 'object') return null;
+
+      const typeRaw = String(raw.type || '').trim().toLowerCase();
+      const type = typeRaw === 'general_discount' ? 'general_discount' : 'discount_code';
+      const id = raw.id != null && String(raw.id).trim() !== '' ? raw.id : null;
+      const title = String(raw.title || raw.name || '').trim();
+      const code = String(
+        raw.code || raw.coupon || raw.coupon_code || raw.discount_code || ''
+      ).trim();
+      const summary = String(raw.summary || raw.label || raw.description || '').trim();
+
+      if (type === 'general_discount') {
+        if (!title && !summary && id == null) return null;
+        return {
+          id: id != null ? id : (title || summary),
+          title,
+          code: '',
+          summary,
+          type,
+        };
+      }
+
+      if (!code && !title && id == null) return null;
+
+      return {
+        id: id != null ? id : (code || title),
+        title,
+        code,
+        summary,
+        type,
+      };
+    },
+
+    isGeneralDiscount(discount) {
+      return this.normalizeDiscount(discount)?.type === 'general_discount';
+    },
+
+    collectDiscountCandidates(value) {
+      let next = value;
+      if (typeof next === 'string') {
+        const trimmed = next.trim();
+        if (!trimmed) return [];
+        try {
+          next = JSON.parse(trimmed);
+        } catch {
+          return [trimmed];
+        }
+      }
+      if (Array.isArray(next)) return next;
+      if (next) return [next];
+      return [];
+    },
+
+    normalizeDiscountsFromWebsite(dataFromWebsite) {
+      const collected = this.collectDiscountCandidates(dataFromWebsite?.discounts);
+      const seen = new Set();
+      const discounts = [];
+      collected.forEach((item) => {
+        const discount = this.normalizeDiscount(item);
+        if (!discount) return;
+        const key = String(discount.id ?? discount.code);
+        if (seen.has(key)) return;
+        seen.add(key);
+        discounts.push(discount);
+      });
+      return discounts;
+    },
+
+    extractDiscountsFromText(text) {
+      const source = String(text || '');
+      if (!source.trim()) return [];
+      const seen = new Set();
+      const discounts = [];
+      const pushCode = (raw, percent = 0) => {
+        const code = this.normalizeDiscountCode(raw);
+        if (!code || code.length < 4 || seen.has(code)) return;
+        if (['DISCOUNT', 'COUPON', 'PROMO', 'CODE', 'OFF'].includes(code)) return;
+        seen.add(code);
+        discounts.push({ id: code, title: code, code, label: '', percent });
+      };
+
+      const percentMatch = source.match(/(\d+)\s*%(?:\s*off|\s*הנחה)?/i);
+      const percent = percentMatch ? Number(percentMatch[1]) : 0;
+
+      for (const match of source.matchAll(
+        /(?:coupon|promo|discount|code|קופון|קוד(?:\s*קופון)?)\s*[:#]?\s*([A-Za-z0-9][A-Za-z0-9_-]{2,254})/gi
+      )) {
+        pushCode(match[1], percent);
+      }
+
+      if (/(?:coupon|discount|code|קופון|הנחה|\d%\s*off)/i.test(source)) {
+        const bold = source.match(/\*\*([A-Za-z0-9][A-Za-z0-9_-]{2,254})\*\*/);
+        if (bold?.[1]) pushCode(bold[1], percent);
+      }
+
+      return discounts;
+    },
+
+    getMessageDiscounts(message) {
+      let discounts = [];
+      if (Array.isArray(message?.discounts) && message.discounts.length) {
+        discounts = message.discounts.map((item) => this.normalizeDiscount(item)).filter(Boolean);
+      } 
+      // else {
+      //   discounts = this.extractDiscountsFromText(message?.message);
+      // }
+      // TESTING ONLY: duplicate discounts so the carousel has enough cards.
+      // return discounts.length ? Array.from({ length: 4 }, () => discounts).flat() : discounts;
+      return discounts;
+    },
+
+    isShopifyGid(value) {
+      return /^gid:\/\/shopify\//i.test(String(value || '').trim());
+    },
+
+    looksLikeDiscountCode(value) {
+      const raw = String(value || '').trim();
+      if (!raw || this.isShopifyGid(raw)) return false;
+      return /^[A-Za-z0-9][A-Za-z0-9_-]{1,254}$/.test(raw);
+    },
+
+    getDiscountId(discount) {
+      const item = this.normalizeDiscount(discount);
+      return String(item?.id ?? '').trim();
+    },
+
+    getDiscountCode(discount) {
+      return String(this.normalizeDiscount(discount)?.code || '').trim();
+    },
+
+    getDiscountApplyValue(discount) {
+      const item = this.normalizeDiscount(discount);
+      if (!item || item.type === 'general_discount') return '';
+      if (this.looksLikeDiscountCode(item.code)) return item.code.trim();
+      if (this.looksLikeDiscountCode(item.title)) return item.title.trim();
+      if (this.looksLikeDiscountCode(item.id)) return String(item.id).trim();
+      return '';
+    },
+
+    getDiscountDisplayText(discount) {
+      const item = this.normalizeDiscount(discount);
+      if (!item) return '';
+      if (item.type === 'general_discount') {
+        return item.title || item.summary || '';
+      }
+      if (this.looksLikeDiscountCode(item.code)) return item.code;
+      if (item.title && !this.isShopifyGid(item.title)) return item.title;
+      if (this.looksLikeDiscountCode(item.id)) return String(item.id);
+      return item.code || item.title || '';
+    },
+
+    isDiscountApplied(discount) {
+      if (this.isGeneralDiscount(discount)) return false;
+      if (this.isDiscountInapplicable(discount)) return false;
+      const applied = this.normalizeDiscountCode(this.appliedDiscountCode);
+      const value = this.normalizeDiscountCode(this.getDiscountApplyValue(discount));
+      return Boolean(applied && value && applied === value);
+    },
+
+    isDiscountApplying(discount) {
+      if (this.isGeneralDiscount(discount)) return false;
+      const applying = this.normalizeDiscountCode(this.applyingDiscountCode);
+      const value = this.normalizeDiscountCode(this.getDiscountApplyValue(discount));
+      return Boolean(applying && value && applying === value);
+    },
+
+    isDiscountInapplicable(discount) {
+      if (this.isGeneralDiscount(discount)) return false;
+      const value = this.normalizeDiscountCode(this.getDiscountApplyValue(discount));
+      return Boolean(value && this.inapplicableDiscountCodes?.[value]);
+    },
+
+    getDiscountNote(discount) {
+      const item = this.normalizeDiscount(discount);
+      if (!item) return '';
+      if (item.type === 'general_discount') {
+        return String(item.summary || '').trim();
+      }
+      if (this.isDiscountApplied(discount)) {
+        return this.language === 'he' ? 'על הסל שלך' : 'On your bag';
+      }
+      return String(item.summary || '').trim();
+    },
+
+    attachDataFromWebsite(agentMessage, dataFromWebsite) {
+      if (!agentMessage || !dataFromWebsite || typeof dataFromWebsite !== 'object') return agentMessage;
+      try {
+        if (Array.isArray(dataFromWebsite.products) && dataFromWebsite.products.length) {
+          agentMessage.products = this.sortProductsByMessageOrder(
+            dataFromWebsite.products,
+            agentMessage.message
+          );
+        }
+        if (Array.isArray(dataFromWebsite.orders) && dataFromWebsite.orders.length) {
+          agentMessage.orders = dataFromWebsite.orders;
+        }
+        const discounts = this.normalizeDiscountsFromWebsite(dataFromWebsite);
+        if (discounts.length) {
+          agentMessage.discounts = discounts;
+        }
+      } catch (_) {
+        // Keep raw cards if sorting/normalize throws — never fail the message path.
+        if (Array.isArray(dataFromWebsite.products) && dataFromWebsite.products.length) {
+          agentMessage.products = dataFromWebsite.products;
+        }
+        if (Array.isArray(dataFromWebsite.orders) && dataFromWebsite.orders.length) {
+          agentMessage.orders = dataFromWebsite.orders;
+        }
+      }
+      this.attachOrderVerification(agentMessage, dataFromWebsite);
+      return agentMessage;
+    },
+
+    /** Merge website payloads so a later event without cards cannot wipe a pending products stash. */
+    mergePendingDataFromWebsite(existing, incoming) {
+      if (!incoming || typeof incoming !== 'object') return existing || null;
+      if (!existing || typeof existing !== 'object') return incoming;
+      const incomingProducts = Array.isArray(incoming.products) ? incoming.products : null;
+      const existingProducts = Array.isArray(existing.products) ? existing.products : null;
+      const incomingOrders = Array.isArray(incoming.orders) ? incoming.orders : null;
+      const existingOrders = Array.isArray(existing.orders) ? existing.orders : null;
+      return {
+        ...existing,
+        ...incoming,
+        products: (incomingProducts && incomingProducts.length)
+          ? incomingProducts
+          : existingProducts,
+        orders: (incomingOrders && incomingOrders.length)
+          ? incomingOrders
+          : existingOrders,
+        orderVerification: incoming.orderVerification
+          || incoming.order_verification
+          || existing.orderVerification
+          || existing.order_verification,
+        shouldShowOrderVerification: incoming.shouldShowOrderVerification === true
+          || incoming.should_show_order_verification === true
+          || existing.shouldShowOrderVerification === true
+          || existing.should_show_order_verification === true
+          || Boolean(
+            incoming.orderVerification
+            || incoming.order_verification
+            || existing.orderVerification
+            || existing.order_verification
+          ),
+      };
+    },
+
+    flushPendingDataFromWebsite(message) {
+      if (!message?.pendingDataFromWebsite) return;
+      this.attachDataFromWebsite(message, message.pendingDataFromWebsite);
+      message.pendingDataFromWebsite = null;
+    },
+
+    attachOrderVerification(agentMessage, payload) {
+      if (!agentMessage || !payload || typeof payload !== 'object') return agentMessage;
+      if (!this.pluginAllowOrderVerification) return agentMessage;
+      if (agentMessage.isHumanRequested === true && agentMessage.hideWhatsappInput !== true) {
+        return agentMessage;
+      }
+
+      const shouldShow = payload.shouldShowOrderVerification === true
+        || payload.should_show_order_verification === true;
+      const raw = payload.orderVerification || payload.order_verification;
+      if (!shouldShow && !(raw && typeof raw === 'object')) return agentMessage;
+
+      const normalized = normalizeOrderVerification(
+        raw && typeof raw === 'object' ? raw : {},
+        {
+          phonePrefix: this.phonePrefix,
+          selectedPhoneCountryIso: this.selectedPhoneCountryIso,
+          channelsMode: this.pluginOrderVerificationChannels,
+        }
+      );
+      if (normalized) {
+        if (!normalized.createdAt) {
+          const parsed = Date.parse(agentMessage.datetime || '');
+          normalized.createdAt = Number.isFinite(parsed) ? parsed : Date.now();
+        }
+        this.supersedeOlderOrderVerifications(agentMessage);
+        agentMessage.orderVerification = normalized;
+      }
+      return agentMessage;
+    },
+
+    supersedeOlderOrderVerifications(currentMessage) {
+      const messages = Array.isArray(this.chatMessages) ? this.chatMessages : [];
+      for (const message of messages) {
+        if (message === currentMessage) continue;
+        const verification = message?.orderVerification;
+        if (!verification || verification.verified || verification.expired) continue;
+        verification.expired = true;
+        verification.sending = false;
+        verification.verifying = false;
+      }
+    },
+
+    findPendingOrderVerificationMessage(payload = {}) {
+      const messageId = payload?.messageId || payload?.message_id || payload?.data?.messageId || payload?.data?.message_id;
+      const careRequestId = payload?.careRequestId || payload?.care_request_id || payload?.data?.careRequestId;
+      const messages = Array.isArray(this.chatMessages) ? this.chatMessages : [];
+
+      if (messageId != null) {
+        const byId = messages.find((message) => (
+          message?.orderVerification
+          && (message.id === messageId || message.datetime === messageId)
+        ));
+        if (byId) return byId;
+      }
+
+      for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const message = messages[i];
+        const verification = message?.orderVerification;
+        if (verification?.expired) continue;
+        if (verification?.sending || verification?.verifying) return message;
+      }
+
+      if (careRequestId != null && String(this.careRequestId) === String(careRequestId)) {
+        for (let i = messages.length - 1; i >= 0; i -= 1) {
+          const message = messages[i];
+          if (message?.orderVerification?.expired) continue;
+          if (message?.orderVerification && !message.orderVerification.verified) return message;
+        }
+      }
+
+      for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const message = messages[i];
+        if (message?.orderVerification?.expired) continue;
+        if (message?.orderVerification && !message.orderVerification.verified) return message;
+      }
+
+      return null;
+    },
+
+    handleOrderVerificationSendCodeSuccess(payload = {}) {
+      const message = this.findPendingOrderVerificationMessage(payload);
+      const verification = message?.orderVerification;
+      if (!verification) return;
+
+      const data = payload?.data && typeof payload.data === 'object' ? payload.data : payload;
+
+      if (data?.verificationId || data?.verification_id) {
+        verification.verificationId = String(data.verificationId || data.verification_id);
+      }
+      if (data?.maskedPhone || data?.masked_phone) {
+        verification.maskedPhone = String(data.maskedPhone || data.masked_phone);
+      }
+      if (data?.maskedEmail || data?.masked_email) {
+        verification.maskedEmail = String(data.maskedEmail || data.masked_email);
+      }
+
+      verification.codeSent = true;
+      verification.error = '';
+      verification.sending = false;
+      verification.pendingSendAt = null;
+      verification.resendAvailableAt = Date.now() + (60 * 1000);
+
+      const channel = String(verification.selectedChannel || data?.channel || payload?.channel || '').trim();
+      this.trackPluginEvent('order_verification_code_sent', {
+        channel: channel || undefined,
+        resend: Boolean(payload?.resend || data?.resend),
+      });
+    },
+
+    localizeOrderVerificationError(rawError, fallbackHe, fallbackEn) {
+      const raw = String(rawError || '').trim();
+      const isHe = this.language === 'he';
+      const known = {
+        'Invalid verification code': {
+          he: 'קוד אימות שגוי.',
+          en: 'Invalid verification code.',
+        },
+        'Verification code expired. Please request a new code.': {
+          he: 'פג תוקף קוד האימות. בקשו קוד חדש.',
+          en: 'Verification code expired. Please request a new code.',
+        },
+        'Too many failed attempts. Please request a new code.': {
+          he: 'יותר מדי ניסיונות כושלים. בקשו קוד חדש.',
+          en: 'Too many failed attempts. Please request a new code.',
+        },
+        'No verification code pending. Please request a new code.': {
+          he: 'אין קוד אימות ממתין. בקשו קוד חדש.',
+          en: 'No verification code pending. Please request a new code.',
+        },
+        'Verification code is required': {
+          he: 'יש להזין קוד אימות.',
+          en: 'Verification code is required.',
+        },
+        'Failed to verify code': {
+          he: 'לא הצלחנו לאמת את הקוד.',
+          en: 'Failed to verify code.',
+        },
+        'Failed to load orders for verification': {
+          he: 'לא הצלחנו לטעון הזמנות לאימות.',
+          en: 'Failed to load orders for verification.',
+        },
+        'Failed to send verification code': {
+          he: 'לא הצלחנו לשלוח קוד אימות. נסו שוב.',
+          en: 'We could not send a verification code. Please try again.',
+        },
+        'Failed to send WhatsApp verification code': {
+          he: 'לא הצלחנו לשלוח קוד אימות בוואטסאפ. נסו שוב.',
+          en: 'We could not send a WhatsApp verification code. Please try again.',
+        },
+        'Failed to send email verification code': {
+          he: 'לא הצלחנו לשלוח קוד אימות באימייל. נסו שוב.',
+          en: 'We could not send an email verification code. Please try again.',
+        },
+        'Invalid email format': {
+          he: 'כתובת האימייל אינה תקינה.',
+          en: 'Invalid email format.',
+        },
+        'Phone number must start with +': {
+          he: 'מספר הטלפון חייב להתחיל ב-+.',
+          en: 'Phone number must start with +.',
+        },
+        'Phone number must contain at least one digit': {
+          he: 'מספר הטלפון אינו תקין.',
+          en: 'Phone number must contain at least one digit.',
+        },
+      };
+      const mapped = known[raw];
+      if (mapped) return isHe ? mapped.he : mapped.en;
+      if (!raw) return isHe ? fallbackHe : fallbackEn;
+      // Backend errors are English - do not show them mixed into Hebrew UI.
+      if (isHe && !/[\u0590-\u05FF]/.test(raw)) return fallbackHe;
+      return raw;
+    },
+
+    handleOrderVerificationSendCodeError(payload = {}) {
+      const message = this.findPendingOrderVerificationMessage(payload);
+      const verification = message?.orderVerification;
+      if (!verification) return;
+
+      verification.sending = false;
+      verification.pendingSendAt = null;
+      verification.error = this.localizeOrderVerificationError(
+        payload?.error || payload?.message || payload?.data?.error,
+        'לא הצלחנו לשלוח קוד אימות. נסו שוב.',
+        'We could not send a verification code. Please try again.'
+      );
+
+      const channel = String(verification.selectedChannel || payload?.channel || '').trim();
+      this.trackPluginEvent('order_verification_send_failed', { channel: channel || undefined });
+    },
+
+    handleOrderVerificationVerifySuccess(payload = {}) {
+      const message = this.findPendingOrderVerificationMessage(payload);
+      const verification = message?.orderVerification;
+      if (!verification) return;
+
+      const data = payload?.data && typeof payload.data === 'object' ? payload.data : payload;
+      const rawOrders = Array.isArray(payload?.orders)
+        ? payload.orders
+        : (Array.isArray(data?.orders) ? data.orders : (data?.order ? [data.order] : []));
+      const orders = normalizeOrders(rawOrders);
+
+      verification.verifying = false;
+      verification.pendingVerifyAt = null;
+      verification.attemptsRemaining = null;
+      verification.error = '';
+
+      if (payload?.channel || data?.channel) {
+        verification.selectedChannel = String(payload.channel || data.channel);
+      }
+      if (payload?.email || data?.email) {
+        verification.maskedEmail = verification.maskedEmail || String(payload.email || data.email);
+      }
+      if (payload?.phone || data?.phone) {
+        verification.maskedPhone = verification.maskedPhone || String(payload.phone || data.phone);
+      }
+
+      if (!orders.length) {
+        verification.verified = false;
+        verification.verifiedVia = null;
+        verification.codeSent = false;
+        verification.codeInput = '';
+        verification.noOrdersFound = true;
+        verification.selectedOrderIndex = null;
+        message.orders = [];
+        message.providerOrders = [];
+        const channel = String(verification.selectedChannel || payload?.channel || data?.channel || '').trim();
+        this.trackPluginEvent('order_verification_no_orders', { channel: channel || undefined });
+        return;
+      }
+
+      verification.noOrdersFound = false;
+      verification.verifiedVia = 'code';
+      verification.verified = true;
+      const verifyChannel = String(verification.selectedChannel || payload?.channel || data?.channel || '').trim();
+      this.trackPluginEvent('order_verification_succeeded', {
+        channel: verifyChannel || undefined,
+        order_count: orders.length,
+      });
+      message.orders = orders;
+      message.providerOrders = rawOrders;
+      // BE will also update contact and emit update_contact_info_success — don't request an agent.
+      this.skipRequireAgentFromOrderVerification = true;
+
+      if (orders.length === 1) {
+        verification.selectedOrderIndex = 0;
+      } else {
+        const mentionedIndex = findExplicitlyMentionedOrderIndex(this.lastClientMessageText, orders);
+        verification.selectedOrderIndex = mentionedIndex != null ? mentionedIndex : null;
+      }
+
+      if (orders.length > 1 && verification.selectedOrderIndex == null) {
+        verification.deferOrderUi = false;
+        this.expandOrdersPanel();
+      } else {
+        verification.deferOrderUi = true;
+        this.ordersPanelExpanded = false;
+      }
+
+      if (!verification.customerName) {
+        verification.customerName = extractCustomerNameFromOrders(rawOrders)
+          || extractCustomerNameFromOrders(orders);
+      }
+
+      if (this.socket) {
+        this.loadingIndicator = true;
+        this.socket.emit('resend-order-question-to-ai-after-verified', {
+          careRequestId: this.careRequestId,
+          question: this.lastClientMessageText || '',
+          orders: rawOrders,
+          language: this.language,
+          datetime: new Date().toISOString(),
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        });
+      } else if (verification.deferOrderUi) {
+        this.$nextTick(() => this.raiseOrdersAfterAiText(message));
+      }
+    },
+
+    getVerifiedOrdersForOutbound() {
+      const messages = Array.isArray(this.chatMessages) ? this.chatMessages : [];
+      for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const message = messages[i];
+        if (!message?.orderVerification?.verified) continue;
+        if (Array.isArray(message.providerOrders) && message.providerOrders.length) {
+          return message.providerOrders;
+        }
+        if (Array.isArray(message.orders) && message.orders.length) {
+          return message.orders;
+        }
+      }
+      return null;
+    },
+
+    handleResendOrderQuestionAfterVerifiedSuccess(payload = {}) {
+      if (payload?.careRequestId) {
+        this.careRequestId = payload.careRequestId;
+      }
+
+      // AI reply may arrive on this event, or separately via chat_message / stream.
+      // if (payload?.message || payload?.messages || payload?.shouldShowOrderVerification || payload?.should_show_order_verification) {
+      //   this.handleReceivedMessage(payload);
+      //   return;
+      // }
+
+      this.loadingIndicator = false;
+    },
+
+    handleResendOrderQuestionAfterVerifiedError(payload = {}) {
+      this.loadingIndicator = false;
+
+      const error = payload?.error
+        || payload?.message
+        || payload?.data?.error
+        || this.defaultErrorMessage;
+
+      this.errorWithAiIntervention = error;
+      this.errosInChat = error;
+
+      setTimeout(() => {
+        if (this.errosInChat === error) {
+          this.errosInChat = null;
+        }
+      }, 3000);
+
+      // AI follow-up failed - still show deferred verified orders locally.
+      const messages = Array.isArray(this.chatMessages) ? this.chatMessages : [];
+      for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const message = messages[i];
+        if (!message?.orderVerification?.verified) continue;
+        if (!this.getNormalizedOrders(message).length) continue;
+        this.raiseOrdersAfterAiText(message);
+        break;
+      }
+    },
+
+    handleOrderVerificationVerifyError(payload = {}) {
+      const message = this.findPendingOrderVerificationMessage(payload);
+      const verification = message?.orderVerification;
+      if (!verification) return;
+
+      verification.verifying = false;
+      verification.pendingVerifyAt = null;
+
+      const attemptsRemaining = payload?.attemptsRemaining ?? payload?.attempts_remaining ?? payload?.data?.attemptsRemaining;
+      if (attemptsRemaining != null && attemptsRemaining !== '') {
+        verification.attemptsRemaining = Number(attemptsRemaining);
+      }
+
+      const baseError = this.localizeOrderVerificationError(
+        payload?.error || payload?.message || payload?.data?.error,
+        'קוד האימות שגוי או שפג תוקפו.',
+        'The verification code is invalid or expired.'
+      );
+
+      if (verification.attemptsRemaining != null && Number.isFinite(verification.attemptsRemaining)) {
+        const attemptsText = this.language === 'he'
+          ? `נותרו ${verification.attemptsRemaining} ניסיונות.`
+          : `${verification.attemptsRemaining} attempts remaining.`;
+        verification.error = `${baseError} ${attemptsText}`.trim();
+      } else {
+        verification.error = baseError;
+      }
+
+      this.trackPluginEvent('order_verification_code_rejected', {
+        channel: String(verification.selectedChannel || '').trim() || undefined,
+        attempts_remaining: verification.attemptsRemaining,
+      });
+    },
+
+    getNormalizedOrders(message) {
+      return normalizeOrders(message?.orders || []);
+    },
+
+    needsVerifiedOrderSelection(message) {
+      const verification = message?.orderVerification;
+      if (!verification?.verified) return false;
+      const orders = this.getNormalizedOrders(message);
+      return orders.length > 1 && verification.selectedOrderIndex == null;
+    },
+
+    showVerifiedOrderChange(message) {
+      const verification = message?.orderVerification;
+      if (!verification?.verified) return false;
+      const orders = this.getNormalizedOrders(message);
+      return orders.length > 1 && verification.selectedOrderIndex != null;
+    },
+
+    getDisplayedOrders(message) {
+      const orders = this.getNormalizedOrders(message);
+      const verification = message?.orderVerification;
+      if (!verification?.verified || orders.length <= 1) return orders;
+      if (verification.selectedOrderIndex == null) return [];
+      const selected = orders[verification.selectedOrderIndex];
+      return selected ? [selected] : [];
+    },
+
+    selectVerifiedOrder(message, index) {
+      const verification = message?.orderVerification;
+      if (!verification?.verified) return;
+      const orders = this.getNormalizedOrders(message);
+      if (index < 0 || index >= orders.length) return;
+      verification.selectedOrderIndex = index;
+      verification.error = '';
+      this.trackPluginEvent('order_selected', {
+        order_number: this.clipPluginEventText(orders[index]?.name || orders[index]?.orderNumber || orders[index]?.order_number || '', 40),
+      });
+      this.expandOrdersPanel();
+      this.$nextTick(() => this.scheduleProductCarouselOverflowSync());
+    },
+
+    expandOrdersPanel() {
+      this.ordersPanelExpanded = true;
+      this.$nextTick(() => this.scheduleProductCarouselOverflowSync());
+    },
+
+    openLargeOrderView() {
+      this.ordersPanelExpanded = true;
+      this.$nextTick(() => {
+        const el = this.$el?.querySelector?.('[data-orders-preview="active"]');
+        el?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+      });
+    },
+
+    raiseSavedOrders() {
+      this.closeOrderDetailsPopup();
+      this.openLargeOrderView();
+    },
+
+    togglePinnedOrderTab() {
+      this.closePinnedOrderPicker();
+      if (this._pinnedHoverLeaveTimer) {
+        clearTimeout(this._pinnedHoverLeaveTimer);
+        this._pinnedHoverLeaveTimer = null;
+      }
+      this.pinnedOrderHoverOpen = false;
+      if (this.ordersPanelExpanded) {
+        this.collapseOrdersPanel();
+        return;
+      }
+      this.raiseSavedOrders();
+    },
+
+    onPinnedOrderHoverEnter() {
+      if (this.pinnedOrderPickerOpen) return;
+      if (this._pinnedHoverLeaveTimer) {
+        clearTimeout(this._pinnedHoverLeaveTimer);
+        this._pinnedHoverLeaveTimer = null;
+      }
+      this.pinnedOrderHoverOpen = true;
+    },
+
+    onPinnedOrderHoverLeave() {
+      if (this._pinnedHoverLeaveTimer) clearTimeout(this._pinnedHoverLeaveTimer);
+      this._pinnedHoverLeaveTimer = setTimeout(() => {
+        this.pinnedOrderHoverOpen = false;
+        this._pinnedHoverLeaveTimer = null;
+      }, 160);
+    },
+
+    togglePinnedOrderPicker() {
+      if (this._pinnedHoverLeaveTimer) {
+        clearTimeout(this._pinnedHoverLeaveTimer);
+        this._pinnedHoverLeaveTimer = null;
+      }
+      this.pinnedOrderHoverOpen = false;
+      if (this.pinnedOrderPickerOpen) {
+        this.closePinnedOrderPicker();
+        return;
+      }
+      this.pinnedOrderPickerOpen = true;
+      this.$nextTick(() => {
+        document.addEventListener('pointerdown', this.onPinnedOrderPickerPointerDown, true);
+      });
+    },
+
+    closePinnedOrderPicker() {
+      if (!this.pinnedOrderPickerOpen) return;
+      this.pinnedOrderPickerOpen = false;
+      document.removeEventListener('pointerdown', this.onPinnedOrderPickerPointerDown, true);
+    },
+
+    onPinnedOrderPickerPointerDown(event) {
+      if (event.target?.closest?.('.assis-order-pinned-group')) return;
+      this.closePinnedOrderPicker();
+    },
+
+    selectFromPinnedOrderPicker(index) {
+      const message = this.activeOrdersMessage;
+      this.closePinnedOrderPicker();
+      if (!message) return;
+      this.selectVerifiedOrder(message, index);
+    },
+
+    onOrderVerificationRestart() {
+      this.collapseOrdersPanel();
+      this.closeOrderDetailsPopup();
+    },
+
+    relocateVerifiedOrdersUnderMessage(targetMessage) {
+      if (!targetMessage || !Array.isArray(this.chatMessages)) return false;
+      for (const source of this.chatMessages) {
+        if (source === targetMessage) continue;
+        const verification = source?.orderVerification;
+        if (!verification?.verified || verification.expired || verification.displayOnly) continue;
+        const orders = Array.isArray(source.orders) ? source.orders : [];
+        const providerOrders = Array.isArray(source.providerOrders) ? source.providerOrders : [];
+        if (!orders.length && !providerOrders.length) continue;
+
+        targetMessage.orders = orders;
+        targetMessage.providerOrders = providerOrders;
+        targetMessage.orderVerification = {
+          verified: true,
+          displayOnly: true,
+          selectedOrderIndex: verification.selectedOrderIndex,
+          expired: false,
+          selectedChannel: verification.selectedChannel || null,
+          maskedPhone: verification.maskedPhone || '',
+          maskedEmail: verification.maskedEmail || '',
+        };
+
+        // Keep verification documentation on the source message; only move the order cards.
+        source.orders = [];
+        source.providerOrders = [];
+        return true;
+      }
+      return false;
+    },
+
+    raiseOrdersAfterAiText(targetMessage) {
+      if (!targetMessage) return;
+      const messages = Array.isArray(this.chatMessages) ? this.chatMessages : [];
+      for (const source of messages) {
+        if (source?.orderVerification?.deferOrderUi) {
+          source.orderVerification.deferOrderUi = false;
+        }
+      }
+      const relocated = this.relocateVerifiedOrdersUnderMessage(targetMessage);
+      const hasOrders = this.getNormalizedOrders(targetMessage).length > 0;
+      if (!relocated && !hasOrders) return;
+      this.$nextTick(() => {
+        this.expandOrdersPanel();
+        this.scrollToBottom();
+      });
+    },
+
+    toggleOrderDetailsPopup() {
+      if (this.orderDetailsPopupOpen) {
+        this.closeOrderDetailsPopup();
+        return;
+      }
+      this.orderDetailsPopupOpen = true;
+      document.addEventListener('keydown', this.onOrderPopupKeydown);
+      document.addEventListener('pointerdown', this.onOrderPopupPointerDown, true);
+    },
+
+    closeOrderDetailsPopup() {
+      this.orderDetailsPopupOpen = false;
+      document.removeEventListener('keydown', this.onOrderPopupKeydown);
+      document.removeEventListener('pointerdown', this.onOrderPopupPointerDown, true);
+    },
+
+    onOrderPopupKeydown(event) {
+      if (event.key === 'Escape') this.closeOrderDetailsPopup();
+    },
+
+    onOrderPopupPointerDown(event) {
+      const root = this.$refs.orderDetailsPopup;
+      if (root?.contains?.(event.target)) return;
+      if (event.target?.closest?.('.assis-order-pinned-group')) return;
+      this.closeOrderDetailsPopup();
+    },
+
+    selectVerifiedOrderFromPopup(message, index) {
+      const verification = message?.orderVerification;
+      if (!verification?.verified) return;
+      const orders = this.getNormalizedOrders(message);
+      if (index < 0 || index >= orders.length) return;
+      verification.selectedOrderIndex = index;
+      verification.error = '';
+      this.trackPluginEvent('order_selected', {
+        order_number: this.clipPluginEventText(orders[index]?.name || orders[index]?.orderNumber || orders[index]?.order_number || '', 40),
+      });
+    },
+
+    collapseOrdersPanel() {
+      this.closePinnedOrderPicker();
+      this.ordersPanelExpanded = false;
+    },
+
+    showOrderVerificationCard(message) {
+      if (!this.pluginAllowOrderVerification) return false;
+      const verification = message?.orderVerification;
+      if (!verification || this.isMessageTextRevealing(message)) return false;
+      if (verification.displayOnly) return false;
+      if (message.isHumanRequested === true && message.hideWhatsappInput !== true) return false;
+      return true;
+    },
+
+    showOrderInMessage(message) {
+      if (!this.pluginAllowOrderVerification) return false;
+      if (!message) return false;
+      const verification = message.orderVerification;
+      if (verification?.expired) return false;
+      if (verification?.deferOrderUi && !this.needsVerifiedOrderSelection(message)) return false;
+      if (verification?.verified && !verification.displayOnly) {
+        if (this.needsVerifiedOrderSelection(message)) return true;
+        return this.getDisplayedOrders(message).length > 0;
+      }
+      if (verification && !verification.displayOnly) return false;
+      const messages = Array.isArray(this.chatMessages) ? this.chatMessages : [];
+      const verifiedCard = messages.some((item) => {
+        const card = item?.orderVerification;
+        if (!card?.verified || card.expired || card.displayOnly) return false;
+        return this.needsVerifiedOrderSelection(item) || this.getDisplayedOrders(item).length > 0;
+      });
+      if (verifiedCard) return false;
+      if (message !== this.activeOrdersMessage) return false;
+      if (verification?.displayOnly && verification.verified) {
+        if (this.needsVerifiedOrderSelection(message)) return true;
+        return this.getDisplayedOrders(message).length > 0;
+      }
+      if (this.needsVerifiedOrderSelection(message)) return true;
+      return this.getDisplayedOrders(message).length > 0;
+    },
+
+    showInlineOrderPreview(message) {
+      if (!this.showOrderInMessage(message)) return false;
+      if (this.ordersPanelExpanded || this.needsVerifiedOrderSelection(message)) return false;
+      return true;
+    },
+
+    getInlineOrderPreviewHeading(message) {
+      const orders = this.getDisplayedOrders(message);
+      if (orders.length === 1) return this.getOrderDisplayNumber(orders[0]);
+      if (!orders.length) return this.language === 'he' ? 'הזמנה' : 'Order';
+      return this.language === 'he' ? `${orders.length} הזמנות` : `${orders.length} orders`;
+    },
+
+    getInlineOrderPreviewOrder(message) {
+      return this.getDisplayedOrders(message)[0] || null;
+    },
+
+    getInlineOrderPreviewItemCountLabel(order) {
+      const count = Number(order?.itemCount)
+        || this.getOrderLineItems(order).reduce((acc, item) => acc + (Number(item?.quantity) || 0), 0);
+      if (!count) return '';
+      if (this.language === 'he') {
+        return count === 1 ? 'פריט אחד' : `${count} פריטים`;
+      }
+      return count === 1 ? '1 item' : `${count} items`;
+    },
+
+    clearVerifiedOrderSelection(message) {
+      const verification = message?.orderVerification;
+      if (!verification?.verified) return;
+      verification.selectedOrderIndex = null;
+      this.trackPluginEvent('order_selection_cleared');
+    },
+
+    getOrderCardKey(order, index) {
+      return String(order?.id || order?.orderNumber || order?.name || `order-${index}`);
+    },
+
+    getOrderDisplayNumber(order) {
+      const raw = String(order?.orderNumber || order?.name || '').trim();
+      if (!raw) return this.language === 'he' ? 'הזמנה' : 'Order';
+      return raw.startsWith('#') ? raw : `#${raw.replace(/^#+/, '')}`;
+    },
+
+    getOrderLineItems(order) {
+      return Array.isArray(order?.lineItems) ? order.lineItems : [];
+    },
+
+    getOrderPreviewImage(order) {
+      const items = this.getOrderLineItems(order);
+      for (const item of items) {
+        const imageUrl = String(item?.imageUrl || '').trim();
+        if (imageUrl) return imageUrl;
+      }
+      return '';
+    },
+
+    getOrderPreviewTitle(order) {
+      const items = this.getOrderLineItems(order);
+      return String(items[0]?.title || this.getOrderDisplayNumber(order)).trim();
+    },
+
+    getOrderItemQuantityLabel(quantity) {
+      return `×${Number(quantity) || 1}`;
+    },
+
+    getOrderItemLineTotal(item) {
+      if (item?.lineTotal != null && item.lineTotal !== '') return item.lineTotal;
+      const price = this.parseProductPriceNumber(item?.price);
+      const qty = Number(item?.currentQuantity ?? item?.quantity ?? 1) || 1;
+      if (price == null) return null;
+      return price * qty;
+    },
+
+    hasOrderItemUnitDiscount(item) {
+      const price = this.parseProductPriceNumber(item?.price);
+      const original = this.parseProductPriceNumber(item?.originalPrice);
+      if (price == null || original == null) return false;
+      return Number(original) !== Number(price);
+    },
+
+    getOrderItemQuantityPriceLabel(item, order) {
+      const qty = Number(item?.currentQuantity ?? item?.quantity ?? 1) || 1;
+      const currency = item?.currency || order?.currency || '';
+      const priceLabel = this.formatOrderPriceValue(item?.price, currency);
+      if (!priceLabel) return `${qty} x`;
+      if (!this.hasOrderItemUnitDiscount(item)) {
+        return `${qty} x ${priceLabel}`;
+      }
+      const originalLabel = this.formatOrderPriceValue(item?.originalPrice, currency);
+      return originalLabel
+        ? `${qty} x ${originalLabel} → ${priceLabel}`
+        : `${qty} x ${priceLabel}`;
+    },
+
+    getOrderItemExplicitDiscounts(item) {
+      return (Array.isArray(item?.discounts) ? item.discounts : []).filter((discount) => (
+        String(discount?.targetSelection || discount?.discountApplication?.targetSelection || '')
+          .toLowerCase() === 'explicit'
+      ));
+    },
+
+    getOrderItemImplicitDiscounts(item) {
+      return (Array.isArray(item?.discounts) ? item.discounts : []).filter((discount) => (
+        String(discount?.targetSelection || discount?.discountApplication?.targetSelection || '')
+          .toLowerCase() !== 'explicit'
+      ));
+    },
+
+    getOrderItemDisplayedDiscounts(item) {
+      return [
+        ...this.getOrderItemExplicitDiscounts(item),
+        ...this.getOrderItemImplicitDiscounts(item),
+      ];
+    },
+
+    getOrderItemDiscountLabel(discount) {
+      return String(
+        discount?.code
+        || discount?.title
+        || discount?.label
+        || discount?.discountApplication?.code
+        || discount?.discountApplication?.title
+        || (this.language === 'he' ? 'הנחה' : 'Discount')
+      ).trim();
+    },
+
+    getOrderImplicitPaymentDiscounts(order) {
+      return (Array.isArray(order?.discounts) ? order.discounts : []).filter((discount) => (
+        String(discount?.targetSelection || '').toLowerCase() !== 'explicit'
+      ));
+    },
+
+    getOrderExplicitDiscountAmount(order) {
+      let total = 0;
+      for (const item of this.getOrderLineItems(order)) {
+        for (const discount of this.getOrderItemExplicitDiscounts(item)) {
+          const amount = this.parseProductPriceNumber(discount?.amount);
+          if (amount != null) total += amount;
+        }
+      }
+      return total;
+    },
+
+    // Match OrderDetailView: payment.discount - sum(explicit item allocations)
+    getOrderTotalDiscountsAmount(order) {
+      const all = this.parseProductPriceNumber(order?.discountAmount) ?? 0;
+      const explicit = this.getOrderExplicitDiscountAmount(order);
+      const value = Number(all) - Number(explicit);
+      return Number.isFinite(value) ? Number(value.toFixed(2)) : 0;
+    },
+
+    formatOrderPriceValue(raw, currency) {
+      if (raw == null || raw === '') return '';
+      return this.formatProductPriceValue(raw, currency);
+    },
+
+    getOrderTotalLabel(order) {
+      return this.formatOrderPriceValue(order?.total, order?.currency);
+    },
+
+    getOrderDiscountLabels(order) {
+      return this.getOrderImplicitPaymentDiscounts(order)
+        .map((discount) => {
+          const name = String(discount?.code || discount?.title || discount?.label || '').trim();
+          if (!name) return '';
+          if (discount?.percentage != null) return `${name} (${discount.percentage}%)`;
+          const amount = this.formatOrderPriceValue(discount?.amount, discount?.currency || order?.currency);
+          return amount ? `${name} (${amount})` : name;
+        })
+        .filter(Boolean);
+    },
+
+    getOrderTotals(order) {
+      const rows = [];
+      const currency = order?.currency || '';
+      const itemCount = Number(order?.itemCount)
+        || this.getOrderLineItems(order).reduce((acc, item) => acc + (Number(item?.quantity) || 0), 0);
+      const subtotal = this.formatOrderPriceValue(order?.subtotal, currency);
+      const shipping = this.formatOrderPriceValue(order?.shippingAmount, currency);
+      const total = this.formatOrderPriceValue(order?.total, currency);
+      const totalDiscountsAmount = this.getOrderTotalDiscountsAmount(order);
+      const discount = this.formatOrderPriceValue(totalDiscountsAmount, currency);
+      const implicitPaymentDiscounts = this.getOrderImplicitPaymentDiscounts(order);
+
+      if (subtotal) {
+        rows.push({
+          label: this.language === 'he'
+            ? `סכום ביניים (${itemCount} פריטים)`
+            : `Subtotal (${itemCount} items)`,
+          value: subtotal,
+        });
+      }
+      if (discount && totalDiscountsAmount > 0) {
+        rows.push({
+          label: this.language === 'he' ? 'הנחה' : 'Discount',
+          value: `-${discount}`,
+        });
+      }
+      for (const entry of implicitPaymentDiscounts) {
+        const name = String(entry?.code || entry?.title || entry?.label || '').trim();
+        if (!name) continue;
+        let value = '';
+        if (entry?.percentage != null) {
+          value = `-${entry.percentage}%`;
+        } else if (entry?.amount != null && entry.amount !== '') {
+          const amountLabel = this.formatOrderPriceValue(entry.amount, entry.currency || currency);
+          value = amountLabel ? `-${amountLabel}` : '';
+        }
+        if (!value) continue;
+        rows.push({
+          label: `${name}:`,
+          value,
+          nested: true,
+        });
+      }
+      if (shipping) {
+        rows.push({
+          label: this.language === 'he' ? 'משלוח' : 'Shipping',
+          value: shipping,
+        });
+      }
+      if (total) {
+        rows.push({
+          label: this.language === 'he' ? 'סה״כ' : 'Total',
+          value: total,
+          strong: true,
+        });
+      }
+      return rows;
+    },
+
+    getOrderDisplayDate(order) {
+      const raw = order?.createdAt;
+      if (!raw) return '';
+      const date = new Date(raw);
+      if (Number.isNaN(date.getTime())) return '';
+      try {
+        return date.toLocaleDateString(this.language === 'he' ? 'he-IL' : 'en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+        });
+      } catch (_) {
+        return date.toISOString().slice(0, 10);
+      }
+    },
+
+    getOrderLocationLabel(order) {
+      const parts = [order?.shippingCity, order?.shippingCountry].filter(Boolean);
+      return parts.join(', ');
+    },
+
+    translateOrderStatus(status) {
+      const normalized = String(status || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+      if (!normalized) return '';
+      if (this.language === 'he') {
+        const map = {
+          fulfilled: 'נשלח',
+          unfulfilled: 'טרם נשלח',
+          completed: 'הושלם',
+          processing: 'בטיפול',
+          on_hold: 'בהשהיה',
+          pending_payment: 'ממתין לתשלום',
+          failed: 'נכשל',
+          partial: 'נשלח חלקית',
+          partially_fulfilled: 'נשלח חלקית',
+          request_declined: 'בקשה נדחתה',
+          success: 'נשלח',
+          delivered: 'נמסר',
+          in_transit: 'בדרך',
+          out_for_delivery: 'יצא למשלוח',
+          carrier_picked_up: 'נאסף ע״י השליח',
+          confirmed: 'אושר',
+          ready_for_pickup: 'מוכן לאיסוף',
+          self_pickup: 'איסוף עצמי',
+          attempted_delivery: 'ניסיון מסירה',
+          delayed: 'מתעכב',
+          failure: 'כשל במסירה',
+          paid: 'שולם',
+          unpaid: 'לא שולם',
+          pending: 'ממתין',
+          partially_paid: 'שולם חלקית',
+          expired: 'פג תוקף',
+          refunded: 'הוחזר',
+          partially_refunded: 'הוחזר חלקית',
+          voided: 'בוטל',
+          cancelled: 'בוטל',
+          canceled: 'בוטל',
+        };
+        return map[normalized] || status.replace(/_/g, ' ');
+      }
+      return String(status).replace(/_/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase());
+    },
+
+    normalizeOrderStatusKey(status) {
+      return String(status || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+    },
+
+    getOrderFulfillmentStatusRaw(order) {
+      return String(
+        order?.fulfillmentStatus
+        || order?.fulfillment?.status
+        || ''
+      ).trim();
+    },
+
+    getOrderPaymentStatusRaw(order) {
+      return String(order?.financialStatus || '').trim();
+    },
+
+    getOrderDeliveryStatusRaw(order) {
+      return String(
+        order?.deliveryStatus
+        || order?.fulfillment?.deliveryStatus
+        || ''
+      ).trim();
+    },
+
+    getOrderFulfillmentStatusLabel(order) {
+      const status = this.getOrderFulfillmentStatusRaw(order);
+      return status ? this.translateOrderStatus(status) : '';
+    },
+
+    getOrderPaymentStatusLabel(order) {
+      const status = this.getOrderPaymentStatusRaw(order);
+      return status ? this.translateOrderStatus(status) : '';
+    },
+
+    getOrderDeliveryStatusLabel(order) {
+      const status = this.getOrderDeliveryStatusRaw(order);
+      return status ? this.translateOrderStatus(status) : '';
+    },
+
+    // Kept for older call sites / selection summary fallbacks.
+    getOrderStatusLabel(order) {
+      return this.getOrderDeliveryStatusLabel(order)
+        || this.getOrderFulfillmentStatusLabel(order)
+        || this.getOrderPaymentStatusLabel(order);
+    },
+
+    getOrderFinancialStatusLabel(order) {
+      return this.getOrderPaymentStatusLabel(order);
+    },
+
+    getOrderFulfillmentStatusColor(order) {
+      switch (this.normalizeOrderStatusKey(this.getOrderFulfillmentStatusRaw(order))) {
+        case 'FULFILLED':
+        case 'COMPLETED':
+          return 'indigo';
+        case 'UNFULFILLED':
+        case 'PROCESSING':
+        case 'ON_HOLD':
+        case 'PENDING_PAYMENT':
+          return 'amber';
+        case 'CANCELLED':
+        case 'CANCELED':
+        case 'FAILED':
+          return 'red';
+        case 'REFUNDED':
+          return 'green';
+        case 'PARTIAL':
+        case 'PARTIALLY_FULFILLED':
+          return 'yellow';
+        case 'REQUEST_DECLINED':
+          return 'red';
+        default:
+          return 'gray';
+      }
+    },
+
+    getOrderPaymentStatusColor(order) {
+      switch (this.normalizeOrderStatusKey(this.getOrderPaymentStatusRaw(order))) {
+        case 'PAID':
+          return 'blue';
+        case 'UNPAID':
+        case 'PENDING':
+        case 'PARTIALLY_PAID':
+          return 'amber';
+        case 'EXPIRED':
+          return 'red';
+        case 'REFUNDED':
+        case 'PARTIALLY_REFUNDED':
+          return 'green';
+        default:
+          return 'gray';
+      }
+    },
+
+    getOrderDeliveryStatusColor(order) {
+      switch (this.normalizeOrderStatusKey(this.getOrderDeliveryStatusRaw(order))) {
+        case 'DELIVERED':
+          return 'indigo';
+        case 'IN_TRANSIT':
+        case 'OUT_FOR_DELIVERY':
+        case 'CARRIER_PICKED_UP':
+          return 'amber';
+        case 'CONFIRMED':
+        case 'READY_FOR_PICKUP':
+        case 'SELF_PICKUP':
+          return 'yellow';
+        case 'ATTEMPTED_DELIVERY':
+          return 'orange';
+        case 'DELAYED':
+        case 'FAILURE':
+          return 'red';
+        default:
+          return 'gray';
+      }
+    },
+
+    getOrderFulfillmentRows(order) {
+      const fulfillment = order?.fulfillment || {};
+      const rows = [];
+      const deliveryStatus = String(
+        fulfillment.deliveryStatus
+        || order?.deliveryStatus
+        || ''
+      ).trim();
+      const shippingStatus = deliveryStatus
+        || String(order?.fulfillmentStatus || fulfillment.status || '').trim();
+      const status = shippingStatus ? this.translateOrderStatus(shippingStatus) : '';
+      const carrier = String(fulfillment.carrier || '').trim();
+      const trackingNumber = String(fulfillment.trackingNumber || '').trim();
+      const trackingUrl = String(fulfillment.trackingUrl || '').trim();
+      const eta = fulfillment.estimatedDelivery
+        ? this.getOrderDisplayDate({ createdAt: fulfillment.estimatedDelivery })
+        : '';
+
+      if (status) {
+        rows.push({
+          label: this.language === 'he' ? 'סטטוס משלוח' : 'Shipping status',
+          value: status,
+        });
+      }
+      if (carrier) {
+        rows.push({
+          label: this.language === 'he' ? 'חברת משלוחים' : 'Carrier',
+          value: carrier,
+        });
+      }
+      if (trackingNumber) {
+        rows.push({
+          label: this.language === 'he' ? 'מספר מעקב' : 'Tracking number',
+          value: trackingNumber,
+          href: trackingUrl || null,
+        });
+      } else if (trackingUrl) {
+        rows.push({
+          label: this.language === 'he' ? 'מעקב משלוח' : 'Track shipment',
+          value: this.language === 'he' ? 'פתיחת מעקב' : 'Open tracking',
+          href: trackingUrl,
+        });
+      }
+      if (eta) {
+        rows.push({
+          label: this.language === 'he' ? 'אספקה משוערת' : 'Estimated delivery',
+          value: eta,
+        });
+      }
+      return rows;
+    },
+
+    getOrderSelectionSummary(order) {
+      const parts = [];
+      const date = this.getOrderDisplayDate(order);
+      const total = this.getOrderTotalLabel(order);
+      if (date) parts.push(date);
+      if (total) parts.push(total);
+      return parts.join(' · ');
+    },
+
+    getProductsViewportFromEvent(event) {
+      const container = event?.currentTarget?.closest?.('.assis-products-container');
+      return container?.querySelector?.('.assis-products-viewport') || null;
+    },
+
+    getProductCarouselViewport(message) {
+      const key = this.getMessageCarouselKey(message);
+      const containers = this.$el?.querySelectorAll?.('.assis-products-container--carousel[data-product-carousel-key]');
+      if (!containers?.length) return null;
+      for (const container of containers) {
+        if (container.dataset?.productCarouselKey === key) {
+          return container.querySelector('.assis-products-viewport') || null;
+        }
+      }
+      return null;
+    },
+
+    getProductCarouselNavState(viewport) {
+      const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+      if (maxScroll <= 1) {
+        return { canScrollLeft: false, canScrollRight: false };
+      }
+
+      // Prefer visual edges - scrollLeft is inconsistent across LTR/RTL and browsers.
+      const track = viewport.querySelector('.assis-products-track');
+      if (track) {
+        const vRect = viewport.getBoundingClientRect();
+        const tRect = track.getBoundingClientRect();
+        const epsilon = 2;
+        return {
+          canScrollLeft: tRect.left < vRect.left - epsilon,
+          canScrollRight: tRect.right > vRect.right + epsilon,
+        };
+      }
+
+      const isRtl = getComputedStyle(viewport).direction === 'rtl';
+      const { scrollLeft } = viewport;
+      if (!isRtl) {
+        return {
+          canScrollLeft: scrollLeft > 1,
+          canScrollRight: scrollLeft < maxScroll - 1,
+        };
+      }
+      // Chrome/Firefox RTL: 0 at right, negative toward left.
+      if (scrollLeft <= 0) {
+        const offset = Math.abs(scrollLeft);
+        return {
+          canScrollLeft: offset < maxScroll - 1,
+          canScrollRight: offset > 1,
+        };
+      }
+      // Safari-style RTL: 0 at left, positive toward right.
+      return {
+        canScrollLeft: scrollLeft > 1,
+        canScrollRight: scrollLeft < maxScroll - 1,
+      };
+    },
+
+    doesProductCarouselNeedNav(message) {
+      return Boolean(this.productCarouselOverflow?.[this.getMessageCarouselKey(message)]);
+    },
+
+    isProductCarouselAtStart(message) {
+      const state = this.productCarouselScrollState?.[this.getMessageCarouselKey(message)];
+      // Hide left arrow until measured; default is the visual start.
+      if (!state) return true;
+      return !state.canScrollLeft;
+    },
+
+    isProductCarouselAtEnd(message) {
+      const state = this.productCarouselScrollState?.[this.getMessageCarouselKey(message)];
+      if (!state) return false;
+      return !state.canScrollRight;
+    },
+
+    scheduleProductCarouselOverflowSync() {
+      if (this._productOverflowRaf) return;
+      this._productOverflowRaf = requestAnimationFrame(() => {
+        this._productOverflowRaf = 0;
+        this.syncProductCarouselOverflow();
+      });
+    },
+
+    syncProductCarouselOverflow() {
+      const viewports = this.$el?.querySelectorAll?.('.assis-products-container--carousel .assis-products-viewport');
+      const nextOverflow = {};
+      const nextScroll = { ...(this.productCarouselScrollState || {}) };
+
+      if (viewports?.length) {
+        viewports.forEach((viewport) => {
+          const key = viewport.closest('.assis-products-container')?.dataset?.productCarouselKey;
+          if (!key) return;
+          nextOverflow[key] = viewport.scrollWidth > viewport.clientWidth + 1;
+          nextScroll[key] = this.getProductCarouselNavState(viewport);
+        });
+      }
+
+      const prevOverflow = this.productCarouselOverflow || {};
+      const overflowKeys = Object.keys(nextOverflow);
+      const overflowChanged = overflowKeys.length !== Object.keys(prevOverflow).length
+        || overflowKeys.some((key) => prevOverflow[key] !== nextOverflow[key]);
+      if (overflowChanged) this.productCarouselOverflow = nextOverflow;
+
+      const prevScroll = this.productCarouselScrollState || {};
+      const scrollKeys = Object.keys(nextScroll);
+      const scrollChanged = scrollKeys.some((key) => {
+        const prev = prevScroll[key] || {};
+        const next = nextScroll[key] || {};
+        return prev.canScrollLeft !== next.canScrollLeft || prev.canScrollRight !== next.canScrollRight;
+      });
+      if (scrollChanged || scrollKeys.length !== Object.keys(prevScroll).length) {
+        this.productCarouselScrollState = nextScroll;
+      }
+
+    },
+
+    syncProductCarouselScroll(message, event) {
+      const viewport = event?.target;
+      if (!viewport) return;
+      const key = this.getMessageCarouselKey(message);
+      const next = this.getProductCarouselNavState(viewport);
+      const prev = this.productCarouselScrollState?.[key];
+      if (prev?.canScrollLeft === next.canScrollLeft && prev?.canScrollRight === next.canScrollRight) return;
+      this.productCarouselScrollState = {
+        ...(this.productCarouselScrollState || {}),
+        [key]: next,
+      };
+    },
+
+    productCarouselScroll(message, direction, event) {
+      this.trackPluginEvent('product_carousel_scrolled', { direction: direction > 0 ? 'next' : 'prev' });
+      const viewport = this.getProductsViewportFromEvent(event);
+      if (!viewport) return;
+      const slot = viewport.querySelector('.assis-product-card-slot');
+      const styles = slot ? getComputedStyle(viewport.querySelector('.assis-products-track') || viewport) : null;
+      const gap = styles ? parseFloat(styles.columnGap || styles.gap || '0') || 0 : 10;
+      const step = slot ? slot.offsetWidth + gap : 158;
+      // direction: -1 = visual left, +1 = visual right (ignore RTL scrollLeft quirks)
+      viewport.scrollBy({ left: direction * step, behavior: 'smooth' });
+      const key = this.getMessageCarouselKey(message);
+      const sync = () => {
+        const next = this.getProductCarouselNavState(viewport);
+        this.productCarouselScrollState = {
+          ...(this.productCarouselScrollState || {}),
+          [key]: next,
+        };
+      };
+      // Smooth scroll settles after frames; also catch scrollend when available.
+      requestAnimationFrame(() => requestAnimationFrame(sync));
+      const onScrollEnd = () => {
+        viewport.removeEventListener('scrollend', onScrollEnd);
+        sync();
+      };
+      viewport.addEventListener('scrollend', onScrollEnd, { once: true });
+      setTimeout(sync, 350);
+    },
+
+    getDiscountCarouselKey(message) {
+      return `${this.getMessageCarouselKey(message)}::discounts`;
+    },
+
+    doesDiscountCarouselNeedNav(message) {
+      return Boolean(this.discountCarouselOverflow?.[this.getDiscountCarouselKey(message)]);
+    },
+
+    scheduleDiscountCarouselOverflowSync() {
+      if (this._discountOverflowRaf) return;
+      this._discountOverflowRaf = requestAnimationFrame(() => {
+        this._discountOverflowRaf = 0;
+        this.syncDiscountCarouselOverflow();
+      });
+    },
+
+    syncDiscountCarouselOverflow() {
+      const viewports = this.$el?.querySelectorAll?.('.assis-discounts-viewport');
+      if (!viewports || !viewports.length) {
+        if (this.discountCarouselOverflow && Object.keys(this.discountCarouselOverflow).length) {
+          this.discountCarouselOverflow = {};
+        }
+        return;
+      }
+      const next = {};
+      viewports.forEach((viewport) => {
+        const key = viewport.closest('.assis-discounts-container')?.dataset?.discountCarouselKey;
+        if (!key) return;
+        next[key] = viewport.scrollWidth > viewport.clientWidth + 1;
+      });
+      const prev = this.discountCarouselOverflow || {};
+      const keys = Object.keys(next);
+      const unchanged = keys.length === Object.keys(prev).length && keys.every((key) => prev[key] === next[key]);
+      if (!unchanged) this.discountCarouselOverflow = next;
+    },
+
+    getDiscountCarouselPage(message) {
+      const page = this.productCarouselPages?.[this.getDiscountCarouselKey(message)];
+      return Number.isFinite(page) ? page : 0;
+    },
+
+    getDiscountCarouselMaxPage(message) {
+      return Math.max(0, this.getMessageDiscounts(message).length - 1);
+    },
+
+    setDiscountCarouselPage(message, nextPage) {
+      const key = this.getDiscountCarouselKey(message);
+      const max = this.getDiscountCarouselMaxPage(message);
+      this.productCarouselPages = {
+        ...(this.productCarouselPages || {}),
+        [key]: Math.min(max, Math.max(0, nextPage)),
+      };
+    },
+
+    getDiscountsViewportFromEvent(event) {
+      const container = event?.currentTarget?.closest?.('.assis-discounts-container');
+      return container?.querySelector?.('.assis-discounts-viewport') || null;
+    },
+
+    getDiscountCarouselStep(viewport) {
+      const card = viewport?.querySelector?.('.assis-lh-coupon-card');
+      if (!card) return viewport?.clientWidth || 0;
+      const track = viewport.querySelector('.assis-discounts-track');
+      const gap = track ? Number.parseFloat(getComputedStyle(track).gap) || 10 : 10;
+      return card.getBoundingClientRect().width + gap;
+    },
+
+    syncDiscountCarouselPage(message, event) {
+      const viewport = event?.target;
+      const step = this.getDiscountCarouselStep(viewport);
+      if (!viewport || !step) return;
+      this.setDiscountCarouselPage(message, Math.round(Math.abs(viewport.scrollLeft) / step));
+    },
+
+    discountCarouselPrev(message, event) {
+      this.trackPluginEvent('discount_carousel_scrolled', { direction: 'prev' });
+      const viewport = this.getDiscountsViewportFromEvent(event);
+      if (!viewport) return;
+      const step = this.getDiscountCarouselStep(viewport);
+      viewport.scrollBy({ left: -step, behavior: 'smooth' });
+      this.setDiscountCarouselPage(message, this.getDiscountCarouselPage(message) - 1);
+    },
+
+    discountCarouselNext(message, event) {
+      this.trackPluginEvent('discount_carousel_scrolled', { direction: 'next' });
+      const viewport = this.getDiscountsViewportFromEvent(event);
+      if (!viewport) return;
+      const step = this.getDiscountCarouselStep(viewport);
+      viewport.scrollBy({ left: step, behavior: 'smooth' });
+      this.setDiscountCarouselPage(message, this.getDiscountCarouselPage(message) + 1);
+    },
+
+    handleChatMessagesScroll() {
+      const chatEl = this.$refs.chatMessages;
+      if (!chatEl) return;
+      this.chatScrollTop = chatEl.scrollTop;
+      this.chatScrollBottomOffset = Math.max(0, chatEl.scrollHeight - chatEl.clientHeight - chatEl.scrollTop);
+      this.schedulePersistChatSession();
+    },
+
+    restoreChatScrollPosition() {
+      if (!this.wasSessionRestored) return;
+
+      this.$nextTick(() => {
+        const chatEl = this.$refs.chatMessages;
+        if (!chatEl) return;
+
+        const hasBottomOffset = typeof this.chatScrollBottomOffset === 'number';
+        const hasAbsoluteTop = typeof this.chatScrollTop === 'number';
+        if (!hasBottomOffset && !hasAbsoluteTop) return;
+
+        const targetTop = hasBottomOffset
+          ? Math.max(0, chatEl.scrollHeight - chatEl.clientHeight - this.chatScrollBottomOffset)
+          : this.chatScrollTop;
+
+        const previousBehavior = chatEl.style.scrollBehavior;
+        chatEl.style.scrollBehavior = 'auto';
+        chatEl.scrollTop = targetTop;
+        this.$nextTick(() => {
+          chatEl.style.scrollBehavior = previousBehavior || '';
+          this.scheduleProductCarouselOverflowSync();
+        });
+      });
+    },
+
+    scheduleRestoreChatScrollPosition(attempts = 12, delayMs = 120) {
+      if (!this.wasSessionRestored) return;
+      if (this.scrollRestoreRetryTimer) {
+        clearTimeout(this.scrollRestoreRetryTimer);
+        this.scrollRestoreRetryTimer = null;
+      }
+
+      let remaining = attempts;
+      const run = () => {
+        this.restoreChatScrollPosition();
+        remaining -= 1;
+        if (remaining <= 0) {
+          this.scrollRestoreRetryTimer = null;
+          return;
+        }
+        this.scrollRestoreRetryTimer = setTimeout(run, delayMs);
+      };
+
+      run();
+    },
+
+    showHeaderInfoTooltip() {
+      const el = this.$refs.headerInfoIcon;
+      if (!el || typeof el.getBoundingClientRect !== 'function') return;
+
+      const rect = el.getBoundingClientRect();
+      const margin = 12;
+      const desiredLeft = rect.left + rect.width / 2;
+      const clampedLeft = Math.max(margin, Math.min(window.innerWidth - margin, desiredLeft));
+
+      this.headerInfoTooltipPortal = {
+        visible: true,
+        top: rect.bottom + 10,
+        left: clampedLeft,
+      };
+    },
+
+    noteHeaderButton(button) {
+      const name = String(button || '').trim();
+      if (!name || typeof this.trackPluginEvent !== 'function') return;
+      this.trackPluginEvent('header_clicked', { button: name });
+    },
+    noteBannerShown() {
+      if (!this.isChatOpen || this.showPoweredByAssisHome || !this.hasBannerContentItems) return;
+      const text = this.clipPluginEventText?.(this.activeBannerPromoText, 80) || '';
+      const key = String(this.activeBannerContentKey || text || 'banner');
+      this.trackPluginEvent('banner_shown', {
+        text,
+        tone: this.activeBannerTone || 'text',
+      }, { onceKey: `banner-shown:${key}` });
+    },
+    noteBannerClicked(tone) {
+      this.trackPluginEvent('banner_clicked', {
+        text: this.clipPluginEventText?.(this.activeBannerPromoText, 80) || '',
+        tone: tone || 'text',
+      });
+    },
+    onBannerSurfaceClick(event) {
+      if (this.showActiveWhatsAppBanner) {
+        this.onWhatsAppBannerClick();
+        return;
+      }
+      if (event?.target?.closest?.('a')) this.noteBannerClicked('text');
+    },
+    toggleHeaderMenu() {
+      this.showHeaderMenu = !this.showHeaderMenu;
+      if (this.showHeaderMenu) this.noteHeaderButton('menu');
+    },
+    closeHeaderMenu() {
+      this.showHeaderMenu = false;
+    },
+    handleHeaderMenuAction(action) {
+      if (action !== 'maximize') this.noteHeaderButton(action === 'downloadConversation' ? 'download' : action);
+      this.closeHeaderMenu();
+      if (action === 'reset') {
+        this.trackPluginEvent('conversation_reset');
+        this.disconnectChat();
+        return;
+      }
+      if (action === 'home') {
+        this.goToAssisHome();
+        return;
+      }
+      if (action === 'maximize') {
+        this.maximizeChat();
+        return;
+      }
+      if (action === 'whatsapp') {
+        this.initiateWhatsAppLogin();
+        return;
+      }
+      if (action === 'email') {
+        this.initiateEmailContact();
+        return;
+      }
+      if (action === 'downloadConversation') {
+        if (!this.pluginAllowDownloadConversation) return;
+        this.downloadConversation();
+      }
+    },
+    isPluginDefaultWhatsappItem(item) {
+      return String(item?.link || '').trim() === 'assis://default-whatsapp';
+    },
+    pluginMenuLabelForLanguage(raw, lang) {
+      if (raw && typeof raw === 'object') {
+        return String(raw[lang] || '').trim();
+      }
+      return String(raw || '').trim();
+    },
+    pluginSpecificMenuItemLabel(item) {
+      if (this.isPluginDefaultWhatsappItem(item)) return this.switchToWhatsappLabel;
+      const lang = this.language === 'he' ? 'he' : 'en';
+      return this.pluginMenuLabelForLanguage(item?.label, lang);
+    },
+    openPluginSpecificMenuLink(item) {
+      this.closeHeaderMenu();
+      if (this.isPluginDefaultWhatsappItem(item)) {
+        this.initiateWhatsAppLogin();
+        return;
+      }
+      const link = String(item?.link || '').trim();
+      if (!link) return;
+      try {
+        window.open(link, '_blank', 'noopener,noreferrer');
+      } catch (err) {
+        console.warn('Failed to open plugin menu link', err);
+      }
+    },
+    goToAssisHome() {
+      if (!this.isNewAssisDesign) return;
+      this.trackPluginEvent('home_from_menu');
+      if (this.isMaximized && this._pluginMaximizedAt) {
+        this.trackPluginEvent('plugin_minimized', {
+          maximized_ms: Date.now() - this._pluginMaximizedAt,
+        });
+        this._pluginMaximizedAt = 0;
+      }
+      this.closeHeaderMenu();
+      this.poweredByAssisForceHome = true;
+      this.poweredByAssisHomeDismissed = false;
+      this.isMaximized = false;
+      this.schedulePersistChatSession();
+    },
+    goToAssisConversation() {
+      if (!this.isNewAssisDesign) return;
+      if (!this.hasClientChatMessages) return;
+      this.trackPluginEvent('home_to_chat');
+      this.notePluginMaximized('home');
+      this.closeHeaderMenu();
+      this.poweredByAssisForceHome = false;
+      this.poweredByAssisHomeDismissed = true;
+      this.isMaximized = true;
+      this.schedulePersistChatSession();
+      this.$nextTick(() => this.scrollToBottom('auto'));
+    },
+    handleGlobalClickForHeaderMenu(event) {
+      if (this.showHeaderMenu) {
+        const wrapper = this.$refs.headerMenuWrapper;
+        if (wrapper && typeof wrapper.contains === 'function' && !wrapper.contains(event.target)) {
+          this.closeHeaderMenu();
+        }
+      }
+
+      if (this.productCardOptionMenuKey) {
+        const path = typeof event.composedPath === 'function' ? event.composedPath() : [event.target];
+        const clickedCardMenu = path.some((node) => {
+          if (!node || typeof node !== 'object') return false;
+          if (node.classList?.contains?.('lh-variant-select-wrap')) return true;
+          return typeof node.closest === 'function' && Boolean(node.closest('.lh-variant-select-wrap'));
+        });
+        if (!clickedCardMenu) this.closeProductCardOptionMenu();
+      }
+
+      if (this.productVariantMenu?.visible) {
+        if (this._ignoreProductVariantMenuOutsideClick) return;
+        const path = typeof event.composedPath === 'function' ? event.composedPath() : [event.target];
+        const clickedMenu = path.some((node) => node?.classList?.contains?.('lh-option-menu-portal'));
+        const clickedTrigger = path.some((node) => {
+          if (!node || typeof node !== 'object') return false;
+          if (node.classList?.contains?.('lh-option-select')) return true;
+          return typeof node.closest === 'function' && Boolean(node.closest('.lh-option-select'));
+        });
+        if (!clickedMenu && !clickedTrigger) {
+          this.closeProductVariantMenu();
+        }
+      }
+
+      if (this.showPhonePrefixDropdown) {
+        const path = typeof event.composedPath === 'function' ? event.composedPath() : [event.target];
+        const groups = this.$el?.querySelectorAll('.ai-phone-input-group');
+        const clickedInside = groups
+          ? Array.from(groups).some((el) => path.includes(el))
+          : false;
+        if (!clickedInside) {
+          this.closePhonePrefixDropdown();
+        }
+      }
+
+    },
+
+    countryCodeToFlag(iso) {
+      return isoToFlagEmoji(iso);
+    },
+
+    formatCountryPrefixLabel(country) {
+      if (!country) return '';
+      const name = country.name.includes('(')
+        ? country.name.split('(')[0].trim()
+        : country.name;
+      return `${name} (+${country.dialCode})`;
+    },
+
+    togglePhonePrefixDropdown() {
+      this.showPhonePrefixDropdown = !this.showPhonePrefixDropdown;
+      if (this.showPhonePrefixDropdown) {
+        this.phonePrefixSearch = '';
+        this.$nextTick(() => {
+          this.$el?.querySelector('.ai-phone-prefix-search')?.focus();
+        });
+      }
+    },
+
+    closePhonePrefixDropdown() {
+      this.showPhonePrefixDropdown = false;
+      this.phonePrefixSearch = '';
+    },
+
+    selectPhoneCountry(country) {
+      if (!country) return;
+
+      this.selectedPhoneCountryIso = country.iso;
+      this.showPhonePrefixDropdown = false;
+      this.phonePrefixSearch = '';
+
+      const local = this.guestPhoneLocal;
+      const prefix = `+${country.dialCode}`;
+      this.guestPhone = local.trim() ? `${prefix} ${local}` : `${prefix} `;
+      this.schedulePersistChatSession();
+    },
+
+    initSelectedPhoneCountry() {
+      const fromPhone = findCountryFromPhone(this.guestPhone);
+      if (fromPhone) {
+        this.selectedPhoneCountryIso = fromPhone.iso;
+        return;
+      }
+
+      if (this.wasSessionRestored) {
+        const restored = COUNTRY_PHONE_PREFIXES.find(
+          (country) => country.iso === this.selectedPhoneCountryIso,
+        );
+        if (restored) return;
+      }
+
+      const fromProp = findCountryByDialCode(this.phonePrefix);
+      if (fromProp) {
+        this.selectedPhoneCountryIso = fromProp.iso;
+      }
+    },
+
+    syncPhoneCountryFromGuestPhone() {
+      const detected = findCountryFromPhone(this.guestPhone);
+      if (detected && detected.iso !== this.selectedPhoneCountryIso) {
+        this.selectedPhoneCountryIso = detected.iso;
+      }
+    },
+
+    hideHeaderInfoTooltip() {
+      this.headerInfoTooltipPortal = { ...this.headerInfoTooltipPortal, visible: false };
+    },
+
+    // Render message with markdown-like formatting and URL links
+    renderMessage(raw, linkClass) {
+      if (!raw) return ''
+      // Backend / model text often ships escaped newlines as the two-character
+      // sequence "\n" instead of a real line break. Normalize those first.
+      let text = String(raw)
+        .replace(/\\r\\n/g, '\n')
+        .replace(/\\n/g, '\n')
+        .replace(/\\r/g, '\n')
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        .replace(/\*\*\s*\n+\s*\*\*/g, '\n\n')
+
+      // If the message already contains HTML tags, trust and render it as-is.
+      // This is needed so content like `<br>`, `<ul>`, `<li>`, `<b>` from the backend
+      // shows as formatted HTML instead of literally displaying the tags.
+      const hasHtmlTags = /<\/?[a-z][\s\S]*>/i.test(text)
+      if (hasHtmlTags) {
+        return text.replace(/\n/g, '<br/>')
+      }
+
+      // Plain-text path (no HTML tags): escape, then apply markdown-style formatting and URL links
+      const escaped = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+
+      // Convert markdown-style bold
+      const boldConverted = escaped.replace(/\*\*(.+?)\*\*/g, '<strong style="font-weight: 700;">$1</strong>')
+
+      // Convert URLs to clickable links
+      // Stop URL matching at common wrapper characters like parentheses/brackets.
+      const urlRegex = /\b(?:https?:\/\/|www\.)[^\s<>()\[\]{}"']+/gi
+      const linkConverted = boldConverted.replace(urlRegex, (matched) => {
+        // Trim common trailing punctuation that often follows URLs in prose: ( ...url) , . ! ?
+        // Keep the trimmed suffix outside the <a> so the surrounding punctuation remains visible.
+        const m = matched.match(/^(.*?)([)\].,;:!?]+)?$/)
+        const urlText = (m && m[1]) ? m[1] : matched
+        const trailing = (m && m[2]) ? m[2] : ''
+
+        // Add protocol if missing (for www. URLs)
+        let href = (urlText.startsWith('http://') || urlText.startsWith('https://')) ? urlText : `https://${urlText}`
+        href = href.replace('</strong>', '')
+
+        // Use custom class if provided, otherwise use default styling
+        const defaultClasses = 'text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 underline'
+        const finalClass = linkClass ? linkClass : defaultClasses
+
+        return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="${finalClass}">${urlText}</a>${trailing}`
+      })
+
+      return linkConverted.replace(/\n/g, '<br/>')
+    },
+
+    normalizeTypewriterText(raw) {
+      return String(raw || '')
+        .replace(/\\r\\n/g, '\n')
+        .replace(/\\n/g, '\n')
+        .replace(/\\r/g, '\n')
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n');
+    },
+
+    isMessageTypewriting(message) {
+      return Boolean(this.typewriterMessage && message === this.typewriterMessage);
+    },
+
+    isMessageTextRevealing(message) {
+      return Boolean(
+        message
+        && (message.isStreaming || this.isMessageTypewriting(message))
+      );
+    },
+
+    startThinkingPhrases() {
+      if (!this.isNewAssisDesign) return;
+      const token = ++this.thinkingPhraseToken;
+      this.thinkingPhraseText = '';
+      this.runThinkingPhrases(token);
+    },
+
+    stopThinkingPhrases() {
+      this.thinkingPhraseToken += 1;
+      this.thinkingPhraseText = '';
+    },
+
+    async runThinkingPhrases(token) {
+      await new Promise((resolve) => setTimeout(resolve, THINKING_PHRASE_INITIAL_DELAY_MS));
+      if (token !== this.thinkingPhraseToken || !this.showLoaderBubble) return;
+
+      let index = 0;
+      while (token === this.thinkingPhraseToken && this.showLoaderBubble) {
+        const phrases = this.thinkingPhrases;
+        if (!phrases.length) return;
+        const phrase = phrases[index % phrases.length];
+        this.thinkingPhraseText = '';
+        for (let i = 0; i < phrase.length; i++) {
+          if (token !== this.thinkingPhraseToken || !this.showLoaderBubble) return;
+          this.thinkingPhraseText += phrase[i];
+          const ch = phrase[i];
+          const wait = /[.,!?…;:]/.test(ch) ? 48 : 28;
+          if (i === 0 || i % 6 === 0) this.scrollToBottom('auto');
+          await new Promise((resolve) => setTimeout(resolve, wait));
+        }
+        if (token !== this.thinkingPhraseToken || !this.showLoaderBubble) return;
+        await new Promise((resolve) => setTimeout(resolve, THINKING_PHRASE_HOLD_MS));
+        index += 1;
+      }
+    },
+
+    shouldTypeAiReply(message) {
+      if (!this.isNewAssisDesign) return false;
+      if (String(message?.sender || '').toLowerCase() !== 'ai') return false;
+      const text = this.normalizeTypewriterText(message?.message);
+      if (!text.trim()) return false;
+      if (this.isMediaFile(text)) return false;
+      if (/<\/?[a-z][\s\S]*>/i.test(text)) return false;
+      if (text.length > 1800) return false;
+      return true;
+    },
+
+    incomingMessageKey(message) {
+      return `${String(message?.sender || '')}::${this.normalizeTypewriterText(message?.message)}`;
+    },
+
+    normalizeIsHumanRequested(value) {
+      return value === true || value === 'true' || value === 1 || value === '1';
+    },
+
+    /** Apply handoff flag and reopen the WhatsApp/email sheet when the AI asks for contact. */
+    applyHumanRequestedFlag(target, value) {
+      if (!target || value == null) return;
+      const requested = this.normalizeIsHumanRequested(value);
+      target.isHumanRequested = requested;
+      if (!requested) return;
+      if (target.orderVerification && !target.orderVerification.verified) {
+        target.orderVerification = null;
+      }
+      // Late chat_message can arrive after a prior handoff left these true — allow input again.
+      if (!this.agentRequestedSuccess) this.agentRequested = false;
+      // Reopen when the required channel contact is still missing (e.g. WhatsApp-only
+      // store after the user only entered email for order verification).
+      if (!this.hasSatisfiedAiContactRequirement) {
+        this.aiContactPickerDismissed = false;
+      }
+    },
+
+    mergeIncomingAgentMessage(target, agentMessage, dataFromWebsite) {
+      if (!target || !agentMessage) return target;
+      if (agentMessage.datetime) target.datetime = agentMessage.datetime;
+      if (agentMessage.id && !target.id) target.id = agentMessage.id;
+      if (Object.prototype.hasOwnProperty.call(agentMessage, 'isHumanRequested')) {
+        this.applyHumanRequestedFlag(target, agentMessage.isHumanRequested);
+      }
+      if (dataFromWebsite) {
+        this.attachDataFromWebsite(target, dataFromWebsite);
+      } else {
+        if (agentMessage.products) target.products = agentMessage.products;
+        if (agentMessage.discounts) target.discounts = agentMessage.discounts;
+        if (agentMessage.orders) target.orders = agentMessage.orders;
+      }
+      return target;
+    },
+
+    appendIncomingAgentMessage(agentMessage, { typewrite = true } = {}) {
+      const last = this.chatMessages[this.chatMessages.length - 1];
+      if (last && this.incomingMessageKey(last) === this.incomingMessageKey(agentMessage)) {
+        // Same bubble already shown (common when assis:done finishes before chat_message).
+        // Merge metadata so isHumanRequested is not dropped by dedupe.
+        this.mergeIncomingAgentMessage(last, agentMessage);
+        return last;
+      }
+
+      const willType = typewrite && this.shouldTypeAiReply(agentMessage);
+      this.chatMessages.push(agentMessage);
+      const stored = this.chatMessages[this.chatMessages.length - 1];
+      if (stored.isHumanRequested != null) {
+        this.applyHumanRequestedFlag(stored, stored.isHumanRequested);
+      }
+      this.scrollToBottom();
+      if (willType) {
+        stored.isTyping = true;
+        this.$nextTick(() => this.typeAiReply(stored));
+      } else {
+        this.updateMessageDirections();
+      }
+      return stored;
+    },
+
+    clearAiTypewriter(message) {
+      if (message) message.isTyping = false;
+      if (!message || this.typewriterMessage === message) {
+        this.typewriterMessage = null;
+        this.typewriterText = '';
+      }
+    },
+
+    async typeAiReply(message) {
+      const text = this.normalizeTypewriterText(message?.message);
+      if (!text) {
+        this.clearAiTypewriter(message);
+        return;
+      }
+
+      const token = ++this.typewriterToken;
+      this.typewriterMessage = message;
+      this.typewriterText = '';
+      message.isTyping = true;
+
+      try {
+        for (let i = 0; i < text.length; i++) {
+          if (token !== this.typewriterToken || this.typewriterMessage !== message) {
+            this.clearAiTypewriter(message);
+            return;
+          }
+          this.typewriterText += text[i];
+          const ch = text[i];
+          const wait = ch === '\n' ? 28 : /[.,!?…;:]/.test(ch) ? 42 : 10;
+          if (i % 8 === 0) this.scrollToBottom('auto');
+          await new Promise((resolve) => setTimeout(resolve, wait));
+        }
+      } catch (error) {
+        this.clearAiTypewriter(message);
+        return;
+      }
+
+      if (token !== this.typewriterToken) {
+        this.clearAiTypewriter(message);
+        return;
+      }
+      this.clearAiTypewriter(message);
+      if (message._raiseOrdersAfterType) {
+        message._raiseOrdersAfterType = false;
+        this.raiseOrdersAfterAiText(message);
+      }
+      this.$nextTick(() => {
+        if (Array.isArray(message?.products) && message.products.length > 0) {
+          this.scrollToMessageProducts(message, 'auto');
+        } else {
+          this.scrollToBottom('auto');
+        }
+      });
+      this.schedulePersistChatSession();
+    },
+
+    // Language detection utility (Hebrew vs English)
+    detectLanguage(text) {
+      if (!text || typeof text !== 'string') return 'unknown';
+
+      const hebrewChars = (text.match(/[\u0590-\u05FF]/g) || []).length;
+      const englishChars = (text.match(/[a-zA-Z]/g) || []).length;
+
+      if (hebrewChars > englishChars) return 'he';
+      if (englishChars > hebrewChars) return 'en';
+      if (/שלום|מה|איך|לי|את|של|על|יש|זה|עם|לא|כן|טוב|תודה|בבקשה/.test(text)) return 'he';
+      return 'en';
+    },
+    maximizeChat() {
+      this.noteHeaderButton(this.isMaximized ? 'minimize' : 'maximize');
+      if (this.isMaximized) {
+        this.trackPluginEvent('plugin_minimized', {
+          maximized_ms: this._pluginMaximizedAt ? Date.now() - this._pluginMaximizedAt : 0,
+        });
+        this._pluginMaximizedAt = 0;
+        this.isMaximized = false;
+        return;
+      }
+      this.notePluginMaximized('control');
+      this.isMaximized = true;
+    },
+
+    // Get text direction based on detected language
+    getTextDirection(text) {
+      if (!text) return this.language === 'he' ? 'rtl' : 'ltr';
+      const lang = this.detectLanguage(text);
+      return lang === 'he' ? 'rtl' : 'ltr';
+    },
+
+    introLineHtml(html) {
+      const raw = String(html || '').trim();
+      if (!raw) return [];
+      const textOf = (value) => String(value || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+      try {
+        const doc = new DOMParser().parseFromString(raw, 'text/html');
+        const blocks = [...(doc.body?.children || [])].filter((el) => /^(P|DIV|LI)$/i.test(el.tagName));
+        const fromBlocks = blocks
+          .flatMap((el) => el.innerHTML.split(/<br\s*\/?>/i))
+          .map((part) => part.trim())
+          .filter((part) => textOf(part));
+        if (fromBlocks.length >= 2) return fromBlocks.slice(0, 2);
+        if (blocks.length === 1) {
+          const kids = [...blocks[0].children].filter((el) => textOf(el.textContent));
+          if (kids.length >= 2) return kids.slice(0, 2).map((el) => el.outerHTML);
+        }
+        if (fromBlocks.length === 1) return fromBlocks;
+        const plainParts = raw.split(/\n+/).map((part) => part.trim()).filter(Boolean);
+        if (plainParts.length >= 2) return plainParts.slice(0, 2);
+        return [raw];
+      } catch {
+        return [raw];
+      }
+    },
+
+    bubbleIcon(saved, text, index) {
+      const allowed = ['truck', 'key', 'chat', 'sparkle', 'gift', 'star', 'heart', 'search', 'cart', 'tag', 'phone', 'clock', 'help', 'smile', 'box', 'pin'];
+      return allowed.includes(saved) ? saved : this.starterChipIcon(text, index);
+    },
+
+    starterChipIcon(text, index) {
+      const value = String(text || '');
+      if (/משלוח|מגיע|shipping|deliver|arrive/i.test(value)) return 'truck';
+      if (/מתאים|בוחר|המלצ|recommend|fit|choose|pick/i.test(value)) return 'key';
+      return Number(index) % 2 === 0 ? 'chat' : 'sparkle';
+    },
+
+    stripQuickActionHtml(html) {
+      const raw = String(html || '');
+      if (!raw) return '';
+      try {
+        const doc = new DOMParser().parseFromString(raw, 'text/html');
+        return String(doc.body?.textContent || '').replace(/\s+/g, ' ').trim();
+      } catch {
+        return raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      }
+    },
+
+    /** Chip bubbles stay plain text (clean font). Pull size/color/weight from editor HTML onto the chip. */
+    extractQuickActionChipStyles(html) {
+      const raw = String(html || '');
+      if (!raw || !/<[a-z]/i.test(raw)) return {};
+      try {
+        const doc = new DOMParser().parseFromString(raw, 'text/html');
+        const nodes = [
+          ...(doc.body?.querySelectorAll('span, strong, b, font, p, div') || []),
+        ];
+        let fontSize = '';
+        let color = '';
+        let fontWeight = '';
+        for (const el of nodes) {
+          if (!fontSize && el.style?.fontSize) fontSize = el.style.fontSize;
+          if (!color && el.style?.color) color = el.style.color;
+          if (!fontWeight) {
+            const tag = el.tagName;
+            if (tag === 'STRONG' || tag === 'B') fontWeight = '700';
+            else if (el.style?.fontWeight) fontWeight = el.style.fontWeight;
+          }
+          if (fontSize && color && fontWeight) break;
+        }
+        if (!fontWeight && doc.body?.querySelector('strong, b')) fontWeight = '700';
+        return { fontSize, color, fontWeight };
+      } catch {
+        return {};
+      }
+    },
+
+    // Handle text input changes to update direction in real-time
+    handleTextInput(field) {
+      // Force Vue to re-render the input with updated direction
+      this.$forceUpdate();
+
+      if (field === 'guestPhone') {
+        this.syncPhoneCountryFromGuestPhone();
+      }
+
+      // Auto-resize textarea if it's the chat input
+      if (field === 'newMessage') {
+        this.$nextTick(() => {
+          this.autoResizeTextarea();
+        });
+
+        // If there are queued outbound messages waiting to flush, and the user is now typing a new draft,
+        // hold the flush until 5s after the last keystroke. This ensures we do NOT send the draft,
+        // but we also don't keep the previous messages stuck forever.
+        if (this.outboundQueue?.length) {
+          this.scheduleOutboundTypingHoldFlush();
+        }
+      }
+    },
+
+    ensureDefaultGuestPhonePrefix() {
+      if (this.loginChannels !== 'ai') return;
+      if (typeof this.guestPhone !== 'string') return;
+      if (this.guestPhone.trim().length > 0) return;
+
+      this.guestPhone = `+${this.selectedPhonePrefix} `;
+    },
+
+    /**
+     * Phone normalization:
+     * - If input starts with "0": replace that leading 0 with "+<countryCode> " (based on `phonePrefix`)
+     * - If input starts with "+<countryCode>": drop a single "0" right after the country code
+     */
+    stripLeadingZeroAfterPhonePrefix(phone) {
+      const cc = String(this.selectedPhonePrefix || this.phonePrefix || '972').replace(/\D/g, '');
+      if (!cc.length) return phone;
+      if (typeof phone !== 'string') return phone;
+
+      let trimmed = phone.trimStart();
+
+      // International dialing prefix: 00<cc>... -> +<cc>...
+      // Example: 00972 50-000-0000 -> +972 50-000-0000
+      if (trimmed.startsWith('00')) {
+        trimmed = `+${trimmed.slice(2).trimStart()}`;
+      }
+      if (trimmed.startsWith('0')) {
+        const rest = trimmed.slice(1).trimStart();
+        return `+${cc} ${rest}`.trimEnd();
+      }
+
+      if (!trimmed.startsWith('+')) return phone;
+
+      const re = new RegExp(`^(\\+${cc})(\\s*)0`);
+      return trimmed.replace(re, '$1$2');
+    },
+
+    // Handle Enter key press in chat input
+    handleEnterKey(event) {
+      // Mobile UX: Enter inserts a newline (no auto-send).
+      if (this.shouldEnterInsertNewline() || event.shiftKey) {
+        this.$nextTick(() => {
+          this.autoResizeTextarea();
+        });
+        return;
+      }
+
+      // Desktop UX: Enter sends. Use Shift+Enter for a newline.
+      event.preventDefault();
+      this.sendMessage();
+    },
+
+    // Home composer: desktop Enter sends, Shift+Enter / mobile Enter inserts a newline.
+    handleHomeEnterKey(event) {
+      if (this.shouldEnterInsertNewline() || event.shiftKey) {
+        this.$nextTick(() => this.autoResizeHomeTextarea());
+        return;
+      }
+
+      event.preventDefault();
+      this.submitPoweredByAssisHome(this.poweredByAssisHomeDraft);
+    },
+
+    autoResizeHomeTextarea() {
+      const textarea = this.$refs.homeChatInput;
+      if (!textarea) return;
+      const maxHeight = 88;
+      textarea.style.height = 'auto';
+      const nextHeight = Math.min(textarea.scrollHeight, maxHeight);
+      textarea.style.height = `${nextHeight}px`;
+    },
+
+    toggleEmojiPicker() {
+      const nextState = !this.showEmojiPicker;
+      this.showEmojiPicker = nextState;
+
+      if (nextState) {
+        document.addEventListener('click', this.onEmojiOutsideClick);
+        this.$nextTick(() => {
+          const btn = this.$refs.emojiBtn;
+          if (btn && typeof btn.getBoundingClientRect === 'function') {
+            const rect = btn.getBoundingClientRect();
+
+            // RTL: open inward based on heart side
+            if (this.direction === 'rtl' && this.heartPosition === 'right') {
+              this.emojiPopoverAnchor = 'right';
+              this.emojiPopoverPos = { left: rect.right, top: rect.top - 10 };
+            } else if (this.direction === 'rtl' && this.heartPosition === 'left') {
+              this.emojiPopoverAnchor = 'left';
+              this.emojiPopoverPos = { left: rect.left, top: rect.top - 10 };
+            } else {
+              // LTR: always center above the button so it stays inside the chat
+              this.emojiPopoverAnchor = 'center';
+              this.emojiPopoverPos = { left: rect.left + rect.width / 2, top: rect.top - 10 };
+            }
+
+            // Clamp into chat container after popover renders (keep fully inside chat)
+            this.$nextTick(() => {
+              const pop = this.$refs.emojiPopover;
+              if (!pop || typeof pop.getBoundingClientRect !== 'function') return;
+              const popRect = pop.getBoundingClientRect();
+              const chat = this.$refs.chatContainer;
+              const chatRect = chat && typeof chat.getBoundingClientRect === 'function'
+                ? chat.getBoundingClientRect()
+                : null;
+              const margin = 8;
+
+              let nextLeft = this.emojiPopoverPos.left;
+              let nextTop = this.emojiPopoverPos.top;
+
+              const minLeft = chatRect ? chatRect.left + margin : margin;
+              const maxRight = chatRect ? chatRect.right - margin : window.innerWidth - margin;
+              const minTop = chatRect ? chatRect.top + margin : margin;
+              const maxBottom = chatRect ? chatRect.bottom - margin : window.innerHeight - margin;
+
+              if (popRect.left < minLeft) {
+                nextLeft += (minLeft - popRect.left);
+              } else if (popRect.right > maxRight) {
+                nextLeft -= (popRect.right - maxRight);
+              }
+
+              if (popRect.top < minTop) {
+                nextTop += (minTop - popRect.top);
+              } else if (popRect.bottom > maxBottom) {
+                nextTop -= (popRect.bottom - maxBottom);
+              }
+
+              this.emojiPopoverPos = { left: nextLeft, top: nextTop };
+            });
+          }
+
+          const textarea = this.$refs.chatInput;
+          if (textarea && typeof textarea.focus === 'function') {
+            textarea.focus();
+          }
+        });
+      } else {
+        document.removeEventListener('click', this.onEmojiOutsideClick);
+      }
+    },
+
+    onEmojiOutsideClick(event) {
+      if (!this.showEmojiPicker) return;
+
+      const pop = this.$refs.emojiPopover;
+      const btn = this.$refs.emojiBtn;
+      const target = event.target;
+
+      // Ignore clicks inside the picker or on the toggle button
+      if ((pop && pop.contains(target)) || (btn && btn.contains(target))) {
+        return;
+      }
+
+      this.showEmojiPicker = false;
+      document.removeEventListener('click', this.onEmojiOutsideClick);
+    },
+
+    onSelectEmoji(emoji) {
+      this.trackPluginEvent('emoji_picked');
+      const textarea = this.$refs.chatInput;
+      const current = typeof this.newMessage === 'string' ? this.newMessage : '';
+      const selected = emoji && typeof emoji.i === 'string' ? emoji.i : '';
+      if (!selected) return;
+
+      if (!textarea || typeof textarea.selectionStart !== 'number' || typeof textarea.selectionEnd !== 'number') {
+        this.newMessage = `${current}${selected}`;
+        this.showEmojiPicker = false;
+        return;
+      }
+
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      this.newMessage = `${current.slice(0, start)}${selected}${current.slice(end)}`;
+      this.showEmojiPicker = false;
+
+      this.$nextTick(() => {
+        textarea.focus();
+        const nextPos = start + selected.length;
+        textarea.setSelectionRange(nextPos, nextPos);
+        this.autoResizeTextarea();
+      });
+    },
+
+    // Auto-resize textarea based on content
+    autoResizeTextarea() {
+      const textarea = this.$refs.chatInput;
+      if (textarea) {
+        const maxHeight = this.isNewAssisDesign ? 88 : 120;
+        textarea.style.height = 'auto';
+        const nextHeight = Math.min(textarea.scrollHeight, maxHeight);
+        textarea.style.height = nextHeight + 'px';
+        const minHeight = parseFloat(getComputedStyle(textarea).minHeight) || (this.isNewAssisDesign ? 16 : 32);
+        this.chatInputMultiline = nextHeight > minHeight + 2;
+        if (this.productDetail) this.syncProductSheetBottom();
+      } else {
+        this.chatInputMultiline = false;
+      }
+    },
+
+    // Update text direction for all existing messages
+    updateMessageDirections() {
+      this.chatMessages.forEach(message => {
+        if (message.message && typeof message.message === 'string') {
+          // Force Vue to re-render with updated direction
+          this.$forceUpdate();
+        }
+      });
+    },
+
+    // Make FileUploadService methods available to template
+    getFileIcon(fileType, mimeType) {
+      return FileUploadService.getFileIcon(fileType, mimeType);
+    },
+    getFileTypeFromMime(mimeType) {
+      return FileUploadService.getFileTypeFromMime(mimeType);
+    },
+    formatFileSize(bytes) {
+      return FileUploadService.formatFileSize(bytes);
+    },
+    isAutoMessageToSignIn(message) {
+      return message.sender?.toLowerCase() === 'ai' && message.message?.toLowerCase()?.includes(`we'll be with you in just a moment, but before we get started, we'd love to know who we're talking to.`)
+    },
+    // Fetch WhatsApp number from backend
+    async fetchBusinessWhatsAppNumber() {
+      const hasRequiredContactInfo = this.businessWhatsAppNumber
+        && (!this.hasEmailCommunicationChannel || this.businessEmail);
+      // If session restore already populated it, don't refetch on refresh/remount.
+      if (this.isWhatsAppNumberFetched && hasRequiredContactInfo) {
+        this.isWhatsAppNumberFetched = true;
+        return;
+      }
+
+      try {
+        const storeUrl = window.location.origin;
+        const response = await fetch(`${this.ASSIS_BACKEND_URL}/api/whatsapp/phone?store_url=${encodeURIComponent(storeUrl)}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (data) {
+          if (data.whatsapp) {
+            this.businessWhatsAppNumber = data.whatsapp;
+          }
+          const email = typeof data.email === 'string' ? data.email.trim() : '';
+          if (email) {
+            this.businessEmail = email;
+          }
+          if (Array.isArray(data.widget_communication_channels)) {
+            this.widgetCommunicationChannels = data.widget_communication_channels
+              .map((channel) => String(channel).trim().toLowerCase())
+              .filter(Boolean);
+          }
+          this.isWhatsAppNumberFetched = true;
+        }
+      } catch (error) {
+        console.error('Error fetching WhatsApp number:', error);
+        // Don't throw error to prevent breaking the chat flow
+      }
+    },
+    // Fetch WhatsApp number from backend
+    clampPluginBottomOffset(value) {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return 0;
+      return Math.min(120, Math.max(-120, Math.round(number)));
+    },
+    isPluginBottomOffsetMobileViewport() {
+      try {
+        return window.matchMedia('(max-width: 767px)').matches;
+      } catch {
+        return false;
+      }
+    },
+    applyPluginBottomOffsetForViewport() {
+      const requested = this.isPluginBottomOffsetMobileViewport()
+        ? this.pluginBottomOffsetMobileRequested
+        : this.pluginBottomOffsetDesktopRequested;
+      this.pluginBottomOffsetRequested = this.clampPluginBottomOffset(requested);
+    },
+    readHostPluginBottomOffsets() {
+      const el = document.getElementById('assis-plugin-app');
+      const ds = el?.dataset || {};
+      const hasSplit =
+        !!el?.hasAttribute('data-heart-bottom-offset-mobile') ||
+        !!el?.hasAttribute('data-heart-bottom-offset-desktop');
+      if (hasSplit) {
+        this.pluginBottomOffsetMobileRequested = this.clampPluginBottomOffset(ds.heartBottomOffsetMobile);
+        this.pluginBottomOffsetDesktopRequested = this.clampPluginBottomOffset(ds.heartBottomOffsetDesktop);
+      } else {
+        const legacy = this.clampPluginBottomOffset(ds.heartBottomOffset);
+        this.pluginBottomOffsetMobileRequested = legacy;
+        this.pluginBottomOffsetDesktopRequested = legacy;
+      }
+      this.applyPluginBottomOffsetForViewport();
+      this.pluginBottomOffset = this.pluginBottomOffsetRequested;
+    },
+    normalizePluginOutsideBubblesByLang(raw) {
+      let parsed = raw;
+      if (typeof parsed === 'string') {
+        try {
+          parsed = JSON.parse(parsed);
+        } catch {
+          return { he: [], en: [] };
+        }
+      }
+      if (Array.isArray(parsed)) {
+        return { he: parsed, en: parsed };
+      }
+      if (parsed && typeof parsed === 'object') {
+        return {
+          he: Array.isArray(parsed.he) ? parsed.he : [],
+          en: Array.isArray(parsed.en) ? parsed.en : [],
+        };
+      }
+      return { he: [], en: [] };
+    },
+    scheduleFitPluginBottomOffset() {
+      if (this._fitBottomOffsetRaf) cancelAnimationFrame(this._fitBottomOffsetRaf);
+      this._fitBottomOffsetRaf = requestAnimationFrame(() => {
+        this._fitBottomOffsetRaf = 0;
+        this.fitPluginBottomOffsetToViewport();
+      });
+    },
+    getPluginVerticalBoundNodes() {
+      const root = this.$el;
+      if (!root || typeof root.querySelectorAll !== 'function') return [];
+      return Array.from(root.querySelectorAll('.fixed-heart-btn, .quick-actions'))
+        .filter((el) => {
+          const style = window.getComputedStyle(el);
+          if (style.display === 'none' || style.visibility === 'hidden') return false;
+          const rect = el.getBoundingClientRect();
+          return rect.width > 0 || rect.height > 0;
+        });
+    },
+    // Keep launcher/chat inside the viewport for any host offset (+ up / - down).
+    fitPluginBottomOffsetToViewport() {
+      this.applyPluginBottomOffsetForViewport();
+      // On iPhone the open sheet is lifted by the keyboard code. Measuring it
+      // against the shrunk viewport adds a second upward shift, which is the
+      // gray gap between the composer and the keyboard.
+      if (this.isIosBrowser() && this.isChatOpen && this.isMobileSheetLayout()) {
+        this.pluginBottomOffset = this.clampPluginBottomOffset(this.pluginBottomOffsetRequested);
+        return;
+      }
+      const requested = this.clampPluginBottomOffset(this.pluginBottomOffsetRequested);
+      this.pluginBottomOffset = requested;
+      this.$nextTick(() => {
+        requestAnimationFrame(() => {
+          const margin = 8;
+          const vh = window.visualViewport?.height ?? window.innerHeight;
+          const nodes = this.getPluginVerticalBoundNodes();
+          if (!nodes.length) return;
+
+          let top = Infinity;
+          let bottom = -Infinity;
+          nodes.forEach((el) => {
+            const rect = el.getBoundingClientRect();
+            top = Math.min(top, rect.top);
+            bottom = Math.max(bottom, rect.bottom);
+          });
+          if (!Number.isFinite(top) || !Number.isFinite(bottom)) return;
+
+          let next = requested;
+          // translateY = -offset → too high (top < margin) means offset too large
+          if (top < margin) next -= (margin - top);
+          if (bottom > vh - margin) next += (bottom - (vh - margin));
+          this.pluginBottomOffset = this.clampPluginBottomOffset(next);
+
+          // Second pass if both edges were wrong (e.g. tall chat): prefer staying below the top.
+          requestAnimationFrame(() => {
+            const again = this.getPluginVerticalBoundNodes();
+            if (!again.length) return;
+            let t = Infinity;
+            let b = -Infinity;
+            again.forEach((el) => {
+              const rect = el.getBoundingClientRect();
+              t = Math.min(t, rect.top);
+              b = Math.max(b, rect.bottom);
+            });
+            let fixed = this.pluginBottomOffset;
+            if (t < margin) fixed -= (margin - t);
+            if (b > vh - margin) fixed += (b - (vh - margin));
+            // If still taller than the viewport, pin to the top margin.
+            if (b - t > vh - margin * 2) {
+              fixed = this.pluginBottomOffset + (margin - t);
+            }
+            this.pluginBottomOffset = this.clampPluginBottomOffset(fixed);
+          });
+        });
+      });
+    },
+    async fetchWelcomeAiMessages() {
+      if (this.pluginMessagesFetched) return;
+
+      try {
+        const storeUrl = window.location.origin;
+        const response = await fetch(`${this.ASSIS_BACKEND_URL}/api/shopify/plugin-messages?store_url=${encodeURIComponent(storeUrl)}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (!data) {
+          this.welcomeAiMessages = this.welcomeAiMessages || [];
+          this.pluginMessagesFetched = true;
+          this.schedulePersistChatSession();
+          return;
+        }
+
+        if (Array.isArray(data.welcome_ai_messages_on_plugin)) {
+          this.welcomeAiMessages = data.welcome_ai_messages_on_plugin;
+        } else {
+          this.welcomeAiMessages = this.welcomeAiMessages || [];
+        }
+
+        const pluginLanguage = String(data?.plugin_language || '').trim().toLowerCase();
+        if (
+          pluginLanguage === 'force_he'
+          || pluginLanguage === 'force_en'
+          || pluginLanguage === 'he'
+          || pluginLanguage === 'en'
+          || pluginLanguage === 'auto'
+          || pluginLanguage === 'auto_he'
+          || pluginLanguage === 'auto_en'
+        ) {
+          // Keep raw mode: force_* locks language; auto / legacy he|en|auto_* follow the page.
+          this.pluginLanguage = pluginLanguage;
+          this.defaultErrorMessage = this.language === 'he'
+            ? DEFAULT_ERROR_MESSAGE_HE
+            : DEFAULT_ERROR_MESSAGE_EN;
+        }
+
+        if (data?.plugin_allow_download_conversation != null) {
+          this.pluginAllowDownloadConversation = data.plugin_allow_download_conversation === true
+            || data.plugin_allow_download_conversation === 'true'
+            || data.plugin_allow_download_conversation === 1
+            || data.plugin_allow_download_conversation === '1';
+        }
+
+        this.pluginAllowOrderVerification = data?.plugin_allow_order_verification === true
+          || data?.plugin_allow_order_verification === 'true'
+          || data?.plugin_allow_order_verification === 1
+          || data?.plugin_allow_order_verification === '1';
+
+        this.pluginOrderVerificationChannels = normalizeOrderVerificationChannelsMode(
+          data?.plugin_order_verification_channels
+        );
+
+        // Default on; only explicit false hides the transfer-to-agent sheet
+        this.pluginAllowAgentTransfer = !(
+          data?.plugin_allow_agent_transfer === false
+          || data?.plugin_allow_agent_transfer === 'false'
+          || data?.plugin_allow_agent_transfer === 0
+          || data?.plugin_allow_agent_transfer === '0'
+        );
+
+        this.pluginEilatPricing = this.normalizePluginEilatPricing(data?.plugin_eilat_pricing);
+        this.proactiveTriggers = data?.plugin_proactive_triggers && typeof data.plugin_proactive_triggers === 'object'
+          ? data.plugin_proactive_triggers
+          : null;
+        const bubbleLayout = String(data?.plugin_bubble_layout || '');
+        const layoutMap = {
+          three_up: 'above',
+          stack: 'above',
+          one_up: 'above',
+          up: 'above',
+          single: 'side_one',
+          one_down: 'side_one',
+          down: 'side_one',
+          pair_down: 'side_two',
+        };
+        const mapped = layoutMap[bubbleLayout] || bubbleLayout;
+        this.pluginBubbleLayout = ['above', 'above_one', 'above_two', 'side_one', 'side_two', 'side_long'].includes(mapped)
+          ? mapped
+          : 'above';
+        this.syncClubBadgeRotation();
+
+        if (data?.plugin_message_when_chat_closed) {
+          this.pluginMessageWhenChatClosed = data.plugin_message_when_chat_closed;
+        }
+
+        if (data?.plugin_placeholder_when_switching_to_whatsapp) {
+          this.pluginPlaceholderWhenSwitchingToWhatsapp = data.plugin_placeholder_when_switching_to_whatsapp;
+        }
+
+        this.pluginOutsideBubblesByLang = this.normalizePluginOutsideBubblesByLang(
+          data.plugin_outside_bubbles
+        );
+        if (typeof this.refreshProactiveBubble === 'function') this.refreshProactiveBubble();
+
+        if (Array.isArray(data.plugin_specific_menu)) {
+          this.pluginSpecificMenu = data.plugin_specific_menu
+            .filter((item) => item && typeof item === 'object')
+            .map((item) => {
+              const link = String(item.link || '').trim();
+              const isDefaultWhatsapp = link === 'assis://default-whatsapp';
+              const rawLabel = item.label;
+              const label = rawLabel && typeof rawLabel === 'object'
+                ? {
+                  he: String(rawLabel.he || '').trim(),
+                  en: String(rawLabel.en || '').trim(),
+                }
+                : (() => {
+                  const text = String(rawLabel || '').trim();
+                  return { he: text, en: text };
+                })();
+              return {
+                label,
+                icon: isDefaultWhatsapp
+                  ? 'whatsapp'
+                  : (String(item.icon || 'link').trim().toLowerCase() || 'link'),
+                link,
+              };
+            })
+            .filter((item) => item.link && (
+              item.link === 'assis://default-whatsapp' || item.label.he || item.label.en
+            ));
+        } else {
+          this.pluginSpecificMenu = [{ label: '', icon: 'whatsapp', link: 'assis://default-whatsapp' }];
+        }
+
+        if (data?.banner_content) {
+          this.bannerContent = data.banner_content;
+          this.$nextTick(() => this.noteBannerShown());
+        }
+
+        if (Array.isArray(data.products) && data.products.length) {
+          this.highlightedProducts = data.products;
+        } else if (typeof data.products === 'string') {
+          try {
+            const parsed = JSON.parse(data.products);
+            if (Array.isArray(parsed) && parsed.length) this.highlightedProducts = parsed;
+          } catch {
+            /* ignore invalid products payload */
+          }
+        }
+
+        this.pluginMessagesFetched = true;
+        this.schedulePersistChatSession();
+      } catch (error) {
+        console.error('Error fetching welcome ai message:', error);
+        // Still mark ready so the launcher isn't hidden forever on network errors.
+        this.pluginMessagesFetched = true;
+      }
+    },
+
+    async fetchPlanSubscription() {
+      const hasBusinessNameFromApi = typeof this.businessNameFromApi === 'string'
+        && !!this.businessNameFromApi.trim();
+      if (this.planSubscription && this.businessPictureFromDbResolved && hasBusinessNameFromApi) {
+        return;
+      }
+
+      try {
+        const storeUrl = window.location.origin;
+        const response = await fetch(`${this.ASSIS_BACKEND_URL}/api/shopify/plugin-plan-subscription?store_url=${encodeURIComponent(storeUrl)}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (!data) {
+          this.planSubscription = this.planSubscription || 'care_by_assis';
+          this.businessPictureFromDbResolved = true;
+          return;
+        }
+
+        const plan = data.plan_subscription ?? data.planSubscription ?? null;
+
+        this.planSubscription = plan || 'care_by_assis';
+        this.businessPictureFromDb = data.picture || null;
+        this.businessPictureFromDbResolved = true;
+        this.businessPictureFromDbFailed = false;
+        this.headerLogoFailed = false;
+        const name = typeof data.name === 'string' ? data.name.trim() : '';
+        if (name) {
+          this.businessNameFromApi = name;
+        }
+        this.schedulePersistChatSession();
+      } catch (error) {
+        console.error('Error fetching plan subscription:', error);
+        // Don't throw error to prevent breaking the chat flow; fall back to businessLogo
+        this.planSubscription = this.planSubscription || 'care_by_assis';
+        this.businessPictureFromDb = null;
+        this.businessPictureFromDbResolved = true;
+        this.businessPictureFromDbFailed = false;
+      }
+    },
+
+    handleLogoError() {
+      if (this.businessPictureFromDb && !this.businessPictureFromDbFailed) {
+        this.businessPictureFromDbFailed = true;
+        return;
+      }
+      this.headerLogoFailed = true;
+    },
+
+    isWhatsAppBannerEnabled(item) {
+      if (!item || item.id !== 'banner-whatsapp') return false;
+      const content = item.content;
+      return content === true || content === 'true';
+    },
+    decodeBannerHtmlEntities(value) {
+      const text = String(value || '');
+      if (!text.includes('&')) return text;
+      const textarea = document.createElement('textarea');
+      textarea.innerHTML = text;
+      return textarea.value;
+    },
+    hasBannerItemContent(item) {
+      if (!item) return false;
+      if (item.id === 'banner-whatsapp') return this.isWhatsAppBannerEnabled(item);
+      return Boolean(item.content);
+    },
+    startBannerContentRotation() {
+      this.stopBannerContentRotation();
+      const items = this.displayableBannerContent;
+      if (items.length <= 1) return;
+
+      this.bannerContentRotationTimer = setInterval(() => {
+        this.bannerContentIndex = (this.bannerContentIndex + 1) % items.length;
+        this.noteBannerShown();
+      }, 5000);
+    },
+
+    stopBannerContentRotation() {
+      if (this.bannerContentRotationTimer) {
+        clearInterval(this.bannerContentRotationTimer);
+        this.bannerContentRotationTimer = null;
+      }
+    },
+
+    getSessionStorageKey() {
+      return `assis_chat_state:${window.location.origin}:${this.businessName || 'default'}`;
+    },
+
+    schedulePersistChatSession() {
+      if (this.typewriterMessage) return;
+      // Throttle localStorage writes (deep watch can be very chatty)
+      if (this._persistChatSessionTimer) return;
+      this._persistChatSessionTimer = setTimeout(() => {
+        this._persistChatSessionTimer = null;
+        if (this.typewriterMessage) return;
+        this.persistChatSession();
+      }, 1000);
+    },
+
+    getNonPersistedStateKeys() {
+      // Runtime-only / non-serializable / not useful across page navigations
+      return new Set([
+        'socket',
+        'pluginMessagesFetched',
+        'supabaseClient',
+        'checkoutChatClosing',
+        'productCardPickedVariants',
+        'selectedFiles', // File objects cannot be serialized reliably
+        'uploadProgress',
+        'isUploading',
+        'isSocketConnected',
+        'isSocketInitialized',
+        'isFlushingQuickAction',
+        'pendingQuickActionMessage',
+        'isUserInteracting',
+        'headerInfoTooltipPortal',
+        'showEmojiPicker',
+        'emojiPopoverPos',
+        'emojiPopoverAnchor',
+        'disableInitialAnimations',
+        'disableInitialAnimationsTimer',
+        'shouldAnimateChatOpen',
+        'chatOpenAnimationTimer',
+        'restoredMessagesCount',
+        'scrollRestoreRetryTimer',
+        'modalImageUrl',
+        'typewriterToken',
+        'typewriterMessage',
+        'typewriterText',
+        'thinkingPhraseToken',
+        'thinkingPhraseText',
+        'streamBuffer',
+        'streamingCareRequestId',
+        'streamingMessage',
+        'streamStatusStage',
+        'streamStatusTool',
+        'streamRevealToken',
+        'streamRevealFinalize',
+        'lastAssisEventAt',
+        'showImageModal',
+        'isSuppressClickOutside',
+        'loadingUpdateContactInfo',
+        // 'loadingIndicator',
+        'businessPictureFromDbFailed',
+        'headerLogoFailed',
+        'discountCarouselOverflow',
+        'applyingDiscountCode',
+        'shopifyActionError',
+        'shopifyActionErrorTimer',
+        'shopifyCartKeys',
+        'shopifyCartItems',
+        'shopifyCartItemCount',
+        'shopifyCartTotalCents',
+        'shopifyCartCurrency',
+        'showShopifyCartPanel',
+        'showGoToCheckout',
+        'shopifyCartBadgeBump',
+        'poweredByAssisAddedProductIds',
+        '_copiedDiscountTimer',
+        'copiedDiscountCode',
+        'editingContactSubmissionId',
+        'productDetail',
+        'productSheetTop',
+        'productSheetRight',
+        'productSheetBottom',
+        'productSheetLeft',
+        'productCardOptionMenuKey',
+        'productVariantMenu',
+      ]);
+    },
+
+    getPersistableStateSnapshot() {
+      const deny = this.getNonPersistedStateKeys();
+      const snapshot = {};
+
+      // Copy all data() keys except denylisted ones.
+      Object.keys(this.$data || {}).forEach((key) => {
+        if (deny.has(key)) return;
+        snapshot[key] = this[key];
+      });
+
+      // Ensure clientId stays consistent (also stored separately)
+      if (this.clientId) {
+        snapshot.clientId = this.clientId;
+      }
+
+      // setup() ref — not in $data, but needed so remounts keep BE language without an en→he flash
+      const pluginLanguage = String(this.pluginLanguage || '').trim().toLowerCase();
+      if (
+        pluginLanguage === 'force_he'
+        || pluginLanguage === 'force_en'
+        || pluginLanguage === 'he'
+        || pluginLanguage === 'en'
+        || pluginLanguage === 'auto'
+      ) {
+        snapshot.pluginLanguage = pluginLanguage;
+      }
+
+      // Strip anything non-JSON-serializable (functions, DOM nodes, etc.)
+      return JSON.parse(JSON.stringify(snapshot));
+    },
+
+    persistChatSession() {
+      try {
+        const chatEl = this.$refs.chatMessages;
+        if (chatEl) {
+          this.chatScrollTop = chatEl.scrollTop;
+          this.chatScrollBottomOffset = Math.max(0, chatEl.scrollHeight - chatEl.clientHeight - chatEl.scrollTop);
+        }
+
+        const payload = {
+          v: 1,
+          ts: Date.now(),
+          data: this.getPersistableStateSnapshot(),
+        };
+        localStorage.setItem(this.getSessionStorageKey(), JSON.stringify(payload));
+      } catch (error) {
+        console.error('Failed to persist chat session:', error);
+      }
+    },
+
+    restoreChatSession() {
+      try {
+        const raw = localStorage.getItem(this.getSessionStorageKey());
+        if (!raw) return false;
+
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return false;
+
+        // Expire persisted session after 2 hours.
+        const now = Date.now();
+        const maxAgeMs = 2 * 60 * 60 * 1000;
+        const lastSavedAt = typeof parsed.ts === 'number' ? parsed.ts : null;
+        if (lastSavedAt && (now - lastSavedAt > maxAgeMs)) {
+          this.clearPersistedChatSession();
+          return false;
+        }
+
+        // Back-compat: previously we stored the fields at the root.
+        const restoredData = parsed.data && typeof parsed.data === 'object' ? parsed.data : parsed;
+
+        // Restore only keys that exist in data(). Avoid rehydrating runtime-only keys.
+        const deny = this.getNonPersistedStateKeys();
+        Object.keys(restoredData).forEach((key) => {
+          if (deny.has(key)) return;
+          if (!Object.prototype.hasOwnProperty.call(this.$data, key)) return;
+          this[key] = restoredData[key];
+        });
+
+        // Ensure we always have a boolean for quick actions if missing
+        // if (typeof this.showQuickActions !== 'boolean') {
+        //   this.showQuickActions = true;
+        // }
+
+        // Ensure clientId is persisted for socket auth
+        if (this.clientId) {
+          localStorage.setItem('clientId', this.clientId);
+        }
+
+        // Keep the contact fetch guard consistent across refreshes.
+        if (
+          this.businessWhatsAppNumber
+          && (!this.hasEmailCommunicationChannel || this.businessEmail)
+        ) {
+          this.isWhatsAppNumberFetched = true;
+        }
+        // Older sessions may have pluginMessagesFetched without welcome_ai_messages.
+        // Force a refetch so welcome messages can be restored into chat.
+        if (this.pluginMessagesFetched && this.welcomeAiMessages == null) {
+          this.pluginMessagesFetched = false;
+        }
+
+        // Restore BE language from setup() ref (not part of $data).
+        const restoredPluginLanguage = String(restoredData.pluginLanguage || '').trim().toLowerCase();
+        if (
+          restoredPluginLanguage === 'force_he'
+          || restoredPluginLanguage === 'force_en'
+          || restoredPluginLanguage === 'he'
+          || restoredPluginLanguage === 'en'
+          || restoredPluginLanguage === 'auto'
+        ) {
+          this.pluginLanguage = restoredPluginLanguage;
+        }
+
+        this.syncPhoneCountryFromGuestPhone();
+
+        (this.chatMessages || []).forEach((message) => {
+          if (!message || typeof message !== 'object') return;
+          message.isTyping = false;
+          message.typedText = '';
+          message.isStreaming = false;
+          message.streamPendingCommit = false;
+          message.pendingDataFromWebsite = null;
+          if (message.isContactSubmission) {
+            // Legacy inline-edit flag from older sessions
+            message.isEditingContact = false;
+          }
+          if (message.message) {
+            message.message = this.enrichAgentHandoffMessage(message.message);
+          }
+        });
+
+        this.clearStreamingState();
+
+        return true;
+      } catch (error) {
+        console.error('Failed to restore chat session:', error);
+        return false;
+      }
+    },
+
+    clearPersistedChatSession() {
+      localStorage.removeItem(this.getSessionStorageKey());
+    },
+
+    // Get or create persistent clientId
+    getOrCreateClientId() {
+      // First check if we have it in memory
+      if (this.clientId) {
+        return this.clientId;
+      }
+
+      // Try to get from localStorage
+      let clientId = localStorage.getItem('clientId');
+
+      // If not in localStorage, generate a new one
+      if (!clientId) {
+        if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+          clientId = crypto.randomUUID();
+        } else {
+          // Fallback for browsers that don't support crypto.randomUUID()
+          clientId = 'client_' + Date.now() + '_' + Math.random().toString(36).substring(2, 15);
+        }
+        localStorage.setItem('clientId', clientId);
+      }
+
+      // Store in memory for faster access
+      this.clientId = clientId;
+      return this.clientId;
+    },
+
+    // Socket initialization and handlers
+    initSocket() {
+      try {
+        // Get or create persistent clientId
+        const clientId = this.getOrCreateClientId();
+
+        // Initialize socket connection to backend
+        this.socket = io(this.ASSIS_BACKEND_URL, {
+          transports: ['websocket', 'polling'],
+          autoConnect: true,
+          reconnection: true,
+          reconnectionDelay: 1000,
+          reconnectionAttempts: Infinity, // Keep trying to reconnect
+          reconnectionDelayMax: 5000,
+          timeout: 20000,
+          auth: {
+            clientId: clientId
+          },
+          query: {
+            userType: "customer",
+            businessUrl: window.location.origin,
+            careRequestId: this.careRequestId,
+          },
+        });
+
+        // Set up socket event handlers
+        this.setupSocketHandlers();
+      } catch (error) {
+        console.error('Failed to initialize socket:', error);
+      }
+    },
+
+    setupSocketHandlers() {
+      if (!this.socket) return;
+
+      // Connection established
+      this.socket.on('connect', () => {
+        console.log('Socket connected:', this.socket.id);
+        this.isSocketConnected = true;
+        this.onSocketConnect();
+
+        if (this.careRequestId && this.chatMessages.length > 0) {
+          const lastMessageId = this.chatMessages[this.chatMessages.length - 1]?.id;
+
+          if (lastMessageId) {
+            this.socket.emit('resume_chat', {
+              careRequestId: this.careRequestId,
+              lastMessageId: lastMessageId
+            });
+          }
+        }
+      });
+
+      // Connection lost
+      this.socket.on('disconnect', (reason) => {
+        console.log('Socket disconnected:', reason);
+        this.isSocketConnected = false;
+        this.onSocketDisconnect(reason);
+      });
+
+      // Connection error
+      this.socket.on('connect_error', (error) => {
+        console.error('Socket connection error:', error);
+        this.isSocketConnected = false;
+      });
+
+      // Reconnection attempt - ensure clientId is sent on reconnection
+      this.socket.on('reconnect_attempt', (attemptNumber) => {
+        // Ensure clientId is always sent on reconnection
+        const clientId = this.getOrCreateClientId();
+        if (this.socket && this.socket.auth) {
+          this.socket.auth.clientId = clientId;
+        }
+      });
+
+      // Successfully reconnected
+      this.socket.on('reconnect', (attemptNumber) => {
+        this.isSocketConnected = true;
+        // Verify clientId is still set after reconnection
+        const clientId = this.getOrCreateClientId();
+      });
+
+      this.socket.on('close_chat', (data) => {
+        // console.log("Close chat:", data);
+        this.closeChat(data);
+      });
+
+      // Agent message received
+      this.socket.on('chat_message', (data) => {
+        // console.log("Chat message received:", data);
+        this.handleReceivedMessage(data);
+      });
+
+      // Missing messages received
+      this.socket.on('missing_messages', (data) => {
+        // console.log("Missing messages received:", data);
+        const messages = data?.messages?.filter(message => message.type === 'message' && message.source !== 'whatsapp' && message.source !== 'email') || [];
+        if (messages && messages?.length > 0) {
+          this.chatMessages.push(...messages);
+          const lastMessage = this.chatMessages[this.chatMessages.length - 1];
+          if (lastMessage && lastMessage.sender !== 'client') {
+            this.loadingIndicator = false;
+          }
+        }
+      });
+
+      this.socket.on('loading_indicator', (data) => {
+        // console.log("Loading indicator:", data);
+        // While tokens are already streaming, don't re-show the thinking bubble.
+        if (
+          data?.value
+          && this.streamingMessage
+          && String(this.streamingMessage.message || '').trim()
+        ) {
+          return;
+        }
+        this.loadingIndicator = data.value;
+      });
+
+      // Agent stream events (USE_AGENT_SERVICE_STREAM). Ignored by older BEs that never emit them.
+      this.socket.on('assis:status', (data) => {
+        this.logAssisEvent('assis:status', data);
+        this.handleAssisStatus(data);
+      });
+
+      this.socket.on('assis:delta', (data) => {
+        this.logAssisEvent('assis:delta', data);
+        this.handleAssisDelta(data);
+      });
+
+      this.socket.on('assis:reset', (data) => {
+        this.logAssisEvent('assis:reset', data);
+        this.handleAssisReset(data);
+      });
+
+      this.socket.on('assis:done', (data) => {
+        this.logAssisEvent('assis:done', data);
+        this.handleAssisDone(data);
+      });
+
+      this.socket.on('assis:error', (data) => {
+        this.logAssisEvent('assis:error', data);
+        this.handleAssisError(data);
+      });
+
+      // Error with ai intervento
+      this.socket.on('error_with_ai_intervention', (data) => {
+        console.log("Error with ai intervention:", data);
+        let error =  data.message || data.error || this.defaultErrorMessage;
+
+        if (error?.toLowerCase().includes('violates unique constraint')) {
+          error = this.defaultErrorMessage;
+        }
+
+        else if (error?.toLowerCase().includes('too many requests')) {
+          if (this.loginChannels === 'ai' && !this.phoneSubmitted) {
+            error = 'You’ve sent too many requests in a short time. Please slow down and try again in a moment or enter your phone number to continue the conversation with an agent.';
+          } else {
+            error = 'You’ve sent too many requests in a short time. Please slow down and try again in a moment.';
+          }
+        }
+
+        else if (error?.toLowerCase().includes('getAiResponse')) {
+          if (this.loginChannels === 'ai' && !this.phoneSubmitted) {
+            error = this.defaultErrorMessage;
+          } else {
+            error = this.defaultErrorMessage;
+          }
+        }
+
+        else if (error?.includes('Your message could not be saved. Please try again.') && this.businessWhatsAppNumber) {
+          error = this.defaultErrorMessage;
+        }
+
+        this.clearPartialStreamOnError();
+        this.errorWithAiIntervention = error;
+      });
+
+      this.socket.on('agent_requested_success', (data) => {
+        //console.log("Agent requested successfully:", data);
+        this.agentRequestedSuccess = true;
+
+        if (data.careRequestId) this.careRequestId = data.careRequestId;
+        if (data.customerName) this.guestName = data.customerName;
+      });
+
+      this.socket.on('agent_requested_error', (data) => {
+        console.log("Agent requested error:", data);
+        this.clearPartialStreamOnError();
+        this.errorWithAiIntervention = data.error;
+        this.agentRequested = false;
+      });
+
+      // User contact updated
+      this.socket.on('update_contact_info_success', (data) => {
+        //console.log("User contact updated:", data);
+
+        this.loadingUpdateContactInfo = false;
+
+        if (data?.data?.id) {
+          this.careRequestId = data.data.id;
+        }
+
+        this.guestEmail = data?.data?.email || '';
+
+        this.guestPhone = data?.data?.phone
+          ? (data.data.phone.startsWith('+') ? data.data.phone : `+${data.data.phone}`)
+          : '';
+        this.syncPhoneCountryFromGuestPhone();
+
+        if (this.loginChannels === 'ai' && this.guestPhone) {
+          this.phoneSubmitted = true;
+        }
+
+        if (this.loginChannels === 'ai' && this.guestEmail && this.isValidEmail(this.guestEmail)) {
+          this.emailSubmitted = true;
+        }
+
+        if (data?.data?.name) {
+          this.guestName = data.data.name;
+        }
+
+        this.showSignInForm = false;
+        this.errorContactUpdate = null; // Clear any previous errors
+        this.tempEmail = ''; // Clear temp email
+        this.generatedEmail = '';
+
+        if (data.mergeSuccessfully === true && this.token) {
+
+          // Fetch previous conversations if user has a token
+          this.fetchPreviousConversations(this.token);
+        }
+
+        const skipRequireAgent = this.skipRequireAgentFromOrderVerification;
+        // Only consume the OV skip when we would have requested an agent.
+        // Clearing on every contact update leaves the flag stuck if OV never
+        // emits a requireAgent update (contact already saved during verify).
+        if (data.requireAgent === true) {
+          if (skipRequireAgent) {
+            this.skipRequireAgentFromOrderVerification = false;
+          } else {
+            this.requestAgent();
+          }
+        }
+
+        if (this.phoneSubmitted || this.emailSubmitted) {
+          this.aiContactChannel = null;
+        }
+      });
+
+      // User contact updated error
+      this.socket.on('update_contact_info_error', (data) => {
+        console.log("User contact updated error:", data);
+
+        this.loadingUpdateContactInfo = false;
+
+        // Optimistic submit hid the sheet — reopen so the user can fix and resubmit.
+        this.phoneSubmitted = false;
+        this.emailSubmitted = false;
+        this.agentRequested = false;
+        this.aiContactPickerDismissed = false;
+
+        this.errorContactUpdate = data.error;
+
+        this.errosInChat = data.error;
+
+        // Auto-hide toast after 3 seconds
+        setTimeout(() => {
+          this.errorContactUpdate = null;
+        }, 3000);
+      });
+
+      this.socket.on('send-verification-code-success', (data) => {
+        this.handleOrderVerificationSendCodeSuccess(data);
+      });
+
+      this.socket.on('send-verification-code-error', (data) => {
+        this.handleOrderVerificationSendCodeError(data);
+      });
+
+      this.socket.on('verify-verification-code-success', (data) => {
+        console.log("verify-verification-code-success", data)
+        this.handleOrderVerificationVerifySuccess(data);
+      });
+
+      this.socket.on('verify-verification-code-error', (data) => {
+        this.handleOrderVerificationVerifyError(data);
+      });
+
+      this.socket.on('resend-order-question-to-ai-after-verified-success', (data) => {
+        this.handleResendOrderQuestionAfterVerifiedSuccess(data);
+      });
+
+      this.socket.on('resend-order-question-to-ai-after-verified-error', (data) => {
+        this.handleResendOrderQuestionAfterVerifiedError(data);
+      });
+
+      this.socket.on('request_agent_error', (data) => {
+        console.log("Request agent error:", data);
+
+        this.errorsInRequestAgent = data.error;
+        this.agentRequested = false;
+        this.loadingIndicator = false;
+
+        // Auto-hide toast after 3 seconds
+        setTimeout(() => {
+          this.errorsInRequestAgent = null;
+        }, 3000);
+      });
+
+// TODO implement error when require agent
+    },
+
+    removeSocketHandlers() {
+      if (!this.socket) return;
+      this.socket.off(); // Remove all event listeners to prevent duplicates on reconnect
+    },
+
+    onSocketConnect() {
+      // Handle socket connection
+      console.log('WebSocket connection established');
+
+      // You can add any additional logic here when socket connects
+      // For example, join a room, send identification, etc.
+    },
+
+    onSocketDisconnect(reason) {
+      // Handle socket disconnection
+      console.log('WebSocket connection lost:', reason);
+
+      // You can add any additional logic here when socket disconnects
+      // For example, show connection status, attempt manual reconnection, etc.
+    },
+
+    // Handle app visibility changes (mobile background/foreground)
+    handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        this.syncShopifyCart();
+        // App came back to foreground
+
+        // Ensure we have a persistent clientId
+        const clientId = this.getOrCreateClientId();
+
+        // If socket exists but is disconnected, reconnect it
+        if (this.socket) {
+          if (!this.isSocketConnected && !this.socket.connected) {
+
+            // Ensure clientId is set in auth before reconnecting
+            if (this.socket.auth) {
+              this.socket.auth.clientId = clientId;
+            }
+
+            // Manually reconnect if not already attempting
+            if (!this.socket.connecting) {
+              this.socket.connect();
+            }
+          }
+        } else if (this.isSocketInitialized) {
+          this.initSocket();
+        }
+      }
+    },
+
+    handleReceivedMessage(data) {
+      // Handle incoming messages from agents
+
+      //console.log("Received message:", data);
+
+      if (data && data.careRequestId) {
+        this.careRequestId = data.careRequestId || null;
+      }
+
+      if (data && data.message) {
+
+        if (data.sender === 'agent' || data.sender === 'business' || data.sender === 'assis' || data.sender === 'ai') {
+          this.notePluginAssistantReply();
+
+          this.loadingIndicator = false;
+
+          const agentMessage = {
+            message: this.enrichAgentHandoffMessage(data.message),
+            sender: data.sender,
+            datetime: data.datetime || new Date().toISOString(),
+            id: data?.messageId || data?.messageIds?.[data?.messageIds?.length - 1],
+          };
+          if (data.isHumanRequested != null) {
+            agentMessage.isHumanRequested = this.normalizeIsHumanRequested(data.isHumanRequested);
+          }
+
+          this.attachDataFromWebsite(agentMessage, data.dataFromWebsite);
+          this.attachOrderVerification(agentMessage, data);
+
+          // Streaming path: finalize the in-progress bubble instead of appending a duplicate.
+          if (data.sender === 'ai' && this.finalizeStreamingMessage(agentMessage, data.dataFromWebsite)) {
+            // Letter-by-letter path raises orders only after the full text is revealed.
+            if (!this.streamingMessage?.isStreaming && !this.streamRevealFinalize) {
+              this.raiseOrdersAfterAiText(this.streamingMessage || agentMessage);
+            }
+            this.updateMessageDirections();
+          } else {
+            this.appendIncomingAgentMessage(agentMessage);
+            const stored = this.chatMessages?.[this.chatMessages.length - 1];
+            if (stored && (stored.sender === 'ai' || data.sender === 'ai')) {
+              if (stored.isTyping) {
+                stored._raiseOrdersAfterType = true;
+              } else {
+                this.raiseOrdersAfterAiText(stored);
+              }
+            }
+          }
+
+          // Update text directions for new messages
+          this.updateMessageDirections();
+        } else if (data.sender === 'client') {
+          // Attach server id to the matching optimistic client message (prefer datetime, else latest text match)
+          const candidates = this.chatMessages?.filter((chatMessage) => (
+            chatMessage.message === data.message
+            && chatMessage.sender === 'client'
+            && !chatMessage.id
+          )) || [];
+          const datetimeMatches = data.datetime
+            ? candidates.filter((chatMessage) => chatMessage.datetime === data.datetime)
+            : [];
+          const match = datetimeMatches[datetimeMatches.length - 1]
+            || candidates[candidates.length - 1];
+          if (match) {
+            match.id = data?.messageId || data?.id;
+          }
+
+        }
+      } else if (
+        data
+        && (data.shouldShowOrderVerification === true || data.should_show_order_verification === true)
+        && !data.messages
+      ) {
+        this.loadingIndicator = false;
+        const agentMessage = {
+          message: '',
+          sender: data.sender || 'ai',
+          datetime: data.datetime || new Date().toISOString(),
+          id: data?.messageId || data?.messageIds?.[data?.messageIds?.length - 1],
+          isHumanRequested: data.isHumanRequested,
+        };
+        this.attachDataFromWebsite(agentMessage, data.dataFromWebsite);
+        this.attachOrderVerification(agentMessage, data);
+        this.appendIncomingAgentMessage(agentMessage, { typewrite: false });
+        this.updateMessageDirections();
+      }
+
+      if (data.messages) {
+        const incomingAgentMessages = data.messages.filter((message) => (
+          message.sender === 'agent' || message.sender === 'business' || message.sender === 'assis' || message.sender === 'ai'
+        ));
+        const typewrite = incomingAgentMessages.length === 1;
+
+        data.messages.forEach(message => {
+          if (message.sender === 'agent' || message.sender === 'business' || message.sender === 'assis' || message.sender === 'ai') {
+
+          const agentMessage = {
+            message: this.enrichAgentHandoffMessage(message.message),
+            sender: message.sender,
+            datetime: message.datetime || new Date().toISOString(),
+            id: message?.messageId || message?.id,
+          };
+          if (message.isHumanRequested != null) {
+            agentMessage.isHumanRequested = this.normalizeIsHumanRequested(message.isHumanRequested);
+          }
+
+          this.attachDataFromWebsite(agentMessage, message.dataFromWebsite);
+          this.attachOrderVerification(agentMessage, {
+            ...message,
+            shouldShowOrderVerification: message.shouldShowOrderVerification
+              || message.should_show_order_verification
+              || data.shouldShowOrderVerification
+              || data.should_show_order_verification,
+            orderVerification: message.orderVerification
+              || message.order_verification
+              || data.orderVerification
+              || data.order_verification,
+          });
+          if (message.sender === 'ai' && this.finalizeStreamingMessage(agentMessage, message.dataFromWebsite)) {
+            this.updateMessageDirections();
+          } else {
+            this.appendIncomingAgentMessage(agentMessage, { typewrite });
+          }
+          } else if (message.sender === 'client') {
+            // Attach server id to the matching optimistic client message (prefer datetime, else latest text match)
+            const candidates = this.chatMessages?.filter((chatMessage) => (
+              chatMessage.message === message.message
+              && chatMessage.sender === 'client'
+              && !chatMessage.id
+            )) || [];
+            const datetimeMatches = message.datetime
+              ? candidates.filter((chatMessage) => chatMessage.datetime === message.datetime)
+              : [];
+            const match = datetimeMatches[datetimeMatches.length - 1]
+              || candidates[candidates.length - 1];
+            if (match) {
+              match.id = message?.messageId || message?.id;
+            }
+          }
+        })
+      }
+
+      if (data && data?.data?.name) {
+        this.guestName = data.data.name;
+      }
+    },
+
+    clearStreamingState() {
+      // Never drop product/order cards that were deferred until reveal finished.
+      this.flushPendingDataFromWebsite(this.streamingMessage);
+      this.streamRevealToken += 1;
+      this.streamRevealFinalize = false;
+      this.streamBuffer = '';
+      this.streamingCareRequestId = null;
+      this.streamingMessage = null;
+      this.streamStatusStage = null;
+      this.streamStatusTool = null;
+    },
+
+    logAssisEvent(eventName, data) {
+      return;
+      const now = Date.now();
+      const d = new Date(now);
+      const pad = (n, len = 2) => String(n).padStart(len, '0');
+      const clock = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
+      const deltaMs = this.lastAssisEventAt ? now - this.lastAssisEventAt : null;
+      const gap = deltaMs == null ? 'start' : `+${deltaMs}ms`;
+      console.log(`[${clock}] (${gap}) ${eventName}`, data);
+      this.lastAssisEventAt = now;
+    },
+
+    isActiveStreamCareRequest(careRequestId) {
+      if (!careRequestId) return false;
+      if (!this.streamingCareRequestId) return true;
+      return this.streamingCareRequestId === careRequestId;
+    },
+
+    ensureStreamingBubble(careRequestId) {
+      if (careRequestId) {
+        this.careRequestId = careRequestId;
+      }
+
+      if (this.streamingCareRequestId === careRequestId && this.streamingMessage) {
+        return this.streamingMessage;
+      }
+
+      this.streamRevealToken += 1;
+      this.streamRevealFinalize = false;
+      this.streamingCareRequestId = careRequestId;
+      this.streamBuffer = '';
+      this.errorWithAiIntervention = null;
+      this.loadingIndicator = false;
+
+      const agentMessage = {
+        message: '',
+        sender: 'ai',
+        datetime: new Date().toISOString(),
+        id: null,
+        isStreaming: true,
+        streamPendingCommit: true,
+        isHumanRequested: false,
+      };
+      this.chatMessages.push(agentMessage);
+      this.streamingMessage = this.chatMessages[this.chatMessages.length - 1];
+      this.scrollToBottom();
+      return this.streamingMessage;
+    },
+
+    streamRevealDelay(ch) {
+      // Steady letter-by-letter pace — no catch-up sprint on done/chat_message.
+      if (ch === '\n') return 32;
+      if (/[.,!?…;:]/.test(ch)) return 42;
+      return 16;
+    },
+
+    /** Fire-and-forget stream reveal without leaving an unhandled rejection. */
+    queuePumpStreamReveal() {
+      Promise.resolve()
+        .then(() => this.pumpStreamReveal())
+        .catch(() => { /* ignore — next delta/done will resume */ });
+    },
+
+    async pumpStreamReveal() {
+      const message = this.streamingMessage;
+      if (!message || message._streamRevealActive) return;
+
+      message._streamRevealActive = true;
+      const token = this.streamRevealToken;
+      let typedSinceScroll = 0;
+
+      try {
+        while (token === this.streamRevealToken && this.streamingMessage === message) {
+          const target = this.normalizeTypewriterText(this.streamBuffer);
+          const current = String(message.message || '');
+
+          if (current.length < target.length) {
+            const nextChar = target[current.length];
+            message.message = target.slice(0, current.length + 1);
+            message.isStreaming = true;
+            typedSinceScroll += 1;
+            if (typedSinceScroll === 1 || typedSinceScroll % 8 === 0) {
+              this.scrollToBottom('auto');
+            }
+            await new Promise((resolve) => setTimeout(resolve, this.streamRevealDelay(nextChar)));
+            continue;
+          }
+
+          // Caught up to everything received so far.
+          if (this.streamRevealFinalize) {
+            message.message = this.enrichAgentHandoffMessage(target);
+            message.isStreaming = false;
+            message.streamPendingCommit = false;
+            this.streamRevealFinalize = false;
+            this.flushPendingDataFromWebsite(message);
+            this.raiseOrdersAfterAiText(message);
+            this.updateMessageDirections();
+            this.$nextTick(() => {
+              try {
+                if (Array.isArray(message?.products) && message.products.length > 0) {
+                  this.scrollToMessageProducts(message, 'auto');
+                } else {
+                  this.scrollToBottom();
+                }
+              } catch (_) { /* ignore scroll errors */ }
+            });
+            this.schedulePersistChatSession();
+            this.clearStreamingState();
+            return;
+          }
+
+          // Pause until the next delta / done restarts the pump.
+          return;
+        }
+      } catch (error) {
+        // Ignore; a newer token or clearStreamingState will supersede.
+      } finally {
+        if (message) message._streamRevealActive = false;
+
+        // A delta/done may have landed while we were finishing this turn.
+        if (
+          token === this.streamRevealToken
+          && this.streamingMessage === message
+          && (
+            this.streamRevealFinalize
+            || String(message.message || '').length < this.normalizeTypewriterText(this.streamBuffer).length
+          )
+        ) {
+          this.queuePumpStreamReveal();
+        }
+      }
+    },
+
+    clearPartialStreamOnError() {
+      if (this.streamingMessage) {
+        // Drop deferred cards with the bubble — do not flush onto a removed message.
+        this.streamingMessage.pendingDataFromWebsite = null;
+        const idx = this.chatMessages.indexOf(this.streamingMessage);
+        if (idx !== -1) {
+          this.chatMessages.splice(idx, 1);
+        }
+      } else {
+        for (let i = this.chatMessages.length - 1; i >= 0; i--) {
+          const m = this.chatMessages[i];
+          if (m?.isStreaming || m?.streamPendingCommit) {
+            m.pendingDataFromWebsite = null;
+            this.chatMessages.splice(i, 1);
+            break;
+          }
+        }
+      }
+      this.clearStreamingState();
+      this.loadingIndicator = false;
+    },
+
+    finalizeStreamingMessage(agentMessage, dataFromWebsite) {
+      let target = this.streamingMessage;
+      if (!target) {
+        // Late chat_message after stream refs were cleared: find pending stream bubble.
+        for (let i = this.chatMessages.length - 1; i >= 0; i--) {
+          const m = this.chatMessages[i];
+          if (m?.sender === 'ai' && (m.isStreaming || m.streamPendingCommit)) {
+            target = m;
+            break;
+          }
+        }
+      }
+      if (!target) {
+        // Stream already committed (assis:done finished first). Merge into the matching
+        // AI bubble so isHumanRequested / cards from chat_message are not lost.
+        const mergeKey = this.incomingMessageKey({
+          sender: agentMessage.sender || 'ai',
+          message: this.normalizeTypewriterText(
+            this.enrichAgentHandoffMessage(agentMessage.message)
+          ),
+        });
+        for (let i = this.chatMessages.length - 1; i >= 0; i--) {
+          const m = this.chatMessages[i];
+          if (
+            m?.sender === 'ai'
+            && !m.isContactSubmission
+            && this.incomingMessageKey(m) === mergeKey
+          ) {
+            target = m;
+            break;
+          }
+        }
+      }
+      if (!target) {
+        if (this.streamingCareRequestId) this.clearStreamingState();
+        return false;
+      }
+
+      const finalText = this.normalizeTypewriterText(
+        this.enrichAgentHandoffMessage(agentMessage.message)
+      );
+
+      // Attach authoritative metadata immediately — defer product/discount cards until text is fully revealed.
+      target.sender = agentMessage.sender || 'ai';
+      target.datetime = agentMessage.datetime || target.datetime;
+      if (agentMessage.id) target.id = agentMessage.id;
+      if (Object.prototype.hasOwnProperty.call(agentMessage, 'isHumanRequested')) {
+        this.applyHumanRequestedFlag(target, agentMessage.isHumanRequested);
+      }
+      this.loadingIndicator = false;
+      this.clearAiTypewriter(target);
+
+      const visible = this.normalizeTypewriterText(target.message);
+      // Only defer cards while characters are still missing. isStreaming alone is not
+      // enough — chat_message often arrives after the buffer is caught up but before
+      // assis:done, and clearing products into pending was dropping them.
+      const textIncomplete = visible.length < finalText.length;
+
+      if (textIncomplete) {
+        this.streamingMessage = target;
+        this.streamBuffer = finalText;
+        this.streamRevealFinalize = true;
+        target.isStreaming = true;
+        target.streamPendingCommit = true;
+        target.pendingDataFromWebsite = this.mergePendingDataFromWebsite(
+          target.pendingDataFromWebsite,
+          dataFromWebsite
+        );
+        if (agentMessage.orderVerification) {
+          target.pendingDataFromWebsite = this.mergePendingDataFromWebsite(
+            target.pendingDataFromWebsite,
+            {
+              orderVerification: agentMessage.orderVerification,
+              shouldShowOrderVerification: true,
+            }
+          );
+        }
+        // Hold product and order cards until letter-by-letter reveal completes.
+        if (target.pendingDataFromWebsite) {
+          target.products = undefined;
+          target.discounts = undefined;
+          target.orderVerification = undefined;
+          target.orders = undefined;
+          target.providerOrders = undefined;
+        }
+        this.queuePumpStreamReveal();
+        return true;
+      }
+
+      // Text fully on screen — attach cards now (even if isStreaming was still true).
+      target.message = finalText;
+      this.attachDataFromWebsite(target, dataFromWebsite);
+      this.flushPendingDataFromWebsite(target);
+      if (agentMessage.orderVerification) {
+        target.orderVerification = agentMessage.orderVerification;
+      }
+      if (
+        (!Array.isArray(target.products) || !target.products.length)
+        && Array.isArray(agentMessage.products)
+        && agentMessage.products.length
+      ) {
+        target.products = agentMessage.products;
+      }
+      target.isStreaming = false;
+      target.streamPendingCommit = false;
+      this.clearStreamingState();
+      this.raiseOrdersAfterAiText(target);
+      this.scrollToBottom();
+      this.schedulePersistChatSession();
+      return true;
+    },
+
+    handleAssisStatus(data) {
+      if (!data || typeof data !== 'object') return;
+      const { careRequestId, stage, tool } = data;
+      if (!careRequestId || !this.isActiveStreamCareRequest(careRequestId)) return;
+
+      if (careRequestId) this.careRequestId = careRequestId;
+      this.streamingCareRequestId = careRequestId;
+      this.streamStatusStage = stage || null;
+      this.streamStatusTool = tool || null;
+
+      // Optional thinking / tool spinner until first delta creates the bubble.
+      if (!this.streamingMessage || !String(this.streamingMessage.message || '').trim()) {
+        this.loadingIndicator = true;
+      }
+    },
+
+    handleAssisDelta(data) {
+      if (!data || typeof data !== 'object') return;
+      const { careRequestId, text } = data;
+      if (!careRequestId || text == null || !this.isActiveStreamCareRequest(careRequestId)) return;
+
+      if (this.streamingCareRequestId !== careRequestId || !this.streamingMessage) {
+        this.ensureStreamingBubble(careRequestId);
+      }
+
+      // Keep full received text in streamBuffer; reveal letter-by-letter into the bubble.
+      this.streamBuffer += this.normalizeTypewriterText(String(text));
+      this.streamingMessage.isStreaming = true;
+      this.loadingIndicator = false;
+      this.errorWithAiIntervention = null;
+      this.queuePumpStreamReveal();
+    },
+
+    handleAssisReset(data) {
+      if (!data || typeof data !== 'object') return;
+      const { careRequestId } = data;
+      if (!careRequestId || careRequestId !== this.streamingCareRequestId) return;
+
+      this.streamRevealToken += 1;
+      this.streamRevealFinalize = false;
+      this.streamBuffer = '';
+      if (this.streamingMessage) {
+        this.streamingMessage.message = '';
+        this.streamingMessage.isStreaming = true;
+        this.streamingMessage._streamRevealActive = false;
+      }
+      // Model switched to tools — show thinking spinner again while we wait.
+      this.loadingIndicator = true;
+      this.streamStatusStage = 'tool';
+    },
+
+    handleAssisDone(data) {
+      if (!data || typeof data !== 'object') return;
+      const { careRequestId, result } = data;
+      if (careRequestId && this.streamingCareRequestId && careRequestId !== this.streamingCareRequestId) return;
+
+      if (careRequestId) this.careRequestId = careRequestId;
+
+      const response = result?.response != null
+        ? this.normalizeTypewriterText(String(result.response))
+        : this.streamBuffer;
+      this.streamBuffer = response;
+
+      if (!this.streamingMessage) {
+        // chat_message may have cleared stream refs while the bubble is still revealing.
+        for (let i = this.chatMessages.length - 1; i >= 0; i--) {
+          const m = this.chatMessages[i];
+          if (m?.sender === 'ai' && (m.isStreaming || m.streamPendingCommit)) {
+            this.streamingMessage = m;
+            if (careRequestId) this.streamingCareRequestId = careRequestId;
+            break;
+          }
+        }
+      }
+
+      if (!this.streamingMessage) {
+        // chat_message already committed this reply — do not open a second bubble.
+        const doneText = this.normalizeTypewriterText(this.enrichAgentHandoffMessage(response));
+        if (doneText) {
+          const doneKey = this.incomingMessageKey({ sender: 'ai', message: doneText });
+          const alreadyCommitted = this.chatMessages.some((m) => (
+            m?.sender === 'ai'
+            && !m.isContactSubmission
+            && !m.isStreaming
+            && !m.streamPendingCommit
+            && this.incomingMessageKey(m) === doneKey
+          ));
+          if (alreadyCommitted) return;
+        }
+
+        if (careRequestId) {
+          this.ensureStreamingBubble(careRequestId);
+          // ensureStreamingBubble clears streamBuffer — restore authoritative text.
+          this.streamBuffer = response;
+        }
+      }
+
+      if (this.streamingMessage) {
+        const visible = this.normalizeTypewriterText(this.streamingMessage.message);
+        const targetText = this.normalizeTypewriterText(this.streamBuffer);
+        // Avoid flipping isStreaming back on when text is already complete — that hides
+        // product cards via isMessageTextRevealing until the pump tick finishes.
+        if (visible.length < targetText.length) {
+          this.streamingMessage.isStreaming = true;
+        }
+        this.streamingMessage.streamPendingCommit = true;
+      }
+
+      this.loadingIndicator = false;
+      this.streamStatusStage = null;
+      this.streamStatusTool = null;
+      // Keep typing letter-by-letter to the final text — never snap on done.
+      this.streamRevealFinalize = true;
+      this.queuePumpStreamReveal();
+    },
+
+    handleAssisError(data) {
+      if (!data || typeof data !== 'object') return;
+      const { careRequestId, error } = data;
+      if (careRequestId && this.streamingCareRequestId && careRequestId !== this.streamingCareRequestId) return;
+
+      this.clearPartialStreamOnError();
+
+      let message = typeof error === 'string'
+        ? error
+        : (error?.message || error?.error || this.defaultErrorMessage);
+      if (!message) message = this.defaultErrorMessage;
+      this.errorWithAiIntervention = message;
+    },
+
+
+
+
+    handleMessage(event) {
+      if (event.data && event.data.type === 'oauth:google') {
+        // Check origin matches backend URL (allow for different protocols/ports)
+        const backendOrigin = new URL(this.ASSIS_BACKEND_URL).origin;
+        const eventOrigin = event.origin;
+
+        if (eventOrigin === backendOrigin || eventOrigin.startsWith(backendOrigin.replace('http://', 'https://'))) {
+          // Clean up OAuth state
+          localStorage.removeItem('oauth_state');
+          localStorage.removeItem('oauth_return_url');
+
+          this.handleOAuthSuccess(event.data.user, event.data.token);
+        }
+      }
+    },
+    checkOAuthCallback() {
+      // Check if we're waiting for OAuth callback (mobile flow)
+      const oauthState = localStorage.getItem('oauth_state');
+      const oauthReturnUrl = localStorage.getItem('oauth_return_url');
+
+      if (!oauthState) {
+        // Not in OAuth flow
+        return;
+      }
+
+      // Check for OAuth callback data in URL (for mobile redirect flow)
+      // On mobile, data might be in query params or hash
+      const urlParams = new URLSearchParams(window.location.search);
+      const hashString = window.location.hash.substring(1);
+      const hashParams = hashString ? new URLSearchParams(hashString) : new URLSearchParams();
+
+      // Also check raw hash for base64 data (some backends put it directly in hash)
+      const rawHash = hashString && !hashString.includes('=') ? hashString : null;
+
+      // Check both query params and hash for various possible formats
+      const oauthData = urlParams.get('oauth_data') || hashParams.get('oauth_data') ||
+        urlParams.get('data') || hashParams.get('data') ||
+        rawHash; // Try raw hash as base64 data
+      const oauthError = urlParams.get('oauth_error') || hashParams.get('oauth_error') ||
+        urlParams.get('error') || hashParams.get('error');
+
+      // Also check for direct user/token parameters (alternative format)
+      const oauthUser = urlParams.get('user') || hashParams.get('user');
+      const oauthToken = urlParams.get('token') || hashParams.get('token');
+
+      // Check if we're on the backend callback page (might show success message)
+      const isOnCallbackPage = window.location.href.includes('/api/google/callback') ||
+        window.location.href.includes('callback') ||
+        document.body.innerText.includes('Connexion réussie') ||
+        document.body.innerText.includes('Connection successful');
+
+      if (isOnCallbackPage && !oauthData && !oauthUser && !oauthError) {
+        // We're stuck on the callback page - try to extract data or wait for postMessage
+        this.waitForOAuthData();
+        return;
+      }
+
+      if (oauthData) {
+        try {
+          // Try to decode base64 first, then parse JSON
+          const rawDataPreview = oauthData.substring(0, 100);
+
+          // Try multiple decoding strategies
+          let decodedData = null;
+          let parseError = null;
+
+          // Strategy 1: Use the decodeOAuthData function
+          try {
+            decodedData = this.decodeOAuthData(oauthData);
+            const data = JSON.parse(decodedData);
+            if (data.user && data.token) {
+
+              this.cleanOAuthCallbackUrl();
+              localStorage.removeItem('oauth_state');
+
+              this.handleOAuthSuccess(data.user, data.token);
+              return;
+            }
+          } catch (error) {
+            parseError = error;
+            console.log('decodeOAuthData failed, trying direct base64...');
+          }
+
+          // Strategy 2: Direct base64 decode (most common case) - using safe function
+          try {
+            decodedData = this.safeBase64Decode(oauthData);
+            if (decodedData) {
+              const data = JSON.parse(decodedData);
+              if (data.user && data.token) {
+
+                this.cleanOAuthCallbackUrl();
+                localStorage.removeItem('oauth_state');
+
+                this.handleOAuthSuccess(data.user, data.token);
+                return;
+              }
+            }
+          } catch (error) {
+            console.log('Direct base64 failed, trying URL decode then base64...');
+          }
+
+          // Strategy 3: URL decode first, then base64 - using safe function
+          try {
+            const urlDecoded = decodeURIComponent(oauthData);
+            decodedData = this.safeBase64Decode(urlDecoded);
+            if (decodedData) {
+              const data = JSON.parse(decodedData);
+              if (data.user && data.token) {
+                this.cleanOAuthCallbackUrl();
+                localStorage.removeItem('oauth_state');
+
+                this.handleOAuthSuccess(data.user, data.token);
+                return;
+              }
+            }
+          } catch (error) {
+            console.log('URL decode + base64 failed');
+          }
+
+          // Strategy 4: Try as plain JSON (already decoded)
+          try {
+            const data = JSON.parse(oauthData);
+            if (data.user && data.token) {
+              this.cleanOAuthCallbackUrl();
+              localStorage.removeItem('oauth_state');
+              this.handleOAuthSuccess(data.user, data.token);
+              return;
+            }
+          } catch (error) {
+            console.log('Plain JSON parse failed');
+          }
+
+          // All strategies failed
+          throw parseError || new Error('All decoding strategies failed');
+
+        } catch (error) {
+          console.error('Error parsing OAuth callback data:', error);
+          console.error('Raw data that failed:', oauthData);
+          console.error('Data length:', oauthData.length);
+          this.isLoading = false;
+          localStorage.removeItem('oauth_state');
+          localStorage.removeItem('oauth_return_url');
+          alert('Failed to process OAuth data. Please try logging in again.');
+        }
+      } else if (oauthUser && oauthToken) {
+        // Handle alternative format with separate user and token params
+        try {
+          // Decode user data (might be base64 encoded)
+          const decodedUser = this.decodeOAuthData(oauthUser);
+          const user = JSON.parse(decodedUser);
+
+          // Token might also be encoded
+          const token = this.decodeOAuthData(oauthToken);
+
+          // Clean up URL and localStorage
+          this.cleanOAuthCallbackUrl();
+          localStorage.removeItem('oauth_state');
+
+          // Handle OAuth success
+          this.handleOAuthSuccess(user, token);
+        } catch (error) {
+          console.error('Error parsing OAuth user data:', error);
+          this.isLoading = false;
+          localStorage.removeItem('oauth_state');
+          localStorage.removeItem('oauth_return_url');
+        }
+      } else if (oauthError) {
+        // Handle OAuth error
+        console.error('OAuth error:', oauthError);
+        this.isLoading = false;
+        alert('Google login failed. Please try again.');
+
+        // Clean up URL and localStorage
+        this.cleanOAuthCallbackUrl();
+        localStorage.removeItem('oauth_state');
+        localStorage.removeItem('oauth_return_url');
+      } else if (oauthState && oauthReturnUrl && !isOnCallbackPage) {
+        // We have OAuth state but no callback data yet - might be waiting
+        // This could happen if the backend redirects but we haven't received data yet
+        console.log('Waiting for OAuth callback...');
+      }
+    },
+    waitForOAuthData() {
+      // Wait for postMessage from callback page (backend might still try to send it)
+      let attempts = 0;
+      const maxAttempts = 10; // Wait up to 5 seconds (500ms * 10)
+
+      const checkInterval = setInterval(() => {
+        attempts++;
+
+        // Check if we've received OAuth data via postMessage
+        // (This will be handled by handleMessage)
+
+        // Also check URL again in case backend redirected
+        const urlParams = new URLSearchParams(window.location.search);
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        const oauthData = urlParams.get('oauth_data') || hashParams.get('oauth_data') ||
+          urlParams.get('data') || hashParams.get('data');
+        const oauthUser = urlParams.get('user') || hashParams.get('user');
+        const oauthToken = urlParams.get('token') || hashParams.get('token');
+
+        if (oauthData || (oauthUser && oauthToken)) {
+          clearInterval(checkInterval);
+          this.checkOAuthCallback();
+          return;
+        }
+
+        // If we've waited too long, try to redirect back manually
+        if (attempts >= maxAttempts) {
+          clearInterval(checkInterval);
+          console.error('OAuth callback timeout - redirecting back');
+          const returnUrl = localStorage.getItem('oauth_return_url') || window.location.origin;
+          this.isLoading = false;
+          localStorage.removeItem('oauth_state');
+          localStorage.removeItem('oauth_return_url');
+
+          // Try to redirect back to widget page
+          if (returnUrl !== window.location.href) {
+            window.location.href = returnUrl;
+          } else {
+            alert('OAuth callback timed out. Please try logging in again.');
+          }
+        }
+      }, 500);
+    },
+    safeBase64Decode(str) {
+      // Safely decode base64, return null if invalid
+      if (!str || typeof str !== 'string') return null;
+
+      try {
+        // Remove any whitespace
+        const cleaned = str.trim().replace(/\s/g, '');
+
+        // Base64 validation: must be valid base64 characters and proper length
+        if (cleaned.length === 0) return null;
+
+        // Check for valid base64 characters (A-Z, a-z, 0-9, +, /, =)
+        // Also allow URL-safe base64 (- and _)
+        if (!/^[A-Za-z0-9+/=_-]+$/.test(cleaned)) {
+          return null;
+        }
+
+        // Convert URL-safe base64 to standard base64 if needed
+        let base64Str = cleaned.replace(/-/g, '+').replace(/_/g, '/');
+
+        // Remove any invalid characters that might have slipped through
+        base64Str = base64Str.replace(/[^A-Za-z0-9+/=]/g, '');
+
+        // Add padding if needed (base64 strings must be multiple of 4)
+        const paddingNeeded = (4 - (base64Str.length % 4)) % 4;
+        base64Str += '='.repeat(paddingNeeded);
+
+        // Validate length is now multiple of 4
+        if (base64Str.length % 4 !== 0) {
+          return null;
+        }
+
+        // Try to decode - this is where "The string did not match the expected pattern" can occur
+        try {
+          return atob(base64Str);
+        } catch (atobError) {
+          // If atob fails, it's not valid base64
+          console.log('atob failed:', atobError.message);
+          return null;
+        }
+      } catch (error) {
+        // Not valid base64
+        console.log('safeBase64Decode error:', error.message);
+        return null;
+      }
+    },
+    decodeOAuthData(encodedData) {
+      if (!encodedData) return encodedData;
+
+      // Try multiple decoding strategies in order
+      try {
+        // Strategy 1: Try as plain JSON first (might already be decoded)
+        if (encodedData.trim().startsWith('{') || encodedData.trim().startsWith('[')) {
+          try {
+            JSON.parse(encodedData); // Validate it's valid JSON
+            return encodedData;
+          } catch {
+            // Not valid JSON, continue
+          }
+        }
+
+        // Strategy 2: Direct base64 decode (most common for OAuth)
+        const base64Decoded = this.safeBase64Decode(encodedData);
+        if (base64Decoded) {
+          // Check if decoded result looks like JSON
+          if (base64Decoded.trim().startsWith('{') || base64Decoded.trim().startsWith('[')) {
+            return base64Decoded;
+          }
+          // If not JSON, might need URL decode after base64
+          try {
+            const urlDecoded = decodeURIComponent(base64Decoded);
+            if (urlDecoded.trim().startsWith('{') || urlDecoded.trim().startsWith('[')) {
+              return urlDecoded;
+            }
+            return base64Decoded;
+          } catch {
+            return base64Decoded;
+          }
+        }
+
+        // Strategy 3: URL decode first, then base64
+        try {
+          const urlDecoded = decodeURIComponent(encodedData);
+          // If URL decoded result looks like JSON, return it
+          if (urlDecoded.trim().startsWith('{') || urlDecoded.trim().startsWith('[')) {
+            try {
+              JSON.parse(urlDecoded); // Validate it's valid JSON
+              return urlDecoded;
+            } catch {
+              // Not valid JSON, continue
+            }
+          }
+          // If URL decoded result looks like base64, try base64 decode
+          const base64FromUrl = this.safeBase64Decode(urlDecoded);
+          if (base64FromUrl) {
+            if (base64FromUrl.trim().startsWith('{') || base64FromUrl.trim().startsWith('[')) {
+              return base64FromUrl;
+            }
+          }
+          return urlDecoded;
+        } catch (urlError) {
+          // URL decode failed, return as-is
+          return encodedData;
+        }
+      } catch (error) {
+        // If all decoding fails, return as-is
+        return encodedData;
+      }
+    },
+    cleanOAuthCallbackUrl() {
+      // Clean up URL by removing OAuth callback parameters
+      const returnUrl = localStorage.getItem('oauth_return_url');
+      if (returnUrl) {
+        try {
+          const url = new URL(returnUrl);
+          window.history.replaceState({}, document.title, url.pathname + url.search);
+        } catch (e) {
+          // Fallback to origin + pathname if URL parsing fails
+          window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
+        }
+        localStorage.removeItem('oauth_return_url');
+      } else {
+        // Remove OAuth params from current URL
+        const url = new URL(window.location.href);
+        url.searchParams.delete('oauth_data');
+        url.searchParams.delete('oauth_error');
+        url.searchParams.delete('data');
+        url.searchParams.delete('error');
+        url.searchParams.delete('user');
+        url.searchParams.delete('token');
+        window.history.replaceState({}, document.title, url.pathname + url.search);
+      }
+    },
+    async toggleChat() {
+      // Subscription off: allow close only, not open
+      if (this.planSubscription === 'off' && !this.isChatOpen) {
+        return;
+      }
+
+      // If only whatsapp, go directly to whatsapp login
+      if (this.loginChannels === 'whatsapp') {
+        await this.fetchBusinessWhatsAppNumber();
+        this.initiateWhatsAppLogin();
+        return;
+      }
+
+      if(this.isChatClosedAutomatically) {
+        this.disconnectChat()
+      }
+
+      if (this.loginChannels === "ai") {
+        this.currentStep = 'chat';
+        this.showGuestInput = true;
+      }
+
+      // Animate only on explicit user open, not on restored remounts.
+      const isOpeningChat = !this.isChatOpen;
+      this.isChatOpen = !this.isChatOpen;
+      if (isOpeningChat) {
+        this.notePluginOpened(this._pluginOpenSource || 'click');
+        this._pluginOpenSource = '';
+        this.$nextTick(() => this.noteBannerShown());
+        this.shouldAnimateChatOpen = true;
+        if (this.chatOpenAnimationTimer) {
+          clearTimeout(this.chatOpenAnimationTimer);
+        }
+        this.chatOpenAnimationTimer = setTimeout(() => {
+          this.shouldAnimateChatOpen = false;
+          this.chatOpenAnimationTimer = null;
+        }, 350);
+      } else {
+        this.shouldAnimateChatOpen = false;
+        this.noteHeaderButton('close');
+        this.notePluginClosed();
+      }
+
+      // Initialize socket and fetch WhatsApp number only on first chat open
+      if (this.isChatOpen && !this.isSocketInitialized) {
+        this.initSocket();
+        this.isSocketInitialized = true;
+        // Fetch WhatsApp number when opening chat for the first time
+        this.fetchBusinessWhatsAppNumber();
+      }
+
+      if (this.isChatOpen) {
+        if (this.loginChannels === 'ai' && this.chatMessages.length === 0) {
+          await this.setWelcomeMessages();
+        }
+        this.scrollToBottom();
+      }
+
+      // Don't reset the flow when closing chat - preserve user's progress
+    },
+    async setWelcomeMessages() {
+      await this.fetchWelcomeAiMessages();
+
+      const welcomeMessages = Array.isArray(this.welcomeAiMessages) ? this.welcomeAiMessages : [];
+      const firstWelcomeMessage = welcomeMessages[0] || (this.language === 'he' ? `היי, אני Assis AI 💙
+
+אפשר לשאול אותי כאן שאלות ולקבל מענה מיידי.
+אם תרצו לדבר עם נציג אנושי, אפשר להשאיר מספר טלפון ממש כאן למטה ונשלח לך מיד הודעת וואטסאפ.
+נציג אנושי ימשיך לעזור לך משם.`
+  : `Hi, I’m Assis AI 💙
+
+You can ask me questions here and get an immediate answer.
+If you want to speak with a human agent, you can leave your phone number right below and we will immediately send you a WhatsApp message.
+A human agent will continue helping you from there.`);
+
+      // Only set the welcome message if nothing else was added while awaiting (e.g. quick actions)
+      if (this.chatMessages.length === 0) {
+        this.chatMessages = [{
+          type: 'message',
+          message: firstWelcomeMessage,
+          datetime: new Date().toISOString(),
+          sender: 'ai',
+          id: `prev_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+        }];
+
+        if (welcomeMessages.length > 1) {
+          welcomeMessages.slice(1).forEach(message => {
+            if (typeof message !== 'string' || !message.trim()) return;
+            this.chatMessages.push({
+              type: 'message',
+              message: message,
+              datetime: new Date().toISOString(),
+              sender: 'ai',
+              id: `prev_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              hideWhatsappInput: true,
+            });
+          });
+        }
+
+        this.schedulePersistChatSession();
+      }
+    },
+    dismissQuickActions() {
+      if (this.proactiveTriggerId && typeof this.cooldownProactiveTrigger === 'function') {
+        this.cooldownProactiveTrigger(this.proactiveTriggerId);
+      }
+      this.trackPluginEvent('outside_bubbles_dismissed');
+      this.showQuickActions = false;
+      this.persistChatSession();
+    },
+    sendOutsideBubble(bubble) {
+      const text = String(bubble?.textToSend || bubble?.plainText || '').trim();
+      this.trackPluginEvent('outside_bubble_clicked', {
+        text: this.clipPluginEventText(bubble?.plainText || text),
+      });
+      this._pluginMessageSource = 'bubble';
+      this._pluginOpenSource = 'bubble';
+      this.sendQuickAction(text);
+    },
+    sendSuggestedChip(text) {
+      this.trackPluginEvent('suggested_clicked', {
+        text: this.clipPluginEventText(text),
+        surface: 'chat',
+      });
+      this._pluginMessageSource = 'suggested';
+      this.sendQuickAction(text);
+    },
+    async sendQuickAction(text) {
+      if (!this._pluginMessageSource) {
+        this._pluginMessageSource = this.isChatOpen ? 'suggested' : 'bubble';
+      }
+      if (!this.isChatOpen) this._pluginOpenSource = this._pluginOpenSource || 'bubble';
+      this.pendingQuickActionMessage = text;
+      this.notePluginMaximized('message');
+      // Same as home send: conversation view at full width
+      this.poweredByAssisHomeDismissed = true;
+      this.poweredByAssisForceHome = false;
+      this.isMaximized = true;
+
+      if (!this.isChatOpen) {
+        await this.toggleChat();
+      }
+
+      this.flushPendingQuickAction();
+    },
+    flushPendingQuickAction() {
+      if (this.isFlushingQuickAction) return;
+      if (!this.pendingQuickActionMessage) return;
+      if (!this.isChatOpen) return;
+      if (!this.isSocketConnected) return;
+
+      this.isFlushingQuickAction = true;
+      const text = this.pendingQuickActionMessage;
+      this.pendingQuickActionMessage = null;
+
+      this.newMessage = text;
+      this.sendMessage();
+
+      // Allow future quick actions immediately after this tick
+      this.$nextTick(() => {
+        this.isFlushingQuickAction = false;
+      });
+    },
+    askAboutOrderItemLabel(item) {
+      const title = String(item?.title || '').trim();
+      if (!title) {
+        return this.language === 'he' ? 'שאלה על מוצר' : 'Ask about product';
+      }
+      return this.language === 'he'
+        ? `שאלה לגבי ${title}`
+        : `Ask about ${title}`;
+    },
+    askAboutOrderItem(item) {
+      const title = String(item?.title || '').trim();
+      if (!title) return;
+      if (this.orderDetailsPopupOpen) {
+        this.closeOrderDetailsPopup();
+      }
+      const text = this.language === 'he'
+        ? `יש לי שאלה לגבי ${title}`
+        : `I have a question about ${title}`;
+      this.trackPluginEvent('order_item_question', { title: this.clipPluginEventText(title) });
+      this._pluginMessageSource = 'order_item';
+      this.sendQuickAction(text);
+    },
+    showGuestInputForm() {
+      this.trackPluginEvent('auth_guest');
+      this.showGuestInput = true;
+      this.currentStep = 'chat'; // Go directly to chat step
+      this.guestName = ''; // Clear previous input
+      this.guestEmail = '';
+      this.guestPhone = '';
+      this.isUserInteracting = true; // Set user interacting to true
+
+      // Reset the flag after a short delay to allow the form to be shown
+      setTimeout(() => {
+        this.isUserInteracting = false;
+      }, 200);
+    },
+    goBackToOptions() {
+      this.showGuestInput = false;
+      this.guestName = '';
+      this.guestEmail = '';
+      this.guestPhone = '';
+      this.currentStep = 'name'; // Ensure it goes back to name step
+      this.isWhatsAppMode = false; // Reset WhatsApp mode flag
+    },
+    goBackToName() {
+      this.currentStep = 'name';
+    },
+    goBackToContact() {
+      this.currentStep = 'contact';
+    },
+    handleGuestContinue() {
+      if (this.guestName.trim()) {
+        this.trackPluginEvent('auth_field_filled', { field: 'name' });
+        this.currentStep = 'contact';
+      }
+    },
+    handleContactContinue() {
+      // Check if at least one valid contact method is provided
+      if (this.hasValidContact) {
+        if (this.guestEmail) this.trackPluginEvent('auth_field_filled', { field: 'email' });
+        if (this.guestPhone) this.trackPluginEvent('auth_field_filled', { field: 'phone' });
+        this.currentStep = 'chat';
+
+        if (this.generatedEmail) {
+          this.updateUserContact({ email: this.guestEmail, name: this.guestName, phone: this.guestPhone });
+        } else {
+          this.showSignInForm = false;
+        }
+      }
+    },
+    handleAcknowledgmentContinue() {
+      if (this.userAcknowledgment) {
+        this.currentStep = 'chat';
+
+        // Only clear messages if we don't have previous conversations loaded
+        if (this.chatMessages.length === 0) {
+          this.chatMessages = []; // Add welcome message if no previous conversations
+        }
+
+        this.newMessage = ''; // Clear input field
+
+        // Scroll to bottom when chat opens
+        this.scrollToBottom();
+
+        // Update text directions for existing messages
+        this.updateMessageDirections();
+      }
+    },
+    scrollToBottom(behavior = 'smooth') {
+      // Scroll to bottom of chat messages with smooth behavior
+      this.$nextTick(() => {
+        if (this.$refs.chatMessages) {
+          this.$refs.chatMessages.scrollTo({
+            top: this.$refs.chatMessages.scrollHeight,
+            behavior
+          });
+        }
+      });
+    },
+    scrollToMessageProducts(message, behavior = 'smooth') {
+      this.$nextTick(() => {
+        requestAnimationFrame(() => {
+          const chatEl = this.$refs.chatMessages;
+          if (!chatEl || !message) {
+            this.scrollToBottom(behavior);
+            return;
+          }
+          const key = this.getMessageCarouselKey(message);
+          const containers = this.$el?.querySelectorAll?.('.assis-products-container[data-product-carousel-key]');
+          let container = null;
+          if (containers) {
+            for (const node of containers) {
+              if (node?.dataset?.productCarouselKey === key) {
+                container = node;
+                break;
+              }
+            }
+          }
+          if (!container) {
+            this.scrollToBottom(behavior);
+            return;
+          }
+          const viewport = container.querySelector('.assis-products-viewport');
+          if (viewport) {
+            viewport.scrollLeft = 0;
+            this.syncProductCarouselScroll(message, { target: viewport });
+          }
+          const chatRect = chatEl.getBoundingClientRect();
+          const containerRect = container.getBoundingClientRect();
+          // Keep the break between AI text and products near the top of the viewport
+          const nextTop = chatEl.scrollTop + (containerRect.top - chatRect.top) - 28;
+          chatEl.scrollTo({
+            top: Math.max(0, nextTop),
+            behavior,
+          });
+        });
+      });
+    },
+    generateRandomEmail() {
+      const timestamp = Date.now();
+      const randomStr = Math.random().toString(36).substring(2, 9);
+      return `customer_temp_${timestamp}_${randomStr}@assis.care`;
+    },
+    async sendMessage() {
+      if (!this.guestEmail && !this.guestPhone && this.chatMessages.length > 0 && this.loginChannels !== 'ai') {
+        return;
+      }
+
+      if ((this.newMessage.trim() || this.selectedFiles.length > 0) && this.socket) {
+
+        if (!this.isSocketConnected) {
+          console.log("Socket not connected, message not sent");
+          return;
+        }
+
+        // New outbound turn — drop any unfinished stream bubble from a prior reply.
+        if (this.streamingMessage?.isStreaming) {
+          this.clearPartialStreamOnError();
+        } else {
+          this.clearStreamingState();
+        }
+
+        this.loadingIndicator = true;
+
+        const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        let mediaFiles = [];
+        let isTemporaryCustomer = false;
+        let name = this.guestName || 'Customer';
+        const typedText = this.newMessage.trim();
+        const productTitle = this.productDetail ? this.getProductDisplayTitle(this.productDetail.product) : '';
+        if (productTitle && !this._pluginMessageSource) this._pluginMessageSource = 'product_sheet';
+        const outgoingText = this.withOpenProductMention(typedText);
+
+        if (!this.guestEmail && !this.guestPhone) {
+          this.generatedEmail = this.generateRandomEmail();
+          isTemporaryCustomer = true;
+
+          if (this.loginChannels === 'ai') {
+            this.guestEmail = this.generatedEmail;
+          }
+        }
+
+        if (this.loginChannels === 'ai' && this.guestPhone && !this.phoneSubmitted && !this.guestEmail) {
+          this.generatedEmail = this.generateRandomEmail();
+          this.guestEmail = this.generatedEmail;
+        }
+
+        // Upload files if any are selected
+        if (this.selectedFiles.length > 0) {
+          mediaFiles = await this.uploadFiles(messageId);
+        }
+
+        let phone = null;
+        if ((this.loginChannels === 'ai' && this.guestPhone && this.phoneSubmitted) || (this.loginChannels !== 'ai' && this.guestPhone)) {
+          phone = this.guestPhone?.replace(/[^\d]/g, '')?.length > 5 ? this.guestPhone?.replace(/[^\d]/g, '') : null;
+        }
+
+        if (this.newMessage.trim() || mediaFiles.length > 0) {
+
+          let message = {
+            type: 'message',
+            message: outgoingText || '',
+            datetime: new Date().toISOString(),
+            from: name,
+            website: window.location.origin,
+            isShopify: true,
+            careRequestId: this.careRequestId || null,
+            sender: "client",
+            isTemporaryCustomer: isTemporaryCustomer,
+            userInfo: {
+              name: name,
+              email: this.guestEmail,
+              phone: phone,
+              websiteUrl: window.location.origin,
+            },
+            messages: [],
+            language: this.language,
+          };
+
+          if (!this.guestEmail && !phone) {
+            message.userInfo.email = this.generatedEmail;
+          }
+
+          if (this.loginChannels === 'ai') {
+            message.messages = [];
+            if (outgoingText) {
+              message.messages.push({ text: outgoingText, sender: "client" });
+            }
+
+            if (mediaFiles.length > 0) {
+              mediaFiles.forEach(file => {
+                message.messages.push({
+                  text: file.url,
+                  sender: "client",
+                  datetime: new Date().toISOString(),
+                });
+              });
+            }
+
+            if (message.messages) {
+              message.messages = message.messages?.filter(message => message.text?.trim());
+            }
+
+            if (!message?.messages || message?.messages?.length === 0) {
+              return;
+            }
+
+            message.allowAiResponse = this.allowAiResponse;
+
+            if (this.newMessage.trim()) {
+              this.chatMessages.push(message);
+            }
+
+            if (mediaFiles.length > 0) {
+              mediaFiles.forEach(file => {
+                this.chatMessages.push({...message, message: file.url});
+              });
+            }
+          } else {
+            this.chatMessages.push(message);
+          }
+
+          // Queue for debounced send (group multiple user messages into one socket emit)
+          const queuedMediaUrls = Array.isArray(mediaFiles) ? mediaFiles.map(f => f?.url).filter(Boolean) : [];
+          if (outgoingText || queuedMediaUrls.length > 0) {
+            const source = this._pluginMessageSource || 'chat';
+            this._pluginMessageSource = '';
+            const continued = this._pluginClientMessageCount > 0 && this._pluginSawAssistantReply;
+            this._pluginClientMessageCount += 1;
+            this._pluginClientSentAt = Date.now();
+            this._pluginReplyTracked = false;
+            if (!this._pluginFirstMessageTracked) {
+              this._pluginFirstMessageTracked = true;
+              this.trackPluginEvent('first_message', {
+                ms_since_open: this._pluginOpenedAt ? Date.now() - this._pluginOpenedAt : 0,
+              });
+            }
+            this.trackPluginEvent('message_sent', {
+              source,
+              text: this.clipPluginEventText(outgoingText),
+              message_index: this._pluginClientMessageCount,
+              continued,
+              has_file: queuedMediaUrls.length > 0,
+              ...(productTitle ? { product_title: this.clipPluginEventText(productTitle) } : {}),
+            });
+            if (source === 'product_sheet' && productTitle) {
+              this.trackPluginEvent('product_free_question', {
+                product_title: this.clipPluginEventText(productTitle),
+                text: this.clipPluginEventText(outgoingText),
+              });
+            }
+            this.outboundQueue.push({
+              text: outgoingText,
+              mediaUrls: queuedMediaUrls,
+              datetime: new Date().toISOString(),
+            });
+            if (outgoingText) this.addProductFromChatRequest(outgoingText);
+            if (typedText && this.productDetail) this.closeProductDetail();
+
+            if (this.outboundTypingHoldTimer) {
+              clearTimeout(this.outboundTypingHoldTimer);
+              this.outboundTypingHoldTimer = null;
+            }
+            this.scheduleOutboundFlush();
+          }
+        }
+
+        // Add message to local chat
+        this.newMessage = '';
+        this.selectedFiles = []; // Clear selected files
+
+        // Reset textarea height
+        this.$nextTick(() => {
+          this.autoResizeTextarea();
+        });
+
+        // Scroll to bottom after message is added
+        this.scrollToBottom();
+      }
+    },
+    async disconnectChat() {
+      if (this.socket) {
+        this.socket.emit("disconnect_client_id", this.clientId);
+        this.removeSocketHandlers();
+        if (this.isSocketConnected) {
+          this.socket.disconnect();
+        }
+        this.isSocketConnected = false;
+        this.socket = null;
+      }
+
+      if (this.outboundFlushTimer) {
+        clearTimeout(this.outboundFlushTimer);
+        this.outboundFlushTimer = null;
+      }
+      if (this.outboundTypingHoldTimer) {
+        clearTimeout(this.outboundTypingHoldTimer);
+        this.outboundTypingHoldTimer = null;
+      }
+      this.outboundQueue = [];
+      this.aiWelcomeContextSent = false;
+
+      // Reset all chat state
+      this.guestName = '';
+      this.guestEmail = '';
+      this.guestPhone = '';
+      this.phoneSubmitted = false;
+      this.emailSubmitted = false;
+      this.aiContactChannel = null;
+      this.aiContactPickerDismissed = false;
+      this.userAcknowledgment = false;
+      this.chatMessages = [];
+      this.newMessage = '';
+      this.careRequestId = null;
+      this.isSocketInitialized = false;
+      this.isWhatsAppMode = false; // Reset WhatsApp mode flag
+      this.showSignInForm = false; // Reset sign in form flag
+      this.tempEmail = ''; // Clear temp email
+      this.generatedEmail = ''; // Clear generated email
+      this.token = null; // Clear token
+      this.clientId = null; // Clear clientId
+      this.user = null; // Clear user
+      this.isAuthenticated = false;
+      this.errorContactUpdate = null; // Clear error messages
+      this.isSocketConnected = false; // Reset connection status
+      this.errosInChat = null; // Clear error messages
+      this.agentRequested = false; // Reset agent requested flag
+      this.loadingUpdateContactInfo = false; // Reset loading state
+      this.agentRequestedSuccess = false; // Reset agent requested successfully flag
+      this.isChatClosedAutomatically = false; // Reset chat closed automatically flag
+      this.reasonForClosingChat = null; // Reset reason for closing chat
+      this.poweredByAssisHomeDismissed = false;
+      this.poweredByAssisForceHome = false;
+      this.poweredByAssisHomeDraft = '';
+      this.poweredByAssisAddedProductIds = {};
+      this.appliedDiscountCode = '';
+      this.applyingDiscountCode = '';
+      this.inapplicableDiscountCodes = {};
+      this.isMaximized = false;
+      this.typewriterToken += 1;
+      this.typewriterMessage = null;
+      this.typewriterText = '';
+      this.stopThinkingPhrases();
+      this.clearStreamingState();
+
+      if (this.loginChannels === "ai") {
+        this.currentStep = 'chat';
+        this.showGuestInput = true;
+      } else {
+        this.currentStep = 'name';
+        this.showGuestInput = false;
+      }
+
+      // Clear all localStorage items
+      localStorage.removeItem('clientId');
+      localStorage.removeItem('oauth_token');
+      localStorage.removeItem('oauth_state');
+      localStorage.removeItem('oauth_return_url');
+      this.clearPersistedChatSession();
+
+      // Keep the widget open; "disconnect" should reset the socket, not close the UI.
+      this.isChatOpen = true;
+      this.shouldAnimateChatOpen = false;
+
+      // Recreate a fresh socket (new clientId) immediately.
+      this.initSocket();
+      this.isSocketInitialized = true;
+
+      if (this.loginChannels === 'ai' && this.chatMessages.length === 0) {
+        await this.setWelcomeMessages();
+      }
+      this.scrollToBottom();
+    },
+    isTemporaryCustomerEmail(email) {
+      const normalized = (email || '').trim().toLowerCase();
+      return /^customer_temp_[^@]+@assis\.care$/.test(normalized);
+    },
+    isValidEmail(email) {
+      const normalized = (email || '').trim().toLowerCase();
+      if (!normalized) return false;
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(normalized)) return false;
+
+      return !this.isTemporaryCustomerEmail(normalized);
+    },
+    isValidPhone(phone) {
+      const normalizedPhone = this.stripLeadingZeroAfterPhonePrefix(phone);
+      if (!normalizedPhone) return false;
+      if (this.loginChannels === 'ai') {
+        // For AI: can start with +prefix000000000 or 000000000
+        // Can have spaces and dashes
+        // Pattern: optional +, then digits/spaces/dashes
+        if (!normalizedPhone.startsWith('+') && !normalizedPhone.startsWith('0')) {
+          return false;
+        }
+
+        const aiPhoneRegex = /^\+?[\d\s-]+$/;
+        if (!aiPhoneRegex.test(normalizedPhone)) {
+          return false;
+        }
+
+        // Count the actual digits (excluding +, spaces, and dashes)
+        const digitCount = normalizedPhone.replace(/[^\d]/g, '').length;
+
+        // Require minimum 8 digits and maximum 15 digits for a valid phone number
+        return digitCount >= 8 && digitCount <= 15;
+      }
+
+      // Check if phone starts with + and only contains numbers or spaces
+      const phoneRegex = /^\+[\d\s]+$/;
+      if (!phoneRegex.test(normalizedPhone)) {
+        return false;
+      }
+
+      // Count the actual digits (excluding + and spaces)
+      const digitCount = normalizedPhone.replace(/[^\d]/g, '').length;
+
+      // Require minimum 8 digits and maximum 15 digits for a valid phone number
+      return digitCount >= 8 && digitCount <= 15;
+    },
+    isMediaFile(message) {
+      return this.isImage(message) || this.isVideo(message) || this.isAudioMessage(message) || this.isDocument(message);
+    },
+    isImage(message) {
+      const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff']
+      return message && typeof message === 'string' &&
+        (message.startsWith('http') || message.startsWith('https')) &&
+        imageExtensions.some(ext => message.includes(`.${ext}`))
+    },
+    isVideo(message) {
+      const videoExtensions = ['mp4', 'avi', 'mov', 'wmv', 'flv', 'webm', 'mkv']
+      return message && typeof message === 'string' &&
+        (message.startsWith('http') || message.startsWith('https')) &&
+        videoExtensions.some(ext => message.includes(`.${ext}`))
+    },
+    isAudioMessage(message) {
+      const audioExtensions = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'wma']
+      return message && typeof message === 'string' &&
+        (message.startsWith('http') || message.startsWith('https')) &&
+        audioExtensions.some(ext => message.includes(`.${ext}`))
+    },
+    isDocument(message) {
+      const documentExtensions = ['pdf', 'doc', 'docx', 'txt', 'xls', 'xlsx', 'ppt', 'pptx', 'csv']
+      return message && typeof message === 'string' &&
+        (message.startsWith('http') || message.startsWith('https')) &&
+        documentExtensions.some(ext => message.includes(`.${ext}`))
+    },
+    formatTimestamp(timestamp) {
+      // Convert timestamp to "Month Day, Hour:Min" format
+      const date = new Date(timestamp);
+
+      // Options for formatting
+      const options = {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: false
+      };
+
+      // Format the date
+      const formatted = date.toLocaleDateString('en-US', options);
+
+      // Extract month, day and time parts and reformat
+      const monthDay = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: false });
+
+      return `${monthDay}, ${time}`;
+    },
+    handleClickOutside(event) {
+      // Only handle clicks when chat is open
+      if (!this.isChatOpen) return;
+
+      // Don't close if user is interacting
+      if (this.isUserInteracting) {
+        return;
+      }
+
+      // Ignore synthetic/programmatic clicks triggered during downloads
+      if (this.isSuppressClickOutside) {
+        return;
+      }
+
+      // Check if the click is on a guest-related element
+      const isGuestElement = event.target.closest('.guest-option') ||
+        event.target.closest('.guest-input-section') ||
+        event.target.closest('.guest-name-input') ||
+        event.target.closest('.contact-input') ||
+        event.target.closest('.acknowledgment-input') ||
+        event.target.closest('.checkbox-label') ||
+        event.target.closest('.chat-interface') ||
+        event.target.closest('.send-btn') ||
+        event.target.closest('.next-btn') ||
+        event.target.closest('.back-btn') ||
+        event.target.closest('.download-btn') ||
+        event.target.closest('.download-btn-wrapper') ||
+        event.target.closest('.assis-download-anchor') ||
+        event.target.closest('.media-files') ||
+        event.target.closest('.image-container') ||
+        event.target.closest('.video-container') ||
+        event.target.closest('.document-container') ||
+        event.target.closest('.media-file') ||
+        event.target.closest('.chat-container') ||
+        event.target.closest('.chat-content') ||
+        event.target.closest('.chat-messages') ||
+        event.target.closest('.chat-login-form') ||
+        event.target.closest('.login-form-container') ||
+        event.target.closest('.email-input') ||
+        event.target.closest('.email-continue-btn') ||
+        event.target.closest('.google-continue-btn') ||
+        event.target.closest('.whatsapp-continue-btn') ||
+        event.target.closest('.login-separator') ||
+        event.target.closest('.sign-in-link') ||
+        event.target.closest('.maximize-btn');
+
+      if (isGuestElement) {
+        return;
+      }
+
+      // Get the chat container and heart button elements
+      const chatContainer = this.$refs.chatContainer;
+      const heartButton = event.target.closest('.fixed-heart-btn');
+
+      // Check if the click target is within the chat container or is the heart button
+      const isClickInsideChat = chatContainer && chatContainer.contains(event.target);
+      const isClickOnHeart = heartButton;
+
+      // Only close if click is outside both the chat container and heart button
+      if (!isClickInsideChat && !isClickOnHeart) {
+        this.isChatOpen = false;
+        // Don't reset the flow - preserve user's progress
+      } else {
+      }
+    },
+
+    isMobileDevice() {
+      return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+        (window.innerWidth <= 768 && window.innerHeight <= 1024);
+    },
+
+    // Enter → newline on narrow / mobile layouts (not only UA), so iPad desktop-mode still works.
+    shouldEnterInsertNewline() {
+      if (this.isMobileDevice()) return true;
+      if (this.isMobileSheetLayout() || this.isMobileFullscreenLayout()) return true;
+      try {
+        return window.matchMedia('(max-width: 768px)').matches;
+      } catch {
+        return false;
+      }
+    },
+
+    isMobileSheetLayout() {
+      return this.isNewAssisDesign && window.matchMedia('(max-width: 767px)').matches;
+    },
+
+    isMobileFullscreenLayout() {
+      return !this.isNewAssisDesign && window.innerWidth <= 480;
+    },
+
+    shouldLockMobilePageScroll() {
+      return this.isMobileSheetLayout() || this.isMobileFullscreenLayout();
+    },
+
+    /*
+     * Mobile sheet keyboard (iOS + Android) — same model on both:
+     * 1) Freeze the sheet height when the keyboard opens (do not shrink the UI).
+     * 2) Lift the whole sheet with translateY by the occluded amount.
+     * 3) Measure occlusion from visualViewport / innerHeight (no offsetTop — it
+     *    cancels the lift on iPhone Chrome when focus-scrolls).
+     *
+     * One Android-only exception: body position:fixed freezes keyboard metrics on
+     * Chrome Android, so that lock uses overflow-only instead (see lockMobilePageScroll).
+     * Desktop (not isMobileSheetLayout) never applies these styles.
+     */
+    isAndroidBrowser() {
+      return typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
+    },
+
+    isIosBrowser() {
+      return /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+    },
+
+    resetMobileSheetKeyboardState({ keepBaseline = false } = {}) {
+      if (!keepBaseline) this.mobileSheetLayoutBaseline = null;
+      this.mobileSheetLiftHeightPx = null;
+      this.mobileSheetKeyboardOpen = false;
+      this.mobileSheetKeyboardDismissed = false;
+      this._mobileSheetPrevKb = 0;
+    },
+
+    /** Extra keyboard signals when visualViewport alone is quiet (esp. Android Chrome). */
+    onMobileSheetKeyboardSignal() {
+      if (!this.isChatOpen || !this.isMobileSheetLayout()) return;
+      this.handleViewportResize();
+    },
+
+    setVirtualKeyboardOverlay(enabled) {
+      try {
+        const vk = navigator.virtualKeyboard;
+        if (!vk) return;
+        if (enabled) {
+          if (this._assisPrevVkOverlays == null) this._assisPrevVkOverlays = vk.overlaysContent;
+          vk.overlaysContent = true;
+        } else if (this._assisPrevVkOverlays != null) {
+          vk.overlaysContent = this._assisPrevVkOverlays;
+          this._assisPrevVkOverlays = null;
+        }
+      } catch (_) { /* ignore */ }
+    },
+
+    measureMobileSheetKeyboard(baseline) {
+      const vv = window.visualViewport;
+      const liveInner = window.innerHeight;
+      const visualH = vv && vv.height > 0 ? vv.height : liveInner;
+      const kbVisual = Math.max(0, Math.round(baseline - visualH));
+      const kbInner = Math.max(0, Math.round(baseline - liveInner));
+      let kbVk = 0;
+      try {
+        const height = navigator.virtualKeyboard?.boundingRect?.height;
+        if (Number.isFinite(height)) kbVk = Math.max(0, Math.round(height));
+      } catch (_) { /* ignore */ }
+      return {
+        visualH,
+        liveInner,
+        kbVisual,
+        kbInner,
+        kbVk,
+        kb: Math.max(kbVisual, kbInner, kbVk),
+      };
+    },
+
+    lockMobilePageScroll() {
+      if (document.body.dataset.assisScrollY != null && document.body.dataset.assisScrollY !== '') return;
+      const scrollY = window.scrollY;
+      document.body.dataset.assisScrollY = String(scrollY);
+
+      const androidSheet = this.isAndroidBrowser() && this.isMobileSheetLayout();
+      if (androidSheet) {
+        // position:fixed freezes VV/innerHeight keyboard metrics on Android Chrome.
+        document.body.style.overflow = 'hidden';
+        document.documentElement.style.overflow = 'hidden';
+        this.setVirtualKeyboardOverlay(true);
+      } else {
+        document.body.style.position = 'fixed';
+        document.body.style.top = `-${scrollY}px`;
+        document.body.style.width = '100%';
+        document.body.style.overflow = 'hidden';
+      }
+
+      document.body.classList.add('assis-chat-panel-open');
+      if (this.isMobileSheetLayout()) {
+        this.mobileSheetLayoutBaseline = window.innerHeight;
+        this.resetMobileSheetKeyboardState({ keepBaseline: true });
+      }
+    },
+
+    unlockMobilePageScroll() {
+      this.setVirtualKeyboardOverlay(false);
+      if (document.body.dataset.assisScrollY == null) {
+        document.body.classList.remove('assis-chat-panel-open');
+        this.resetMobileSheetKeyboardState();
+        return;
+      }
+      const scrollY = parseInt(document.body.dataset.assisScrollY || '0', 10);
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.width = '';
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+      delete document.body.dataset.assisScrollY;
+      document.body.classList.remove('assis-chat-panel-open');
+      this.resetMobileSheetKeyboardState();
+      window.scrollTo(0, scrollY);
+    },
+
+    applyMobileSheetLayout() {
+      const el = this.$refs.chatContainer;
+      if (!el || !this.isMobileSheetLayout()) return;
+      this._mobileSheetStylesApplied = true;
+
+      const topGap = this.showPoweredByAssisHome ? 104 : 16;
+      let baseline = this.mobileSheetLayoutBaseline || window.innerHeight;
+      const vv = window.visualViewport;
+      if (vv && vv.height > baseline - 40) {
+        baseline = window.innerHeight;
+        this.mobileSheetLayoutBaseline = baseline;
+      }
+
+      const { visualH, liveInner, kbVisual, kbInner, kbVk, kb: rawKb } = this.measureMobileSheetKeyboard(baseline);
+      let kb = rawKb;
+
+      const prevKb = this._mobileSheetPrevKb || 0;
+      if (prevKb > 80 && kb < 40) this.mobileSheetKeyboardDismissed = true;
+      if (kb > 80) this.mobileSheetKeyboardDismissed = false;
+      this._mobileSheetPrevKb = kb;
+      if (this.mobileSheetKeyboardDismissed && kb < 40) kb = 0;
+
+      const wasOpen = !!this.mobileSheetKeyboardOpen;
+      const keyboardOpen = wasOpen ? kb > 40 : kb > 80;
+      this.mobileSheetKeyboardOpen = keyboardOpen;
+
+      // Keep the pre-keyboard sheet height; only translateY while open.
+      const closedHeightPx = Math.max(160, Math.round(Math.min(visualH, liveInner) - topGap));
+      if (!keyboardOpen) this.mobileSheetLiftHeightPx = closedHeightPx;
+      const liftHeight = this.mobileSheetLiftHeightPx || closedHeightPx;
+
+      // Lift only the overlay portion (if the layout already shrank, kbInner covers that).
+      const overlayKb = Math.max(0, Math.max(kbVisual, kbVk) - kbInner);
+      const liftKb = keyboardOpen ? (overlayKb > 0 ? overlayKb : Math.max(0, kb - kbInner)) : 0;
+      const maxLift = Math.max(0, Math.min(Math.round(baseline * 0.7), liftHeight - 120));
+      const lift = Math.min(Math.round(liftKb), maxLift);
+
+      const height = keyboardOpen ? `${liftHeight}px` : `calc(100svh - ${topGap}px)`;
+      const transform = lift > 0 ? `translateY(-${lift}px)` : 'none';
+
+      el.style.setProperty('position', 'fixed', 'important');
+      el.style.setProperty('left', '0px', 'important');
+      el.style.setProperty('right', '0px', 'important');
+      el.style.setProperty('top', 'auto', 'important');
+      el.style.setProperty('bottom', '0px', 'important');
+      el.style.setProperty('width', '100vw', 'important');
+      el.style.setProperty('min-width', '0px', 'important');
+      el.style.setProperty('max-width', '100vw', 'important');
+      el.style.setProperty('height', height, 'important');
+      el.style.setProperty('max-height', height, 'important');
+      el.style.setProperty('margin', '0px', 'important');
+      el.style.setProperty('transform', transform, 'important');
+      el.style.setProperty('border-radius', '28px 28px 0px 0px', 'important');
+    },
+
+    clearMobileSheetLayout() {
+      const el = this.$refs.chatContainer;
+      if (!el) return;
+      this.resetMobileSheetKeyboardState();
+      // Do not wipe desktop window-pos / maximized styles if the sheet never applied.
+      if (!this._mobileSheetStylesApplied) return;
+      this._mobileSheetStylesApplied = false;
+      [
+        'position',
+        'left',
+        'right',
+        'top',
+        'bottom',
+        'width',
+        'min-width',
+        'max-width',
+        'height',
+        'max-height',
+        'margin',
+        'transform',
+        'border-radius',
+      ].forEach((prop) => el.style.removeProperty(prop));
+    },
+
+    isDesktopChatDragEnabled() {
+      return typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches;
+    },
+    readChatWindowPos() {
+      try {
+        const raw = localStorage.getItem(CHAT_WINDOW_POS_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (typeof parsed?.right === 'number' && typeof parsed?.bottom === 'number') {
+          return parsed;
+        }
+      } catch {
+        /* ignore */
+      }
+      return null;
+    },
+    persistChatWindowPos(pos) {
+      try {
+        localStorage.setItem(CHAT_WINDOW_POS_KEY, JSON.stringify(pos));
+      } catch {
+        /* ignore */
+      }
+    },
+    clampChatWindowPos(pos, box) {
+      const pad = 12;
+      const width = box?.width || box?.offsetWidth || 360;
+      const height = box?.height || box?.offsetHeight || 420;
+      return {
+        right: Math.min(Math.max(pad, window.innerWidth - width - pad), Math.max(pad, pos.right)),
+        bottom: Math.min(Math.max(pad, window.innerHeight - height - pad), Math.max(pad, pos.bottom)),
+      };
+    },
+    clearChatWindowPosStyles(chat) {
+      if (!chat) return;
+      chat.style.removeProperty('right');
+      chat.style.removeProperty('bottom');
+      chat.style.removeProperty('left');
+      chat.style.removeProperty('top');
+      chat.style.removeProperty('transform');
+    },
+    applyChatWindowPos(pos, chat = this.$refs.chatContainer) {
+      if (!chat || !pos) return null;
+      if (!this.isDesktopChatDragEnabled()) {
+        this.clearChatWindowPosStyles(chat);
+        return pos;
+      }
+      const next = this.clampChatWindowPos(pos, chat);
+      chat.style.setProperty('right', `${next.right}px`);
+      chat.style.setProperty('bottom', `${next.bottom}px`);
+      chat.style.setProperty('left', 'auto');
+      chat.style.setProperty('top', 'auto');
+      chat.style.removeProperty('transform');
+      this._chatDrag.pos = next;
+      return next;
+    },
+    syncChatWindowPosToElement() {
+      if (this._chatDrag?.active) return;
+      const chat = this.$refs.chatContainer;
+      if (!chat) return;
+      if (!this.isDesktopChatDragEnabled()) {
+        this.clearChatWindowPosStyles(chat);
+        return;
+      }
+      if (this._chatDrag?.pos) this.applyChatWindowPos(this._chatDrag.pos, chat);
+    },
+    isChatWindowDragHandle(target) {
+      if (!(target instanceof Element)) return false;
+      if (target.closest('button, a, input, textarea, [role="menu"], [role="menuitem"]')) return false;
+      return Boolean(target.closest('.chat-header'));
+    },
+    onChatHeaderPointerDown(event) {
+      if (event.button != null && event.button !== 0) return;
+      if (!this.isDesktopChatDragEnabled()) return;
+      if (!this.isChatWindowDragHandle(event.target)) return;
+      const chat = this.$refs.chatContainer;
+      if (!chat) return;
+
+      const rect = chat.getBoundingClientRect();
+      this._chatDrag.active = true;
+      this._chatDrag.moved = false;
+      this._chatDrag.startX = event.clientX;
+      this._chatDrag.startY = event.clientY;
+      this._chatDrag.lastX = event.clientX;
+      this._chatDrag.lastY = event.clientY;
+      this._chatDrag.startRight = window.innerWidth - rect.right;
+      this._chatDrag.startBottom = window.innerHeight - rect.bottom;
+      this._chatDrag.width = rect.width;
+      this._chatDrag.height = rect.height;
+
+      window.addEventListener('pointermove', this.onChatWindowPointerMove, { capture: true, passive: false });
+      window.addEventListener('pointerup', this.onChatWindowPointerUp, { capture: true });
+      window.addEventListener('pointercancel', this.onChatWindowPointerUp, { capture: true });
+    },
+    onChatWindowPointerMove(event) {
+      if (!this._chatDrag.active) return;
+      this._chatDrag.lastX = event.clientX;
+      this._chatDrag.lastY = event.clientY;
+      const dx = event.clientX - this._chatDrag.startX;
+      const dy = event.clientY - this._chatDrag.startY;
+      if (!this._chatDrag.moved && dx * dx + dy * dy < CHAT_DRAG_THRESHOLD_SQ) return;
+      if (!this._chatDrag.moved) {
+        this._chatDrag.moved = true;
+        this.closeHeaderMenu();
+        const chat = this.$refs.chatContainer;
+        if (chat) chat.classList.add('chat-dragging');
+        document.body.style.cursor = 'grabbing';
+        document.body.style.userSelect = 'none';
+      }
+      event.preventDefault();
+      if (this._chatDrag.raf) return;
+      this._chatDrag.raf = requestAnimationFrame(this.flushChatWindowDragFrame);
+    },
+    flushChatWindowDragFrame() {
+      this._chatDrag.raf = 0;
+      if (!this._chatDrag.active || !this._chatDrag.moved) return;
+      const chat = this.$refs.chatContainer;
+      if (!chat) return;
+      const next = this.clampChatWindowPos({
+        right: this._chatDrag.startRight - (this._chatDrag.lastX - this._chatDrag.startX),
+        bottom: this._chatDrag.startBottom - (this._chatDrag.lastY - this._chatDrag.startY),
+      }, this._chatDrag);
+      chat.style.transform = `translate3d(${this._chatDrag.startRight - next.right}px, ${this._chatDrag.startBottom - next.bottom}px, 0)`;
+      this._chatDrag.pos = next;
+    },
+    onChatWindowPointerUp() {
+      this.endChatWindowDrag(true);
+    },
+    endChatWindowDrag(commit = false) {
+      const drag = this._chatDrag;
+      if (!drag) return;
+      window.removeEventListener('pointermove', this.onChatWindowPointerMove, { capture: true });
+      window.removeEventListener('pointerup', this.onChatWindowPointerUp, { capture: true });
+      window.removeEventListener('pointercancel', this.onChatWindowPointerUp, { capture: true });
+      if (drag.raf) {
+        cancelAnimationFrame(drag.raf);
+        drag.raf = 0;
+      }
+      const chat = this.$refs.chatContainer;
+      if (chat) chat.classList.remove('chat-dragging');
+      document.body.style.removeProperty('cursor');
+      document.body.style.removeProperty('user-select');
+      const shouldCommit = commit && drag.active && drag.moved && drag.pos;
+      drag.active = false;
+      drag.moved = false;
+      if (shouldCommit) {
+        this.trackPluginEvent('plugin_dragged');
+        const next = this.applyChatWindowPos(drag.pos, chat);
+        if (next) this.persistChatWindowPos(next);
+      } else if (chat) {
+        chat.style.removeProperty('transform');
+      }
+    },
+    // visualViewport resize/scroll, plus onMobileSheetKeyboardSignal (window/VK).
+    handleViewportResize() {
+      if (!this.isChatOpen) return;
+      if (this._chatDrag?.active) return;
+      const el = this.$refs.chatContainer;
+      if (!el) return;
+      if (this.productDetail) {
+        requestAnimationFrame(() => {
+          if (this.productDetail) this.syncProductSheetBottom();
+        });
+      }
+
+      if (this.isMobileSheetLayout()) {
+        this.clearChatWindowPosStyles(el);
+        const vv = window.visualViewport;
+        if (vv) {
+          const keyboardOpening = this.lastViewportHeight !== null && vv.height < this.lastViewportHeight;
+          this.lastViewportHeight = vv.height;
+          this.applyMobileSheetLayout();
+          if (keyboardOpening) this.scrollToBottom('auto');
+          return;
+        }
+        this.applyMobileSheetLayout();
+        return;
+      }
+
+      // clearMobileSheetLayout is a no-op for styles unless the mobile sheet applied them.
+      this.clearMobileSheetLayout();
+      this.syncChatWindowPosToElement();
+      this.scheduleDiscountCarouselOverflowSync();
+      if (!window.visualViewport || window.innerWidth > 480) return;
+      const vv = window.visualViewport;
+      const keyboardOpening = this.lastViewportHeight !== null && vv.height < this.lastViewportHeight;
+      this.lastViewportHeight = vv.height;
+      el.style.height = `${vv.height}px`;
+      el.style.top = `${vv.offsetTop}px`;
+      if (keyboardOpening) {
+        this.scrollToBottom('auto');
+      }
+    },
+    async initiateGoogleOAuth() {
+      this.isLoading = true;
+
+      // On mobile, use full-page redirect instead of popup
+      if (this.isMobileDevice()) {
+        try {
+          const backendUrl = this.ASSIS_BACKEND_URL;
+          // The redirect URI must match exactly what's configured in Google Cloud Console
+          const redirectUri = `${this.ASSIS_BACKEND_URL}/api/google/callback`;
+          const state = this.generateRandomState();
+
+          // Store state and return URL for verification
+          localStorage.setItem('oauth_state', state);
+          localStorage.setItem('oauth_return_url', window.location.href);
+
+
+          const returnUrl = window.location.origin + window.location.pathname;
+
+          // Build URL with proper encoding
+          const apiUrl = `${backendUrl}/api/google?redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&origin=${encodeURIComponent(window.location.origin)}&mobile=true&return_url=${encodeURIComponent(returnUrl)}`;
+
+          const response = await fetch(apiUrl, {
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'ngrok-skip-browser-warning': 'true'  // Skip ngrok browser warning page
+            }
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('HTTP Error Response:', errorText);
+            throw new Error(`HTTP ${response.status}: ${response.statusText}. Response: ${errorText.substring(0, 100)}`);
+          }
+
+          // Check content type
+          const contentType = response.headers.get('content-type');
+
+          if (!contentType || !contentType.includes('application/json')) {
+            const textResponse = await response.text();
+            console.error('=== NON-JSON RESPONSE RECEIVED ===');
+            console.error('Content-Type:', contentType);
+            console.error('Full HTML Response:', textResponse);
+            console.error('Response length:', textResponse.length);
+
+            // Check if it's ngrok warning page
+            if (textResponse.includes('ngrok') || textResponse.includes('browser warning')) {
+              throw new Error('Ngrok browser warning page detected. The request was intercepted by ngrok.');
+            }
+
+            throw new Error(`Expected JSON but received ${contentType}. This might be an ngrok warning page or server error.`);
+          }
+
+          // Parse JSON with error handling
+          let data;
+          try {
+            const responseText = await response.text();
+
+            if (!responseText || responseText.trim().length === 0) {
+              throw new Error('Empty response from server');
+            }
+
+            // Try to parse as JSON
+            data = JSON.parse(responseText);
+          } catch (jsonError) {
+            console.error('Error:', jsonError);
+            throw new Error(`Failed to parse JSON response: ${jsonError.message}. Full response logged to console.`);
+          }
+
+          if (!data || !data.authUrl) {
+            console.error('Invalid data structure:', data);
+            throw new Error('Invalid response from server: missing authUrl');
+          }
+
+          const oauthUrl = data.authUrl;
+
+          // Full-page redirect on mobile
+          window.location.href = oauthUrl;
+          return;
+        } catch (error) {
+          console.error('Error initiating Google OAuth (1):', error);
+          console.error('Error details:', {
+            message: error.message,
+            stack: error.stack,
+            name: error.name
+          });
+          this.isLoading = false;
+
+          // More specific error message
+          let errorMessage = 'Failed to initiate Google login. ';
+          if (error.message && error.message.includes('pattern')) {
+            errorMessage += 'Invalid data format received from server.';
+          } else if (error.message) {
+            errorMessage += error.message;
+          } else {
+            errorMessage += 'Please try again.';
+          }
+
+          alert(errorMessage);
+          return;
+        }
+      }
+
+      // Desktop: use popup
+      const preOpenedPopup = this.createOAuthPopupShell();
+
+      if (!preOpenedPopup) {
+        alert('Popup blocked! Please allow popups for this site and try again.');
+        this.isLoading = false;
+        return;
+      }
+
+      try {
+        // Redirect to backend OAuth endpoint
+        const backendUrl = this.ASSIS_BACKEND_URL;
+        const redirectUri = `${this.ASSIS_BACKEND_URL}/api/google/callback`;
+        const state = this.generateRandomState();
+
+        // Store state for verification
+        localStorage.setItem('oauth_state', state);
+
+        // Redirect to backend OAuth endpoint
+        const response = await fetch(`${backendUrl}/api/google?redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&origin=${encodeURIComponent(window.location.origin)}`, {
+          headers: {
+            'ngrok-skip-browser-warning': 'true'
+          }
+        });
+
+        const data = await response.json();
+        const oauthUrl = data.authUrl;
+
+        // Open OAuth URL in a popup instead of redirecting
+        this.openOAuthPopup(oauthUrl, preOpenedPopup);
+      } catch (error) {
+        if (preOpenedPopup && !preOpenedPopup.closed) {
+          preOpenedPopup.close();
+        }
+        console.error('Error initiating Google OAuth (2):', error);
+        this.isLoading = false;
+        alert('Failed to initiate Google login. Please try again.');
+      }
+    },
+    createOAuthPopupShell() {
+      // Calculate popup dimensions and position
+      const width = 500;
+      const height = 600;
+      const left = (window.screen.width - width) / 2;
+      const top = (window.screen.height - height) / 2;
+
+      const popup = window.open(
+        'about:blank',
+        'googleOAuth',
+        `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`
+      );
+
+      if (popup) {
+        popup.document.write('<p style="font-family:sans-serif;padding:16px;">Connecting to Google...</p>');
+      }
+
+      return popup;
+    },
+    openOAuthPopup(oauthUrl, existingPopup) {
+      // Use the pre-opened popup if available to avoid popup blockers
+      const popup = existingPopup || this.createOAuthPopupShell();
+
+      if (!popup) {
+        alert('Popup blocked! Please allow popups for this site and try again.');
+        this.isLoading = false;
+        return;
+      }
+
+      popup.focus?.();
+      popup.location.href = oauthUrl;
+
+      // Monitor popup window to detect when it's closed
+      const checkClosed = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(checkClosed);
+          this.isLoading = false;
+        }
+      }, 1000);
+    },
+
+    // Handle OAuth success from postMessage
+    async handleOAuthSuccess(user, token) {
+      this.isLoading = false;
+      try {
+        // Store user information
+        this.user = {
+          name: user.name,
+          email: user.email,
+          picture: user.picture
+        };
+
+        let nextStep = 'chat';
+
+        if (this.generatedEmail && this.guestEmail !== user.email) {
+          // Call update user contact
+          this.updateUserContact({ email: user.email, name: user.name });
+          nextStep = 'chat';
+        }
+
+        this.guestName = user.name;
+        this.guestEmail = user.email;
+        this.guestPhone = user.phone;
+        this.trackPluginEvent('auth_signed_in');
+
+        this.isAuthenticated = true;
+
+
+        // Store token if needed
+        if (token) {
+          this.token = token;
+          localStorage.setItem('oauth_token', token);
+        }
+
+        // Fetch previous conversations if user has a token
+        if (token && !this.generatedEmail) {
+          await this.fetchPreviousConversations(token);
+        }
+
+        // Since we have name and email from Google, skip directly to acknowledgment step
+        this.showGuestInput = true;
+        this.isUserInteracting = true;
+
+        if (this.showSignInForm) {
+          this.showSignInForm = false;
+          nextStep = 'chat';
+        }
+
+        this.currentStep = nextStep;
+
+        // Reset the flag after a short delay to allow the form to be shown
+        setTimeout(() => {
+          this.isUserInteracting = false;
+        }, 200);
+
+      } catch (error) {
+        console.error('OAuth success handling error:', error);
+      }
+    },
+    generateRandomState() {
+      return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    },
+
+    // Handle email continue from login form
+    handleEmailContinue(event) {
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+
+      if (this.isValidEmail(this.tempEmail)) {
+
+        if (this.careRequestId) {
+          // Call BE to update the email
+          this.updateUserContact({ email: this.tempEmail });
+        }
+
+        else if (this.chatMessages.length === 0) {
+          this.guestEmail = this.tempEmail;
+          this.showSignInForm = false;
+        } else {
+          this.errorContactUpdate = this.language === 'en' ? "An error occurred while updating your contact information. Please try again." : "אירעה שגיאה בעת עדכון פרטי הקשר שלך. אנא נסה שוב.";
+          setTimeout(() => {
+            this.errorContactUpdate = null;
+          }, 3000);
+        }
+      }
+    },
+
+    async updateUserContact(userInfo) {
+      if (!this.clientId) {
+        this.clientId = this.getOrCreateClientId();
+      }
+
+      const data = {
+        ...userInfo,
+        careRequestId: this.careRequestId,
+        clientId: this.clientId
+      };
+
+      if (data?.phone) {
+        const normalized = this.stripLeadingZeroAfterPhonePrefix(data.phone);
+        if (normalized !== data.phone) {
+          data.phone = normalized;
+        }
+
+        if (!this.isValidPhone(data.phone)) {
+          return;
+        }
+      }
+
+      if (data?.email && !this.isValidEmail(data.email)) {
+        return;
+      }
+
+      this.loadingUpdateContactInfo = true;
+
+      this.socket.emit('update_contact_info', data);
+    },
+
+    focusAiContactInput() {
+      if (!this.showAiContactChannelContent) return;
+      const focus = () => {
+        if (!this.showAiContactChannelContent) return;
+        const refName = this.activeAiContactChannel === 'email'
+          ? 'aiEmailContactInput'
+          : 'aiWhatsappInput';
+        const el = this.$refs[refName];
+        const input = Array.isArray(el) ? el[0] : el;
+        if (input && typeof input.focus === 'function') {
+          input.focus({ preventScroll: true });
+        }
+      };
+      this.$nextTick(() => {
+        focus();
+        window.setTimeout(focus, 50);
+      });
+    },
+    selectAiContactChannel(channel) {
+      this.trackPluginEvent('agent_channel_selected', { channel: channel === 'email' ? 'email' : 'whatsapp' });
+      this.aiContactChannel = channel;
+      this.showPhonePrefixDropdown = false;
+      this.phonePrefixSearch = '';
+      if (channel === 'whatsapp') {
+        this.ensureDefaultGuestPhonePrefix();
+      }
+      this.focusAiContactInput();
+    },
+    ensureDefaultAiContactChannel() {
+      if (this.aiContactChannel) return;
+      if (this.hasWhatsappCommunicationChannel) {
+        this.selectAiContactChannel('whatsapp');
+        return;
+      }
+      if (this.hasEmailCommunicationChannel) {
+        this.selectAiContactChannel('email');
+      }
+    },
+    backFromAiContactChannel() {
+      if (this.showAiContactChannelPicker) {
+        this.aiContactChannel = null;
+        this.showPhonePrefixDropdown = false;
+        this.phonePrefixSearch = '';
+        return;
+      }
+
+      this.dismissAiContactPicker();
+    },
+    dismissAiContactPicker() {
+      // Closing while editing just cancels the edit; sheet hides because
+      // editingContactSubmissionId is cleared and phone/email already submitted.
+      if (this.editingContactSubmissionId) {
+        this.cancelContactSubmissionEdit();
+        this.showPhonePrefixDropdown = false;
+        this.phonePrefixSearch = '';
+        return;
+      }
+
+      this.aiContactPickerDismissed = true;
+      this._agentSheetClickNoted = false;
+      this.trackPluginEvent('agent_sheet_minimized');
+      this.aiContactChannel = null;
+      this.showPhonePrefixDropdown = false;
+      this.phonePrefixSearch = '';
+    },
+    noteAgentSheetClick(event) {
+      if (this._agentSheetClickNoted) return;
+      const target = event?.target;
+      if (target?.closest?.('.agent-card-minimize, .ai-contact-sheet-handle')) return;
+      this._agentSheetClickNoted = true;
+      this.trackPluginEvent('agent_sheet_opened', { source: 'user' });
+    },
+    openAiContactPicker() {
+      this._agentSheetClickNoted = true;
+      this.trackPluginEvent('agent_sheet_opened', { source: 'user' });
+      this.aiContactPickerDismissed = false;
+      if (this.isNewAssisDesign) this.ensureDefaultAiContactChannel();
+      this.focusAiContactInput();
+    },
+    toggleAiContactPicker() {
+      if (this.aiContactPickerDismissed) {
+        this.openAiContactPicker();
+      } else {
+        this.dismissAiContactPicker();
+      }
+    },
+    cancelContactSubmissionEdit() {
+      this.editingContactSubmissionId = null;
+    },
+    async sendEmailContact() {
+      if (!this.isValidEmail(this.guestEmail)) return;
+      this.trackPluginEvent('agent_email_sent');
+
+      this.aiContactChannel = 'email';
+      this.errorWithAiIntervention = null;
+
+      if (this.loginChannels === 'ai') {
+        this.emailSubmitted = true;
+        this.appendContactSubmissionMessage('email');
+        this.schedulePersistChatSession();
+      }
+
+      // Explicit human-contact submit must always be allowed to request an agent,
+      // even if a prior order-verification skip flag was left set.
+      this.skipRequireAgentFromOrderVerification = false;
+
+      if (this.careRequestId) {
+        this.updateUserContact({ email: this.guestEmail, requireAgent: true });
+      } else {
+        this.requestAgent();
+      }
+    },
+    async sendWhatsAppNumber(){
+      const normalizedEarly = this.stripLeadingZeroAfterPhonePrefix(this.guestPhone);
+      if (normalizedEarly !== this.guestPhone) {
+        this.guestPhone = normalizedEarly;
+      }
+
+      if (!this.isValidPhone(this.guestPhone)) return;
+      this.trackPluginEvent('agent_phone_sent');
+
+      this.aiContactChannel = 'whatsapp';
+      this.errorWithAiIntervention = null;
+
+      if (this.loginChannels === 'ai') {
+        this.phoneSubmitted = true;
+        this.appendContactSubmissionMessage('whatsapp');
+        this.schedulePersistChatSession();
+      }
+
+      // Normalize again (safe) in case prefix/country changed mid-flow.
+      const normalized = this.stripLeadingZeroAfterPhonePrefix(this.guestPhone);
+      if (normalized !== this.guestPhone) this.guestPhone = normalized;
+      if (!this.isValidPhone(this.guestPhone)) return;
+
+      // Explicit human-contact submit must always be allowed to request an agent,
+      // even if a prior order-verification skip flag was left set.
+      this.skipRequireAgentFromOrderVerification = false;
+
+      if (this.careRequestId) {
+        this.updateUserContact({ phone: this.guestPhone, requireAgent: true });
+      } else {
+        // console.log("Creating a new care request with phone number");
+        this.requestAgent();
+      }
+    },
+
+    isContactSubmissionMessage(message) {
+      return Boolean(message?.isContactSubmission);
+    },
+
+    getOutboundChatMessages() {
+      return (this.chatMessages || []).filter((message) => (
+        !message?.localOnly && !message?.isContactSubmission
+      ));
+    },
+
+    buildContactSubmissionEntry(channel) {
+      const resolvedChannel = channel === 'email' ? 'email' : 'whatsapp';
+      return {
+        id: `contact-submission-${Date.now()}`,
+        sender: 'ai',
+        message: '',
+        datetime: new Date().toISOString(),
+        isContactSubmission: true,
+        localOnly: true,
+        wasEdited: false,
+        contactChannel: resolvedChannel,
+        phonePrefix: String(this.selectedPhonePrefix || '').replace(/\D/g, ''),
+        phoneCountryIso: this.selectedPhoneCountryIso || '',
+        phoneLocal: String(this.guestPhoneLocal || '').trim(),
+        email: String(this.guestEmailLocal || this.guestEmail || '').trim(),
+      };
+    },
+
+    appendContactSubmissionMessage(channel) {
+      if (!this.isNewAssisDesign || this.loginChannels !== 'ai') return;
+      const wasEditing = Boolean(this.editingContactSubmissionId);
+      const existing = (this.chatMessages || []).find((message) => message?.isContactSubmission);
+      const next = this.buildContactSubmissionEntry(channel);
+      if (existing) {
+        Object.assign(existing, {
+          contactChannel: next.contactChannel,
+          phonePrefix: next.phonePrefix,
+          phoneCountryIso: next.phoneCountryIso,
+          phoneLocal: next.phoneLocal,
+          email: next.email,
+          datetime: next.datetime,
+          wasEdited: Boolean(existing.wasEdited) || wasEditing,
+        });
+      } else {
+        this.chatMessages.push(next);
+      }
+      this.editingContactSubmissionId = null;
+      this.$nextTick(() => this.scrollToBottom());
+    },
+
+    startContactSubmissionEdit(message) {
+      if (!message?.isContactSubmission) return;
+      this.trackPluginEvent('agent_details_edited');
+
+      this.editingContactSubmissionId = message.id || 'contact-submission';
+      this.aiContactPickerDismissed = false;
+      this.showPhonePrefixDropdown = false;
+      this.phonePrefixSearch = '';
+
+      if (message.contactChannel === 'email') {
+        this.aiContactChannel = 'email';
+        this.guestEmailLocal = String(message.email || '').trim();
+      } else {
+        this.aiContactChannel = 'whatsapp';
+        if (message.phoneCountryIso) {
+          this.selectedPhoneCountryIso = message.phoneCountryIso;
+        } else if (message.phonePrefix) {
+          const fromDial = findCountryByDialCode(message.phonePrefix);
+          if (fromDial) this.selectedPhoneCountryIso = fromDial.iso;
+        }
+        this.guestPhoneLocal = String(message.phoneLocal || '').trim();
+      }
+
+      this.$nextTick(() => {
+        this.focusAiContactInput();
+        this.scrollToBottom();
+      });
+    },
+    enrichAgentHandoffMessage(text) {
+      const raw = String(text || '').trim();
+      if (!raw) return raw;
+
+      const phoneMatch = raw.match(/successfully sent to the customer phone number:\s*([+\d\s\-()]+)/i);
+      const emailMatch = raw.match(/successfully sent to the customer email(?:\s*address)?:\s*(\S+)/i);
+      const alreadyHePhone = /נשלח(?:ה)? בהצלחה (?:למספר|למספר הטלפון)/i.test(raw);
+      const alreadyHeEmail = /נשלח(?:ה)? בהצלחה (?:למייל|לכתובת)/i.test(raw);
+
+      if (!phoneMatch && !emailMatch && !alreadyHePhone && !alreadyHeEmail) return raw;
+
+      const extraHe = 'נציג ימשיך איתך משם וימשיך את השיחה 🙂';
+      const extraEn = 'A representative will continue the conversation with you from there 🙂';
+      const hasExtra = /representative will continue|נציג ימשיך/i.test(raw);
+
+      if (this.language === 'he') {
+        if (phoneMatch) {
+          const phone = String(phoneMatch[1] || '').trim();
+          return `נשלח בהצלחה למספר הטלפון: ${phone}\n\n${extraHe}`;
+        }
+        if (emailMatch) {
+          const email = String(emailMatch[1] || '').trim();
+          return `נשלח בהצלחה למייל: ${email}\n\n${extraHe}`;
+        }
+        if ((alreadyHePhone || alreadyHeEmail) && !hasExtra) {
+          return `${raw}\n\n${extraHe}`;
+        }
+        return raw;
+      }
+
+      if (hasExtra) return raw;
+      if (phoneMatch || emailMatch) return `${raw}\n\n${extraEn}`;
+      return raw;
+    },
+
+    requestAgent() {
+      const normalized = this.stripLeadingZeroAfterPhonePrefix(this.guestPhone);
+      if (normalized !== this.guestPhone) {
+        this.guestPhone = normalized;
+      }
+
+      const hasValidPhone = this.isValidPhone(this.guestPhone);
+      const hasValidEmail = this.isValidEmail(this.guestEmail);
+
+      if (!hasValidPhone && !hasValidEmail) {
+        return;
+      }
+
+      this.agentRequestedSuccess = false;
+      this.socket.emit('request_agent', {
+        careRequestId: this.careRequestId,
+        clientId: this.clientId,
+        messages: this.getOutboundChatMessages(),
+        website: window.location.origin,
+        language: this.language,
+        selectedCommunicationChannel: this.aiContactChannel,
+        userInfo: {
+          name: this.guestName,
+          email: hasValidEmail ? this.guestEmail : null,
+          phone: hasValidPhone ? this.guestPhone : null,
+        },
+      });
+      this.agentRequested = true;
+
+    },
+
+    // WhatsApp login methods
+    initiateWhatsAppLogin() {
+      this.trackPluginEvent('agent_channel_selected', { channel: 'whatsapp' });
+      // If careRequestId is not null, we need to add the careRequestId to the WhatsApp message
+      let text = null;
+      if (this.careRequestId) {
+        
+        if (this.pluginPlaceholderWhenSwitchingToWhatsapp) {
+          text = this.pluginPlaceholderWhenSwitchingToWhatsapp?.replace('{{1}}', this.careRequestId);
+        } else {
+          const en = `Hi, I would love to chat with a representative on WhatsApp :)\nMy contact number: #${this.careRequestId}`;
+          const he = `היי, אשמח לשוחח עם נציג בוואטסאפ :)\nמספר הפנייה שלי: #${this.careRequestId}`
+
+          text = this.language === 'en' ? en : he;
+        }
+      }
+      // Set WhatsApp mode flag
+      //this.isWhatsAppMode = true;
+
+      // Start the guest input flow
+      // this.showGuestInput = true;
+      // this.currentStep = 'name'; // Start with name input
+      // this.guestName = ''; // Clear previous input
+      // this.guestEmail = ''; // Clear email (not needed for WhatsApp)
+      // this.guestPhone = ''; // Clear phone
+      // this.isUserInteracting = true; // Set user interacting to true
+
+      // Check if WhatsApp number is available
+      if (!this.businessWhatsAppNumber) {
+        console.error('WhatsApp number not available');
+        alert('WhatsApp number is not available. Please try again later.');
+        return;
+      }
+
+      // Now we are going to open WhatsApp directly
+      window.open(`https://wa.me/${this.businessWhatsAppNumber}${typeof text === 'string' && text.trim() ? `?text=${encodeURIComponent(text)}` : ''}`, '_blank');
+
+      // Reset the flag after a short delay to allow the form to be shown
+      setTimeout(() => {
+        this.isUserInteracting = false;
+      }, 200);
+    },
+
+    initiateEmailContact() {
+      this.trackPluginEvent('agent_channel_selected', { channel: 'email' });
+      if (!this.hasEmailCommunicationChannel) return;
+
+      if (!this.businessEmail) {
+        console.error('Business email not available');
+        return;
+      }
+
+      let body = null;
+      if (this.careRequestId) {
+        const en = `Hi, I would love to chat with a representative via email :)\nMy contact number: #${this.careRequestId}`;
+        const he = `היי, אשמח לשוחח עם נציג במייל :)\nמספר הפנייה שלי: #${this.careRequestId}`;
+        body = this.language === 'en' ? en : he;
+      }
+
+      window.open(
+        `mailto:${this.businessEmail}${typeof body === 'string' && body.trim() ? `?body=${encodeURIComponent(body)}` : ''}`,
+        '_blank'
+      );
+    },
+
+    // Fetch previous conversations for authenticated user
+    async fetchPreviousConversations(googleToken) {
+      try {
+        const websiteUrl = window.location.origin;
+        const response = await fetch(`${this.ASSIS_BACKEND_URL}/api/care-requests/my-requests?websiteUrl=${encodeURIComponent(websiteUrl)}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${googleToken}`,
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // Handle the fetched conversation data
+        if (data && data?.id && Array.isArray(data?.requests)) {
+          // Process and populate chat messages with previous conversations
+          this.processPreviousConversations(data);
+        }
+
+      } catch (error) {
+        console.error('Error fetching previous conversations:', error);
+        // Don't throw the error to prevent breaking the OAuth flow
+        // The user can still continue with a fresh chat
+      }
+    },
+
+    // Process and populate chat messages with previous conversations
+    processPreviousConversations(data) {
+
+      try {
+        // Clear existing messages
+        this.chatMessages = [];
+
+        // Handle the correct data structure where messages are in the 'requests' array
+        data?.requests?.forEach(request => {
+          // Only process message-type requests, skip session-opening and action types
+          if (request.type === 'message' && request.message && request.source !== 'whatsapp' && request.source !== 'email') {
+            // Add message to chat messages array
+
+            this.chatMessages.push({
+              message: request.message,
+              sender: request.sender || 'agent',
+              datetime: request.datetime || new Date().toISOString(),
+              id: request.id || `prev_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+            });
+          }
+        });
+
+        // Sort messages by datetime to maintain chronological order
+        this.chatMessages.sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+
+      } catch (error) {
+        console.error('Error processing previous requests:', error);
+      }
+    },
+
+    onPluginFooterLogoClick() {
+      const label = this.planSubscription === 'powered_by_assis' ? 'powered_by_assis' : 'care_by_assis';
+      this.trackPluginEvent('footer_logo_clicked', { label });
+    },
+    onPluginFooterTermsClick() {
+      this.trackPluginEvent('footer_terms_clicked');
+    },
+    onWhatsAppBannerClick() {
+      this.noteBannerClicked('whatsapp');
+      this.trackPluginEvent('whatsapp_banner_clicked');
+      this.initiateWhatsAppLogin();
+    },
+    signOut() {
+      this.trackPluginEvent('auth_signed_out');
+      this.token = null; // Clear token
+      this.isAuthenticated = false;
+      this.user = null;
+      this.showGuestInput = false; // Go back to main options screen
+      this.currentStep = 'name'; // Reset to name step for future guest sessions
+      this.guestName = '';
+      this.guestEmail = '';
+      this.guestPhone = '';
+      this.phoneSubmitted = false;
+      this.emailSubmitted = false;
+      this.aiContactChannel = null;
+      this.aiContactPickerDismissed = false;
+      this.userAcknowledgment = false; // Reset acknowledgment
+      this.chatMessages = []; // Clear chat messages
+      this.newMessage = ''; // Clear new message input
+      this.isWhatsAppMode = false; // Reset WhatsApp mode flag
+      this.$emit('google-auth-sign-out');
+    },
+
+    // File upload methods
+    triggerFileSelect() {
+      const input = this.$refs.homeFileInput || this.$refs.fileInput;
+      input?.click();
+    },
+
+    handleFileSelect(event) {
+      const files = Array.from(event.target.files);
+      if (files.length) {
+        this.trackPluginEvent('file_attached', {
+          source: this.showPoweredByAssisHome ? 'home' : 'chat',
+          count: files.length,
+        });
+      }
+      this.selectedFiles = [...this.selectedFiles, ...files];
+      // Clear the input so the same file can be selected again
+      if (this.showPoweredByAssisHome && files.length) {
+        this.poweredByAssisHomeDismissed = true;
+        this.poweredByAssisForceHome = false;
+      }
+      event.target.value = '';
+    },
+
+    removeSelectedFile(index) {
+      this.selectedFiles.splice(index, 1);
+    },
+
+    async uploadFiles(messageId) {
+      if (!this.supabaseClient) {
+        // Initialize Supabase client if not already done
+        // You'll need to provide your Supabase URL and anon key
+        console.error('Supabase client not initialized');
+        return [];
+      }
+
+      try {
+        this.isUploading = true;
+        this.uploadProgress = 0;
+
+        const uploadedFiles = [];
+        const totalFiles = this.selectedFiles.length;
+
+        for (let i = 0; i < this.selectedFiles.length; i++) {
+          const file = this.selectedFiles[i];
+          try {
+            const uploadedFile = await FileUploadService.uploadFile(file, messageId, this.supabaseClient);
+            uploadedFiles.push(uploadedFile);
+          } catch (error) {
+            console.error(`Failed to upload file ${file.name}:`, error);
+            // Continue with other files even if one fails
+          }
+
+          // Update progress
+          this.uploadProgress = Math.round(((i + 1) / totalFiles) * 100);
+        }
+
+        return uploadedFiles;
+      } catch (error) {
+        console.error('File upload failed:', error);
+        return [];
+      } finally {
+        this.isUploading = false;
+        this.uploadProgress = 0;
+      }
+    },
+
+    openImageModal(imageUrl) {
+      if (this.productDetail) this.trackPluginEvent('product_image_zoomed');
+      this.modalImageUrl = imageUrl;
+      this.showImageModal = true;
+    },
+
+    closeImageModal() {
+      this.showImageModal = false;
+      this.modalImageUrl = '';
+    },
+
+    async downloadFile(url, fileName) {
+      try {
+        // Fetch the file as a blob
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error('Failed to fetch file');
+        }
+
+        const blob = await response.blob();
+
+        // Create a blob URL
+        const blobUrl = window.URL.createObjectURL(blob);
+
+        // Create a temporary anchor element to trigger download
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = fileName || 'download';
+        link.classList.add('assis-download-anchor');
+
+        // Append to body, click, and remove
+        document.body.appendChild(link);
+        this.isSuppressClickOutside = true;
+        link.click();
+        document.body.removeChild(link);
+
+        // Clean up the blob URL
+        window.URL.revokeObjectURL(blobUrl);
+        // Release suppression on next tick
+        setTimeout(() => {
+          this.isSuppressClickOutside = false;
+        }, 0);
+      } catch (error) {
+        console.error('Download failed:', error);
+        // Fallback: try direct download (may open in new tab for cross-origin)
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName || 'download';
+        link.target = '_blank';
+        link.classList.add('assis-download-anchor');
+
+        document.body.appendChild(link);
+        this.isSuppressClickOutside = true;
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => {
+          this.isSuppressClickOutside = false;
+        }, 0);
+      }
+    },
+
+    downloadConversation() {
+      this.trackPluginEvent('conversation_downloaded');
+      try {
+        const exportedAt = new Date();
+        const messages = Array.isArray(this.chatMessages) ? this.chatMessages : [];
+
+        const lines = messages
+          .filter(m => m && typeof m === 'object')
+          .map((m) => {
+            const ts = m.datetime ? new Date(m.datetime) : exportedAt;
+            const datetime = this.formatTimestamp(ts);
+            const sender = (m.sender || 'unknown').toString();
+            let formattedSender = sender;
+            if (sender === 'ai') {
+              formattedSender = 'Assis AI';
+            } else if (sender === 'client') {
+              formattedSender = 'You';
+            } else if (sender === 'agent') {
+              formattedSender = 'Agent';
+            }
+            const rawMessage = (m.message ?? '').toString();
+            const message = rawMessage.replace(/\s*\n+\s*/g, ' ').trim();
+            return `${datetime} - ${formattedSender}: ${message}`;
+          })
+          .filter(Boolean);
+
+        const headerLines = [];
+        if (this.careRequestId) {
+          headerLines.push(`ID: ${this.careRequestId}`);
+        }
+        const text = headerLines.length
+          ? `${headerLines.join('\n')}\n\n${lines.join('\n\n')}`
+          : lines.join('\n\n');
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        const blobUrl = window.URL.createObjectURL(blob);
+
+        const safeDate = exportedAt.toISOString().replace(/[:.]/g, '-');
+        const fileName = `conversation-${safeDate}.txt`;
+
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = fileName;
+        link.classList.add('assis-download-anchor');
+
+        document.body.appendChild(link);
+        this.isSuppressClickOutside = true;
+        link.click();
+        document.body.removeChild(link);
+
+        window.URL.revokeObjectURL(blobUrl);
+        setTimeout(() => {
+          this.isSuppressClickOutside = false;
+        }, 0);
+      } catch (error) {
+        console.error('Conversation export failed:', error);
+      }
+    },
+    openProductModal(product) {
+      this._pluginProductSource = 'home';
+      this.trackPluginEvent('home_product_clicked', this.pluginProductProps(product));
+      this.openProductDetail(product, null, 0);
+    },
+    syncProductDetailDescClamp() {
+      if (this.productDetailDescOpen) return;
+      const el = this.$refs.productDetailDesc;
+      if (!el) {
+        this.productDetailDescClamped = false;
+        return;
+      }
+      this.productDetailDescClamped = el.scrollHeight > el.clientHeight + 2;
+    },
+    openProductDetail(product, message = null, index = 0) {
+      const item = this.unwrapProduct(product);
+      if (!item || (!this.getProductDisplayTitle(product) && !item.handle)) return;
+      const source = this._pluginProductSource || 'chat';
+      this._pluginProductSource = '';
+      this._productSheetOpenedAt = Date.now();
+      this.trackPluginEvent('product_opened', {
+        source,
+        ...this.pluginProductProps(product),
+      });
+      const boundMessage = message || { id: `detail:${item.id || item.handle || this.getProductDisplayTitle(product)}` };
+      const optionToken = `${Date.now()}-${index}`;
+      const detail = {
+        product,
+        message: boundMessage,
+        index: message ? index : 0,
+        quantity: 1,
+        imageIndex: 0,
+        optionToken,
+      };
+      this.productDetail = detail;
+      this.productDetailDescOpen = false;
+      this.productDetailDescClamped = false;
+      this.$nextTick(() => {
+        this.syncProductDetailDescClamp();
+        requestAnimationFrame(() => this.syncProductDetailDescClamp());
+      });
+      this.showShopifyCartPanel = false;
+      const line = this.findCartLineForDetail();
+      if (line?.quantity) {
+        this.productDetail = { ...detail, quantity: line.quantity };
+      }
+      this.startProductDetailSlideshow();
+      this.syncProductSheetBottom();
+      this.$refs.chatInput?.blur?.();
+      this.scheduleProductRatings();
+      this.loadProductDetailOptions(optionToken);
+    },
+    closeProductDetail() {
+      if (this.productDetail) {
+        this.trackPluginEvent('product_sheet_closed', {
+          open_ms: this._productSheetOpenedAt ? Date.now() - this._productSheetOpenedAt : 0,
+          ...this.pluginProductProps(this.productDetail.product),
+        });
+      }
+      this._productSheetOpenedAt = 0;
+      this.stopProductDetailSlideshow();
+      this.productDetail = null;
+      this.productSheetTop = 52;
+      this.productSheetRight = 0;
+      this.productSheetBottom = 12;
+      this.productSheetLeft = 0;
+      this._productSheetMinTop = 0;
+    },
+    syncProductSheetBottom() {
+      const root = this.$refs.chatContainer;
+      const header = root?.querySelector?.('.chat-header');
+      if (!root) return;
+      const rootRect = root.getBoundingClientRect();
+      const headerBottom = header ? header.getBoundingClientRect().bottom : rootRect.top;
+      const minTop = Math.max(0, Math.round(headerBottom - rootRect.top) + 8);
+      this._productSheetMinTop = minTop;
+      this.productSheetTop = Math.max(minTop, this.productSheetTop || minTop);
+      this.productSheetBottom = 12;
+      this.productSheetLeft = 0;
+      this.productSheetRight = 0;
+    },
+    withOpenProductMention(text) {
+      const raw = String(text || '').trim();
+      if (!raw || !this.productDetail) return raw;
+      const title = String(this.getProductDisplayTitle(this.productDetail.product) || '').trim();
+      if (!title || raw.includes(title)) return raw;
+      return this.language === 'he' ? `${raw} (לגבי ${title})` : `${raw} (about ${title})`;
+    },
+    startProductDetailSlideshow() {
+      this.stopProductDetailSlideshow();
+      const images = this.getProductGalleryImages(this.productDetail?.product);
+      if (images.length < 2) return;
+      this._productDetailSlideTimer = setInterval(() => {
+        if (!this.productDetail) {
+          this.stopProductDetailSlideshow();
+          return;
+        }
+        const gallery = this.getProductGalleryImages(this.productDetail.product);
+        if (gallery.length < 2) return;
+        const next = ((this.productDetail.imageIndex || 0) + 1) % gallery.length;
+        this.productDetail.imageIndex = next;
+      }, 2800);
+    },
+    stopProductDetailSlideshow() {
+      if (!this._productDetailSlideTimer) return;
+      clearInterval(this._productDetailSlideTimer);
+      this._productDetailSlideTimer = null;
+    },
+    findDisplayedProductForLine(line) {
+      const handle = String(line?.handle || '').trim().toLowerCase();
+      const title = String(line?.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const productId = String(line?.productId || '').trim();
+      const messages = Array.isArray(this.chatMessages) ? this.chatMessages : [];
+      for (const message of messages) {
+        const products = Array.isArray(message?.products) ? message.products : [];
+        for (let index = 0; index < products.length; index += 1) {
+          const product = products[index];
+          const item = this.unwrapProduct(product);
+          const itemId = String(item?.id || item?.product_id || '').trim();
+          const itemHandle = String(item?.handle || '').trim().toLowerCase();
+          const itemTitle = String(this.getProductDisplayTitle(product) || '').replace(/\s+/g, ' ').trim().toLowerCase();
+          if (productId && itemId && itemId === productId) return { product, message, index };
+          if (handle && itemHandle && itemHandle === handle) return { product, message, index };
+          if (title && itemTitle && title.length >= 8 && (itemTitle === title || itemTitle.includes(title) || title.includes(itemTitle))) {
+            return { product, message, index };
+          }
+        }
+      }
+      return null;
+    },
+    openCartLineDetail(line, source = 'cart') {
+      this._pluginProductSource = source === 'checkout_card' ? 'checkout_card' : 'cart';
+      if (source === 'checkout_card') {
+        this.trackPluginEvent('checkout_card_product_clicked', {
+          title: this.clipPluginEventText(line?.title),
+        });
+      } else {
+        this.trackPluginEvent('cart_line_opened', {
+          title: this.clipPluginEventText(line?.title),
+        });
+      }
+      const found = this.findDisplayedProductForLine(line);
+      if (found) {
+        this.openProductDetail(found.product, found.message, found.index);
+      } else {
+        const price = Number(line?.unitCents) > 0 ? Number(line.unitCents) / 100 : null;
+        const variants = Array.isArray(line?.variants) && line.variants.length
+          ? line.variants
+          : [{
+            id: line?.key,
+            price,
+            title: line?.variantLabel || '',
+            compareAtPrice: null,
+          }];
+        this.openProductDetail({
+          id: line?.productId || line?.key,
+          title: line?.title || '',
+          handle: line?.handle || '',
+          description: line?.description || '',
+          rating: line?.rating || null,
+          image: line?.image || '',
+          images: Array.isArray(line?.images) && line.images.length ? line.images : (line?.image ? [line.image] : []),
+          url: line?.href || '',
+          price,
+          variants,
+        });
+      }
+      const label = String(line?.variantLabel || '').trim();
+      if (!label || !this.productDetail) return;
+      const choice = this.getProductVariantChoices(this.productDetail.product)
+        .find((entry) => entry.label === label);
+      if (choice) this.selectProductDetailVariant(choice.key);
+    },
+    getProductDetailImage() {
+      const images = this.getProductGalleryImages(this.productDetail?.product);
+      if (!images.length) return '';
+      const index = Math.min(this.productDetail?.imageIndex || 0, images.length - 1);
+      return images[index] || images[0];
+    },
+    getProductDetailTrackStyle() {
+      const index = this.productDetail?.imageIndex || 0;
+      return { transform: `translateX(${index * -100}%)` };
+    },
+    setProductDetailImage(index) {
+      if (!this.productDetail) return;
+      const images = this.getProductGalleryImages(this.productDetail.product);
+      if (!images.length) return;
+      const next = Math.min(images.length - 1, Math.max(0, index));
+      this.productDetail = { ...this.productDetail, imageIndex: next };
+      if (this._pluginSkipThumbTrack) this._pluginSkipThumbTrack = false;
+      else this.trackPluginEvent('product_thumb_clicked', { index: next });
+      this.startProductDetailSlideshow();
+    },
+    stepProductDetailImage(delta) {
+      const images = this.getProductGalleryImages(this.productDetail?.product);
+      if (images.length < 2 || !this.productDetail) return;
+      const next = ((this.productDetail.imageIndex || 0) + delta + images.length) % images.length;
+      this._pluginSkipThumbTrack = true;
+      this.setProductDetailImage(next);
+      this.trackPluginEvent('product_image_stepped', { direction: delta > 0 ? 'next' : 'prev' });
+    },
+    findCartLineForDetail() {
+      const detail = this.productDetail;
+      if (!detail?.product) return null;
+      const items = this.shopifyCartItems || [];
+      if (!items.length) return null;
+      const payload = this.buildProductCardCartPayload(detail.product, detail.index, detail.message);
+      const variantId = this.shopifyNumericId(payload.variant_id || payload.variantId || payload.selectedVariantId);
+      if (variantId) {
+        const byVariant = items.find((item) => (
+          this.shopifyNumericId(item?.variant_id || item?.id) === variantId
+        ));
+        if (byVariant) return byVariant;
+      }
+      const productId = String(payload.product_id || payload.id || '').trim();
+      if (productId) {
+        const numericProductId = this.shopifyNumericId(productId);
+        const byProduct = items.find((item) => {
+          const lineProductId = String(item?.product_id || '').trim();
+          if (lineProductId && lineProductId === productId) return true;
+          if (numericProductId && this.shopifyNumericId(lineProductId) === numericProductId) return true;
+          return String(item?.id || '') === productId || String(item?.variant_id || '') === productId;
+        });
+        if (byProduct) return byProduct;
+      }
+      const handle = String(payload.handle || this.getShopifyProductHandle?.(detail.product) || '').trim().toLowerCase();
+      if (handle) {
+        const byHandle = items.find((item) => String(item?.handle || '').trim().toLowerCase() === handle);
+        if (byHandle) return byHandle;
+      }
+      const title = String(this.getProductDisplayTitle(detail.product) || '').trim().toLowerCase();
+      if (!title) return null;
+      return items.find((item) => {
+        const lineTitle = String(item?.product_title || item?.title || '').trim().toLowerCase();
+        return lineTitle === title;
+      }) || null;
+    },
+    isProductDetailInBag() {
+      if (this.findCartLineForDetail()) return true;
+      const detail = this.productDetail;
+      if (!detail) return false;
+      return this.isProductCardInBag(detail.product, detail.index, detail.message);
+    },
+    getProductDetailPrice() {
+      const detail = this.productDetail;
+      if (!detail) return '';
+      return this.getProductCardPrice(detail.product, detail.message, detail.index);
+    },
+    getProductDetailComparePrice() {
+      const detail = this.productDetail;
+      if (!detail) return '';
+      return this.getProductCardCompareAtPrice(detail.product, detail.message, detail.index);
+    },
+    getProductDetailClubBadgeText() {
+      const detail = this.productDetail;
+      if (!detail) return '';
+      return this.getProductCardClubBadgeText(detail.product, detail.message, detail.index);
+    },
+    getProductDetailClubPriceAmount() {
+      const detail = this.productDetail;
+      if (!detail) return '';
+      return this.getProductCardClubPriceAmount(detail.product, detail.message, detail.index);
+    },
+    getProductDetailDiscountLabel() {
+      const detail = this.productDetail;
+      if (!detail) return '';
+      return this.getProductCardDiscountLabel(detail.product, detail.message, detail.index);
+    },
+    getProductDetailRating() {
+      return this.readProductRating(this.productDetail?.product);
+    },
+    getProductDetailRatingValue() {
+      return this.formatRatingScore(this.getProductDetailRating()?.value);
+    },
+    getProductDetailRatingLabel() {
+      const rating = this.getProductDetailRating();
+      const score = this.formatRatingScore(rating?.value);
+      if (!score) return '';
+      return this.language === 'he'
+        ? `דירוג ${score} מתוך 5`
+        : `Rated ${score} out of 5`;
+    },
+    getProductDetailStarFill(star) {
+      return this.readProductRatingStarFill(this.productDetail?.product, star);
+    },
+    getProductDetailQuestions() {
+      const detail = this.productDetail;
+      if (!detail) return [];
+      const title = this.getProductDisplayTitle(detail.product);
+      if (!title) return [];
+      const he = this.language === 'he';
+      const questions = [
+        {
+          icon: 'chat',
+          label: he ? 'ספרו לי עוד' : 'Tell me more',
+          text: he ? `ספרו לי עוד על ${title}` : `Tell me more about ${title}`,
+        },
+        {
+          icon: 'grid',
+          label: he ? 'מוצרים דומים' : 'Similar products',
+          text: he ? `הראה לי מוצרים דומים ל ${title}` : `Show me products similar to ${title}`,
+        },
+      ];
+      if (this.getProductDetailComparePrice()) {
+        questions.push({
+          icon: 'tag',
+          label: he ? 'יש הנחה?' : 'Any discount?',
+          text: he ? `יש הנחה על ${title}?` : `Is there a discount on ${title}?`,
+        });
+      } else if (this.getProductVariantChoices(detail.product).length > 1) {
+        questions.push({
+          icon: 'tag',
+          label: he ? 'איזו אפשרות?' : 'Which option?',
+          text: he ? `איזו אפשרות של ${title} מתאימה לי?` : `Which option of ${title} fits me?`,
+        });
+      } else {
+        questions.push({
+          icon: 'tag',
+          label: he ? 'איך משתמשים?' : 'How do I use it?',
+          text: he ? `איך משתמשים ב${title}?` : `How do I use ${title}?`,
+        });
+      }
+      return questions.slice(0, 4);
+    },
+    getProductDetailFooterQuestion() {
+      return this.getProductDetailQuestions()[0] || null;
+    },
+    getProductDetailGridQuestions() {
+      return this.getProductDetailQuestions().slice(1);
+    },
+    getProductDetailAskLabel() {
+      return this.language === 'he' ? 'שאלו את Assis' : 'Ask Assis';
+    },
+    getProductDetailSimilarText() {
+      const title = this.getProductDisplayTitle(this.productDetail?.product);
+      if (!title) return this.language === 'he' ? 'הראה לי מוצרים דומים' : 'Show me similar products';
+      return this.language === 'he' ? `הראה לי מוצרים דומים ל ${title}` : `Show me products similar to ${title}`;
+    },
+    openProductDetailPage() {
+      const href = this.getProductDisplayHref(this.productDetail?.product);
+      if (!href) return;
+      this.trackPluginEvent('product_site_link_clicked', this.pluginProductProps(this.productDetail.product));
+      window.open(href, '_blank', 'noopener');
+    },
+    askProductDetailQuestion(question) {
+      const text = String(question?.text || question || '').trim();
+      const label = String(question?.label || '').trim();
+      if (!text) return;
+      this.trackPluginEvent('product_question_clicked', {
+        label: this.clipPluginEventText(label || text),
+        text: this.clipPluginEventText(text),
+        ...this.pluginProductProps(this.productDetail?.product),
+      });
+      this._pluginMessageSource = 'product_sheet';
+      this.closeProductDetail();
+      this.sendQuickAction(text);
+    },
+    selectProductDetailVariant(key) {
+      const detail = this.productDetail;
+      if (!detail) return;
+      this.setSelectedVariantKey(detail.message, detail.index, key);
+      const line = this.findCartLineForDetail();
+      this.productDetail = {
+        ...detail,
+        quantity: line?.quantity || 1,
+      };
+    },
+    async stepProductDetailQuantity(delta) {
+      const detail = this.productDetail;
+      if (!detail) return;
+      const next = Math.max(1, (Number(detail.quantity) || 1) + delta);
+      this.productDetail = { ...detail, quantity: next };
+      const line = this.findCartLineForDetail();
+      if (line) await this.changeShopifyCartLineQuantity(line.key, next);
+      else {
+        this.trackPluginEvent('cart_quantity_changed', {
+          direction: delta > 0 ? 'plus' : 'minus',
+          quantity: next,
+          in_bag: false,
+        });
+      }
+    },
+    getProductDetailAddLabel() {
+      if (this.isProductDetailInBag()) return this.shopifyCartCheckoutLabel;
+      return this.getAddToCartLabel(false);
+    },
+    getProductDetailLineTotal() {
+      const detail = this.productDetail;
+      if (!detail) return '';
+      const unit = this.parseProductPriceNumber(this.getProductCardPriceRaw(detail.product, detail.message, detail.index));
+      if (unit == null) return '';
+      const quantity = Math.max(1, Number(detail.quantity) || 1);
+      return this.formatProductPriceValue(unit * quantity, this.getProductCurrency(detail.product));
+    },
+    async addProductDetailToBag() {
+      const detail = this.productDetail;
+      if (!detail) return;
+      if (this.isProductDetailInBag()) {
+        this.openShopifyCheckout();
+        return;
+      }
+      const quantity = Math.max(1, Number(detail.quantity) || 1);
+      const payload = this.buildProductCardCartPayload(detail.product, detail.index, detail.message);
+      await this.addPoweredByAssisHomeProduct({ ...payload, quantity }, 'product_sheet');
+    },
+    submitPoweredByAssisHome(text, kind = 'typed') {
+      const message = String(text || '').trim();
+      if (!message) return;
+      if (kind === 'chip') {
+        this.trackPluginEvent('home_chip_clicked', { text: this.clipPluginEventText(message) });
+      } else {
+        this.trackPluginEvent('home_message_sent', { text: this.clipPluginEventText(message) });
+      }
+      this._pluginMessageSource = 'home';
+      this.poweredByAssisHomeDismissed = true;
+      this.poweredByAssisForceHome = false;
+      this.poweredByAssisHomeDraft = '';
+      this.isMaximized = true;
+      this.$nextTick(() => this.autoResizeHomeTextarea());
+      this.sendQuickAction(message);
+    },
+    isLastAiMessageWithHumanRequested(message) {
+      const indexOfLastAiMessage = this.chatMessages.findLastIndex(msg => msg.sender?.toLowerCase() === 'ai' && msg.hideWhatsappInput !== true && msg.isHumanRequested === true);
+      return message.sender?.toLowerCase() === 'ai' && indexOfLastAiMessage === this.chatMessages.indexOf(message);
+    },
+    isHumanRequested(message) {
+      return message.isHumanRequested === true;
+    },
+    async closeChat(data) {
+      if (this.socket) {
+        this.socket.emit("disconnect_client_id", this.clientId);
+        this.removeSocketHandlers();
+        if (this.isSocketConnected) {
+          this.socket.disconnect();
+        }
+      }
+
+      this.isSocketInitialized = false;
+      this.clientId = null; // Clear clientId
+      this.isAuthenticated = false;
+      this.isSocketConnected = false;
+      this.isChatClosedAutomatically = true;
+      
+      if (data?.reason === 'agent_replies_on_whatsapp') {
+        let message = null;
+        if (this.pluginMessageWhenChatClosed) {
+          message = this.pluginMessageWhenChatClosed?.replace('{{1}}', this.careRequestId);
+        } else {
+          message = `שלחנו לך שם הודעה, ונציג אנושי ימשיך לעזור לך.
+
+אפשר תמיד לפתוח כאן שיחה חדשה עם Assis AI.`
+
+        if (this.language === "en") {
+          message = `We sent you a message there, and a human agent will continue helping you.
+
+You can always open a new conversation here with Assis AI.`
+        }
+      }
+
+         this.reasonForClosingChat = message;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+      this.scrollToBottom();
+    },
+    // Handle page refresh/unload to clear localStorage
+    handleBeforeUnload() {
+      this.persistChatSession();
+    },
+  },
+  created() {
+    // Restore before first render to avoid closed->open flicker on remount.
+    this.wasSessionRestored = this.restoreChatSession();
+    this.disableInitialAnimations = this.wasSessionRestored;
+    this.restoredMessagesCount = this.wasSessionRestored && Array.isArray(this.chatMessages) ? this.chatMessages.length : 0;
+    this._chatDrag = {
+      active: false,
+      moved: false,
+      startX: 0,
+      startY: 0,
+      startRight: 0,
+      startBottom: 0,
+      pos: null,
+      raf: 0,
+      lastX: 0,
+      lastY: 0,
+    };
+    this._chatDrag.pos = this.readChatWindowPos();
+    this.readHostPluginBottomOffsets();
+  },
+  async mounted() {
+    const teleportRoot = this.$refs.internalTeleportRoot;
+    this.internalTeleportEl = teleportRoot ? toRaw(teleportRoot) : null;
+
+    this.initSelectedPhoneCountry();
+
+    // console.log("On Mounted")
+    this.ASSIS_BACKEND_URL = this.assisBackendUrl;
+    // Initialize persistent clientId
+    this.getOrCreateClientId();
+    // Wait for both so language (from /plugin-messages) is known before any UI paints.
+    await Promise.all([
+      this.fetchPlanSubscription(),
+      this.fetchWelcomeAiMessages(),
+    ]);
+    this.defaultErrorMessage = this.language === 'he' ? DEFAULT_ERROR_MESSAGE_HE : DEFAULT_ERROR_MESSAGE_EN;
+    if (this.isChatOpen && this.loginChannels === 'ai' && this.chatMessages.length === 0) {
+      await this.setWelcomeMessages();
+    }
+    // Add click outside listener when component is mounted
+    //document.addEventListener('click', this.handleClickOutside);
+    window.addEventListener('message', this.handleMessage);
+    // Track visual viewport (primary signal on iOS; also used on Android when it fires).
+    if (window.visualViewport) {
+      this.lastViewportHeight = window.visualViewport.height;
+      window.visualViewport.addEventListener('resize', this.handleViewportResize);
+      window.visualViewport.addEventListener('scroll', this.handleViewportResize);
+    }
+    // Same extras for every mobile sheet: window resize + VirtualKeyboard when present.
+    // Handler no-ops unless isMobileSheetLayout(), so desktop stays on main behavior.
+    window.addEventListener('resize', this.onMobileSheetKeyboardSignal, { passive: true });
+    try {
+      if (navigator.virtualKeyboard?.addEventListener) {
+        navigator.virtualKeyboard.addEventListener('geometrychange', this.onMobileSheetKeyboardSignal);
+      }
+    } catch (_) { /* ignore */ }
+    this.mobileSheetMql = window.matchMedia('(max-width: 767px)');
+    this.onMobileSheetBreakpoint = () => {
+      if (!this.isChatOpen) return;
+      if (this.shouldLockMobilePageScroll()) this.lockMobilePageScroll();
+      else this.unlockMobilePageScroll();
+      this.handleViewportResize();
+    };
+    if (this.mobileSheetMql.addEventListener) {
+      this.mobileSheetMql.addEventListener('change', this.onMobileSheetBreakpoint);
+    } else if (this.mobileSheetMql.addListener) {
+      this.mobileSheetMql.addListener(this.onMobileSheetBreakpoint);
+    }
+    if (this.isChatOpen && this.shouldLockMobilePageScroll()) {
+      this.lockMobilePageScroll();
+      this.$nextTick(() => this.handleViewportResize());
+    }
+    // Add visibility change listener for mobile background/foreground handling
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
+    document.addEventListener('click', this.handleGlobalClickForHeaderMenu);
+    // Add beforeunload listener to clear localStorage on page refresh
+    window.addEventListener('beforeunload', this.handleBeforeUnload);
+    window.addEventListener('resize', this.syncChatWindowPosToElement, { passive: true });
+    window.addEventListener('resize', this.scheduleDiscountCarouselOverflowSync, { passive: true });
+    window.addEventListener('resize', this.scheduleFitPluginBottomOffset, { passive: true });
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', this.scheduleFitPluginBottomOffset);
+    }
+    this.supabaseClient = createClient(this.SUPABASE_URL, this.SUPABASE_ANON_KEY);
+
+    // If we restored an open chat, we must re-initialize the socket.
+    // On Shopify navigation the component remounts, so `toggleChat()` isn't called.
+    if (this.isChatOpen && !this.isSocketInitialized) {
+      this.initSocket();
+      this.isSocketInitialized = true;
+      this.fetchBusinessWhatsAppNumber();
+    }
+
+    if (this.loginChannels === "ai" && !this.wasSessionRestored) {
+      this.currentStep = 'chat';
+      this.showGuestInput = true;
+    }
+
+    // Check for OAuth callback on mobile (from URL parameters)
+    this.checkOAuthCallback();
+
+    // If URL contains `assisOpenChat=true`, open the chat on load.
+    // Supports both query params and hash params (some platforms put state in `#...`).
+    try {
+      const urlParams = new URLSearchParams(window.location.search || '');
+      const hashString = (window.location.hash || '').startsWith('#') ? window.location.hash.slice(1) : (window.location.hash || '');
+      const hashParams = new URLSearchParams(hashString || '');
+      const rawFlag = (urlParams.get('assisOpenChat') ?? hashParams.get('assisOpenChat') ?? '').toString().trim().toLowerCase();
+      const shouldOpenChatFromUrl = rawFlag === 'true' || rawFlag === '1';
+      if (shouldOpenChatFromUrl && !this.isChatOpen) {
+        this._pluginOpenSource = 'load';
+        await this.toggleChat();
+      } else if (this.shouldBeOpenedOnDesktopOnLoad && !this.isMobileDevice() && !this.isChatOpen) {
+        this._pluginOpenSource = 'load';
+        await this.toggleChat();
+      } else if (this.isChatOpen && !this._pluginOpenNoted) {
+        this.notePluginOpened(this.wasSessionRestored ? 'return' : 'load');
+      }
+    } catch {
+      // Ignore URL parsing errors
+    }
+
+    // Initialize text directions for any existing content
+    this.$nextTick(() => {
+      const chatEl = this.$refs.chatMessages;
+      if (chatEl) {
+        chatEl.addEventListener('scroll', this.handleChatMessagesScroll, { passive: true });
+      }
+
+      this.updateMessageDirections();
+      if (this.isChatOpen) {
+        if (this.wasSessionRestored && (typeof this.chatScrollTop === 'number' || typeof this.chatScrollBottomOffset === 'number')) {
+          this.scheduleRestoreChatScrollPosition();
+        } else if (this.wasSessionRestored) {
+          this.scrollToBottom('auto');
+        } else {
+          this.scrollToBottom();
+        }
+      }
+      if (this.disableInitialAnimations) {
+        this.disableInitialAnimationsTimer = setTimeout(() => {
+          this.disableInitialAnimations = false;
+          this.disableInitialAnimationsTimer = null;
+        }, 350);
+      }
+
+      this.syncChatWindowPosToElement();
+      this.scheduleDiscountCarouselOverflowSync();
+      this.scheduleProductCarouselOverflowSync();
+      this.scheduleFitPluginBottomOffset();
+    });
+  },
+  updated() {
+    this.scheduleDiscountCarouselOverflowSync();
+    this.scheduleProductCarouselOverflowSync();
+  },
+  beforeUnmount() {
+    this.stopProductDetailSlideshow();
+    this.stopClubBadgeRotation();
+    if (this._pinnedHoverLeaveTimer) {
+      clearTimeout(this._pinnedHoverLeaveTimer);
+      this._pinnedHoverLeaveTimer = null;
+    }
+    this.closePinnedOrderPicker();
+    this.closeOrderDetailsPopup();
+    // console.log("On Before Unmount")
+    // Remove click outside listener when component is unmounted
+    //document.removeEventListener('click', this.handleClickOutside);
+    window.removeEventListener('message', this.handleMessage);
+    if (window.visualViewport) {
+      window.visualViewport.removeEventListener('resize', this.handleViewportResize);
+      window.visualViewport.removeEventListener('scroll', this.handleViewportResize);
+    }
+    window.removeEventListener('resize', this.onMobileSheetKeyboardSignal);
+    try {
+      if (navigator.virtualKeyboard?.removeEventListener) {
+        navigator.virtualKeyboard.removeEventListener('geometrychange', this.onMobileSheetKeyboardSignal);
+      }
+    } catch (_) { /* ignore */ }
+    if (this.mobileSheetMql && this.onMobileSheetBreakpoint) {
+      if (this.mobileSheetMql.removeEventListener) {
+        this.mobileSheetMql.removeEventListener('change', this.onMobileSheetBreakpoint);
+      } else if (this.mobileSheetMql.removeListener) {
+        this.mobileSheetMql.removeListener(this.onMobileSheetBreakpoint);
+      }
+    }
+    this.unlockMobilePageScroll();
+    this.clearMobileSheetLayout();
+    this.typewriterToken += 1;
+    this.typewriterMessage = null;
+    this.typewriterText = '';
+    this.stopThinkingPhrases();
+    // Remove visibility change listener
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    document.removeEventListener('click', this.handleGlobalClickForHeaderMenu);
+    // Remove beforeunload listener
+    window.removeEventListener('beforeunload', this.handleBeforeUnload);
+    window.removeEventListener('resize', this.syncChatWindowPosToElement);
+    window.removeEventListener('resize', this.scheduleDiscountCarouselOverflowSync);
+    window.removeEventListener('resize', this.scheduleFitPluginBottomOffset);
+    if (window.visualViewport) {
+      window.visualViewport.removeEventListener('resize', this.scheduleFitPluginBottomOffset);
+    }
+    if (this._fitBottomOffsetRaf) {
+      cancelAnimationFrame(this._fitBottomOffsetRaf);
+      this._fitBottomOffsetRaf = 0;
+    }
+    if (this._discountOverflowRaf) {
+      cancelAnimationFrame(this._discountOverflowRaf);
+      this._discountOverflowRaf = 0;
+    }
+    if (this._productCarouselRestoreRaf) {
+      cancelAnimationFrame(this._productCarouselRestoreRaf);
+      this._productCarouselRestoreRaf = 0;
+    }
+    if (this._productCarouselRestoreTimer) {
+      clearTimeout(this._productCarouselRestoreTimer);
+      this._productCarouselRestoreTimer = null;
+    }
+    this.endChatWindowDrag();
+    const chatEl = this.$refs.chatMessages;
+    if (chatEl) {
+      chatEl.removeEventListener('scroll', this.handleChatMessagesScroll);
+    }
+
+    // Clean up socket connection
+    if (this.socket) {
+      this.socket.emit("disconnect_client_id", this.clientId);
+      this.removeSocketHandlers();
+      this.socket.disconnect();
+      this.socket = null;
+    }
+    if (this.disableInitialAnimationsTimer) {
+      clearTimeout(this.disableInitialAnimationsTimer);
+      this.disableInitialAnimationsTimer = null;
+    }
+    if (this.chatOpenAnimationTimer) {
+      clearTimeout(this.chatOpenAnimationTimer);
+      this.chatOpenAnimationTimer = null;
+    }
+    if (this.shopifyActionErrorTimer) {
+      clearTimeout(this.shopifyActionErrorTimer);
+      this.shopifyActionErrorTimer = null;
+    }
+    if (this.scrollRestoreRetryTimer) {
+      clearTimeout(this.scrollRestoreRetryTimer);
+      this.scrollRestoreRetryTimer = null;
+    }
+    if (this.outboundFlushTimer) {
+      clearTimeout(this.outboundFlushTimer);
+      this.outboundFlushTimer = null;
+    }
+    if (this.outboundTypingHoldTimer) {
+      clearTimeout(this.outboundTypingHoldTimer);
+      this.outboundTypingHoldTimer = null;
+    }
+    if (this._copiedDiscountTimer) {
+      clearTimeout(this._copiedDiscountTimer);
+      this._copiedDiscountTimer = 0;
+    }
+    this.stopBannerContentRotation();
+
+    // Persist chat state so Shopify navigation can restore the session.
+    this.persistChatSession();
+  }
+}
+</script>
+
+<style scoped>
+.assis-plugin-root,
+.assis-plugin-root * {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  font-weight: 400;
+  line-height: 1.6;
+  letter-spacing: normal;
+}
+
+/* Scoped `*` above compiles to `.assis-plugin-root[data-v] *` and zeros child padding.
+   Restore order-verification insets (must be higher specificity than the reset). */
+.assis-plugin-root :deep(.assis-order-verification.assis-order-verification) {
+  padding: 4px;
+}
+.assis-plugin-root :deep(.assis-order-verification .assis-order-verification-card) {
+  padding: 8px 10px;
+}
+/* .assis-plugin-root { */
+
+.assis-product-detail {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.assis-product-detail-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  padding-bottom: 64px;
+  pointer-events: auto;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+  overflow: hidden;
+  animation: assis-product-sheet-in 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.assis-product-detail-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  left: auto;
+  z-index: 3;
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #334155;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.16);
+  cursor: pointer;
+}
+
+.assis-product-detail-close svg {
+  width: 12px;
+  height: 12px;
+}
+
+.assis-product-detail-card[dir="ltr"] .assis-product-detail-close {
+  right: auto;
+  left: 20px;
+}
+
+@keyframes assis-product-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.assis-product-detail-split {
+  display: flex;
+  flex-direction: row;
+  direction: ltr;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
+.assis-product-detail-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.assis-product-detail-media {
+  position: relative;
+  display: flex;
+  flex: 0 0 50%;
+  width: 50%;
+  min-height: 0;
+  padding: 12px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.assis-product-detail-media--empty {
+  background: linear-gradient(160deg, #f7f4ef, #ece7df);
+}
+
+.assis-product-detail-card[dir="ltr"] .assis-product-detail-media {
+  order: -1;
+}
+
+@media (max-width: 767px) {
+  .assis-product-detail-split {
+    flex-direction: column;
+  }
+
+  .assis-product-detail-media {
+    order: -1;
+    flex: 0 0 240px;
+    width: 100%;
+    height: 240px;
+  }
+
+  .assis-product-detail-main {
+    width: 100%;
+  }
+}
+
+.assis-product-detail-viewport {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 10px;
+  border-radius: 12px;
+  background: #f3f1ec;
+  overflow: hidden;
+}
+
+.assis-product-detail-track {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  width: 100%;
+  transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.assis-product-detail-slide {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+}
+
+.assis-product-detail-slide img {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.assis-product-detail-sale {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  right: auto;
+  z-index: 2;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(29, 111, 238, 0.12);
+  color: #1d6fee;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.assis-product-detail-card[dir="ltr"] .assis-product-detail-sale {
+  left: auto;
+  right: 20px;
+}
+
+.assis-product-detail-club-badge {
+  /* Opposite the close (X): left in Hebrew/RTL, right in English/LTR */
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  right: auto;
+  z-index: 2;
+  max-width: min(70%, calc(100% - 72px));
+  padding: 3px 8px;
+  border-radius: 999px;
+  background-color: #1d6fee;
+  background-image: linear-gradient(110deg, #1557c0 0%, #1d6fee 42%, #1d6fee 47%, rgba(255, 255, 255, 0.55) 50%, #1d6fee 53%, #1d6fee 58%, #134bab 100%);
+  background-size: 220% 100%;
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 4px 10px rgba(29, 111, 238, 0.32);
+  animation: assis-product-add-sheen 3.4s ease-in-out infinite;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.assis-product-detail-card[dir="ltr"] .assis-product-detail-club-badge {
+  left: auto;
+  right: 20px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assis-product-detail-club-badge {
+    animation: none;
+  }
+}
+
+.assis-product-detail-club-badge--under-sale {
+  top: 48px;
+}
+
+.assis-product-detail-zoom {
+  position: absolute;
+  bottom: 72px;
+  left: 20px;
+  z-index: 2;
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #1e293b;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.16);
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.assis-product-detail-zoom svg {
+  width: 15px;
+  height: 15px;
+}
+
+.assis-product-detail-zoom:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.18);
+}
+
+.assis-product-detail-zoom:active {
+  transform: scale(0.96);
+}
+
+.assis-product-detail-thumbs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  width: 100%;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.assis-product-detail-thumb {
+  appearance: none;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 6px;
+  background: #ffffff;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.assis-product-detail-thumb-clip {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 5px;
+}
+
+.assis-product-detail-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.assis-product-detail-thumb.is-on {
+  border-color: #1d6fee;
+  box-shadow: 0 0 0 1px #1d6fee;
+}
+
+.assis-product-detail-nav {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #64748b;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.assis-product-detail-nav svg {
+  width: 12px;
+  height: 12px;
+}
+
+.assis-product-detail-nav--prev {
+  inset-inline-start: 18px;
+}
+
+.assis-product-detail-nav--next {
+  inset-inline-end: 18px;
+}
+
+.assis-product-detail-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 14px 10px;
+}
+
+.assis-product-detail-copy > * {
+  flex-shrink: 0;
+}
+
+.assis-product-detail-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  direction: ltr;
+}
+
+.assis-product-detail-main[dir="rtl"] .assis-product-detail-title-row {
+  justify-content: flex-end;
+}
+
+.assis-product-detail-title-link {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #1d6fee;
+  cursor: pointer;
+}
+
+.assis-product-detail-title-link svg {
+  width: 18px;
+  height: 18px;
+}
+
+.assis-product-detail-title-link:hover {
+  color: #1557c0;
+}
+
+.assis-product-detail-title {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.3;
+  color: #0f172a;
+  text-align: start;
+}
+
+.assis-product-detail-main[dir="rtl"] .assis-product-detail-title {
+  flex: 0 1 auto;
+}
+
+.assis-product-detail-rating {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 5px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.assis-product-detail-stars {
+  display: inline-flex;
+  gap: 1px;
+}
+
+.assis-product-detail-star {
+  position: relative;
+  width: 13px;
+  height: 13px;
+}
+
+.assis-product-detail-star svg {
+  position: absolute;
+  inset: 0;
+  width: 13px;
+  height: 13px;
+  fill: #e7e1d6;
+}
+
+.assis-product-detail-star svg.is-on {
+  fill: #e0a106;
+}
+
+.assis-product-detail-score {
+  color: #0f172a;
+  font-weight: 650;
+}
+
+.assis-product-detail-count {
+  color: #94a3b8;
+}
+
+.assis-product-detail-price-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.assis-product-detail-price-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.assis-product-detail-price-region {
+  min-width: 2.6em;
+  font-size: 12px;
+  font-weight: 550;
+  color: #94a3b8;
+}
+
+.assis-product-detail-price-value {
+  font-size: 16px;
+  font-weight: 650;
+  color: #0f172a;
+  line-height: 1.3;
+}
+
+.assis-product-detail-price-club {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(29, 111, 238, 0.08);
+  line-height: 1.3;
+}
+
+.assis-product-detail-price-club-label {
+  font-size: 11px;
+  font-weight: 550;
+  color: #1d6fee;
+}
+
+.assis-product-detail-price-club-value {
+  font-size: 13px;
+  font-weight: 650;
+  color: #1d6fee;
+}
+
+.assis-product-detail-was {
+  color: #94a3b8;
+  font-size: 12px;
+  text-decoration: line-through;
+}
+
+.assis-product-detail-off {
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(29, 111, 238, 0.12);
+  color: #1d6fee;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.assis-product-detail-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.assis-product-detail-option-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.assis-product-detail-option-name {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.assis-product-detail-swatches {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  width: 100%;
+}
+
+.assis-product-detail-swatch {
+  appearance: none;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 10px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.assis-product-detail-swatch img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.assis-product-detail-swatch span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 4px;
+  text-align: center;
+}
+
+.assis-product-detail-swatch.is-on {
+  border-color: #1d6fee;
+  box-shadow: 0 0 0 1px #1d6fee;
+}
+
+.assis-product-detail-swatch.is-off,
+.assis-product-detail-swatch:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.assis-product-detail-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+}
+
+.assis-product-detail-variant {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 10px;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 12px;
+  font-family: inherit;
+  text-align: start;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+}
+
+.assis-product-detail-variant span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.assis-product-detail-variant svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: #64748b;
+}
+
+.assis-product-detail-option {
+  appearance: none;
+  max-width: 100%;
+  padding: 5px 10px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.assis-product-detail-option.is-selected {
+  border-color: #1d6fee;
+  color: #1d6fee;
+  background: rgba(29, 111, 238, 0.08);
+}
+
+.assis-product-detail-option:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.assis-product-detail-desc-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+
+.assis-product-detail-desc {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.assis-product-detail-desc.is-open {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+}
+
+.assis-product-detail-desc-more {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.assis-product-detail-desc-more svg {
+  width: 14px;
+  height: 14px;
+}
+
+.assis-product-detail-desc-more.is-open svg {
+  transform: rotate(180deg);
+}
+
+.assis-product-detail-ask {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px;
+  border-radius: 16px;
+  background: #f4f7ff;
+}
+
+.assis-product-detail-ask-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.assis-product-detail-ask-heart {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.assis-product-detail-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.assis-product-detail-question {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 12px;
+  font-family: inherit;
+  line-height: 1.3;
+  text-align: start;
+  cursor: pointer;
+}
+
+.assis-product-detail-question svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.assis-product-detail-question span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assis-product-detail-question,
+.assis-product-detail-foot-question,
+.assis-product-detail-option {
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.07);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.assis-product-detail-question:hover,
+.assis-product-detail-foot-question:hover,
+.assis-product-detail-option:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.12);
+}
+
+.assis-product-detail-question:active,
+.assis-product-detail-foot-question:active,
+.assis-product-detail-option:active {
+  transform: scale(0.98);
+}
+
+.assis-product-detail-foot {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+  width: auto;
+  padding: 10px 14px 14px;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 0 0 18px 18px;
+  background: #ffffff;
+  pointer-events: auto;
+}
+
+.chat-container.assis-chat-he-flip .assis-product-detail-foot {
+  flex-direction: row-reverse;
+}
+
+.assis-product-detail-qty {
+  display: flex;
+  direction: ltr;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  padding: 3px;
+  border-radius: 999px;
+  background: #eef1f4;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.04);
+}
+
+.assis-product-detail-qty button {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1e293b;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.1);
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.assis-product-detail-qty button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 5px 10px rgba(15, 23, 42, 0.14);
+}
+
+.assis-product-detail-qty button:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.assis-product-detail-qty button svg {
+  width: 13px;
+  height: 13px;
+}
+
+.assis-product-detail-qty button:disabled {
+  opacity: 0.35;
+  cursor: default;
+  box-shadow: none;
+}
+
+.assis-product-detail-qty span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 26px;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 650;
+  text-align: center;
+}
+
+.assis-product-detail-foot-question {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid rgba(29, 111, 238, 0.18);
+  border-radius: 999px;
+  background: rgba(29, 111, 238, 0.08);
+  color: #1d6fee;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.assis-product-detail-foot-question svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.assis-product-detail-foot-question span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assis-product-detail-add {
+  appearance: none;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 999px;
+  background-color: #1d6fee;
+  background-image: linear-gradient(110deg, #1557c0 0%, #1d6fee 42%, #1d6fee 47%, rgba(255, 255, 255, 0.55) 50%, #1d6fee 53%, #1d6fee 58%, #134bab 100%);
+  background-size: 220% 100%;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 550;
+  font-family: inherit;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: 0 8px 18px rgba(29, 111, 238, 0.32);
+  cursor: pointer;
+  animation: assis-product-add-sheen 3.4s ease-in-out infinite;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+@keyframes assis-product-add-sheen {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0% 0; }
+}
+
+.assis-product-detail-add.has-total {
+  justify-content: space-between;
+  padding: 0 14px 0 16px;
+}
+
+.assis-product-detail-add-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.assis-product-detail-add svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.assis-product-detail-add-total {
+  flex-shrink: 0;
+  font-weight: 650;
+}
+
+.chat-container.assis-chat-he-flip .assis-product-detail-add.has-total {
+  direction: ltr;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  justify-content: stretch;
+  padding: 0 14px;
+}
+
+.chat-container.assis-chat-he-flip .assis-product-detail-add.has-total .assis-product-detail-add-total {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+  line-height: 1;
+}
+
+.chat-container.assis-chat-he-flip .assis-product-detail-add.has-total .assis-product-detail-add-label {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
+  line-height: 1;
+}
+
+.assis-product-detail-add span {
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+.assis-product-detail-add:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.assis-product-detail-add:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 22px rgba(29, 111, 238, 0.4);
+}
+
+.assis-product-detail-add:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assis-product-detail-add {
+    animation: none;
+  }
+}
+
+.chat-container {
+  position: fixed;
+  bottom: 120px;
+  right: 30px;
+  width: 343px;
+  max-width: calc(100vw - 60px);
+  background: white;
+  border-radius: 24px;
+  box-shadow: 0 10px 24px rgba(148, 163, 184, 0.16), 0 2px 6px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+  z-index: 999;
+  height: 640px;
+  max-height: 80dvh;
+  display: flex;
+  flex-direction: column;
+
+  &.chat-container-small {
+    bottom: 108px;
+  }
+  &.chat-container-medium {
+    bottom: 120px;
+  }
+  &.chat-container-large {
+    bottom: 124px;
+  }
+}
+
+.chat-container.assis-home-open {
+  width: min(500px, calc(100vw - 40px));
+  height: min(420px, calc(100dvh - 100px));
+  max-width: calc(100vw - 40px);
+  bottom: 20px;
+  border-radius: 28px;
+  overflow: visible;
+  background:
+    radial-gradient(ellipse 65% 55% at 82% 38%, rgba(29, 111, 238, 0.22), transparent 70%),
+    radial-gradient(ellipse 50% 40% at 20% 82%, rgba(29, 111, 238, 0.08), transparent 65%),
+    #ffffff;
+}
+
+.chat-container.assis-chat-v2 {
+  width: min(500px, calc(100vw - 40px));
+  height: min(420px, calc(100dvh - 100px));
+  max-width: calc(100vw - 40px);
+  bottom: 20px;
+  border-radius: 28px;
+  background:
+    radial-gradient(ellipse 72% 58% at 92% 8%, rgba(29, 111, 238, 0.13), transparent 68%),
+    radial-gradient(ellipse 58% 48% at 6% 92%, rgba(29, 111, 238, 0.07), transparent 64%),
+    linear-gradient(180deg, #f8fbff 0%, #ffffff 46%, #f3f8ff 100%);
+}
+
+.chat-container.assis-home-open.chat-maximized,
+.chat-container.assis-chat-v2.chat-maximized {
+  width: min(800px, calc(100vw - 40px));
+  height: min(580px, calc(100dvh - 40px));
+}
+
+.chat-container.assis-home-open .chat-header,
+.chat-container.assis-chat-v2 .chat-header {
+  border-bottom: none;
+  background: transparent;
+  height: auto;
+  min-height: 44px;
+  padding: 10px 14px 8px;
+  gap: 8px;
+  position: relative;
+  overflow: visible;
+  justify-content: flex-start;
+  direction: ltr;
+}
+
+.chat-container.assis-chat-v2 .chat-header--with-promo {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.chat-container.assis-home-open .header-content.header-brand,
+.chat-container.assis-chat-v2 .header-content.header-brand {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: min(280px, calc(100% - 88px));
+  margin: 0;
+  padding: 0;
+  order: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  pointer-events: none;
+  position: relative;
+  z-index: 45;
+  direction: ltr;
+}
+
+.chat-container.assis-chat-v2 .chat-header--with-promo .header-content.header-brand {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: none;
+  width: auto;
+}
+
+.chat-container.assis-home-open .header-content.header-brand img,
+.chat-container.assis-chat-v2 .header-content.header-brand img {
+  width: 22px;
+  height: 22px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+  background: #fff;
+}
+
+.chat-container.assis-home-open .header-content.header-brand span,
+.chat-container.assis-chat-v2 .header-content.header-brand span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: #2f3640;
+  line-height: 1.2;
+}
+
+.chat-container.assis-chat-v2 .header-actions > button,
+.chat-container.assis-chat-v2 .header-menu-wrapper > button,
+.chat-container.assis-chat-v2 #assis-furisport-cart-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  border: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05);
+  color: #7a8490;
+}
+
+.chat-container.assis-chat-v2 .header-actions > button svg,
+.chat-container.assis-chat-v2 .header-menu-wrapper > button svg,
+.chat-container.assis-chat-v2 #assis-furisport-cart-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
+.chat-container.assis-chat-v2 #assis-furisport-cart-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.assis-plugin-root .assis-demo-chat-promo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  left: auto;
+  top: auto;
+  transform: none;
+  z-index: 40;
+  flex: 0 1 auto;
+  width: auto;
+  max-width: 50%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.chat-container.assis-home-open .assis-demo-chat-promo {
+  display: none !important;
+}
+
+.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-link {
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  height: 26px;
+  padding: 0 10px 0 8px;
+  box-sizing: border-box;
+  text-decoration: none;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #5b6470;
+  box-shadow: none;
+  cursor: default;
+}
+
+.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-link:hover {
+  background: rgba(255, 255, 255, 0.88);
+  border-color: rgba(0, 0, 0, 0.08);
+  color: #5b6470;
+}
+
+.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  line-height: 0;
+  opacity: 0.72;
+  color: inherit;
+}
+
+.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-text {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 450;
+  line-height: 1.2;
+  text-align: center;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: inherit;
+}
+
+.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-text :deep(a) {
+  pointer-events: auto;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.assis-plugin-root .assis-demo-chat-promo.assis-demo-chat-promo--whatsapp {
+  max-width: none;
+}
+
+.assis-plugin-root .assis-demo-chat-promo.assis-demo-chat-promo--whatsapp .assis-demo-promo-link {
+  appearance: none;
+  pointer-events: auto;
+  min-width: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.assis-plugin-root .assis-demo-chat-promo.assis-demo-chat-promo--whatsapp .assis-demo-promo-link:hover {
+  background: #ffffff;
+  border-color: rgba(29, 111, 238, 0.22);
+  color: #1d6fee;
+}
+
+.assis-plugin-root .assis-demo-chat-promo.assis-demo-chat-promo--whatsapp .assis-demo-promo-text {
+  min-width: 0;
+}
+
+.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-arrow {
+  display: inline-flex;
+  flex-shrink: 0;
+  opacity: 0.4;
+  color: inherit;
+}
+
+.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-arrow svg {
+  display: block;
+  width: 9px;
+  height: 9px;
+  stroke-width: 1.5;
+}
+
+.chat-container.assis-chat-v2 .header-actions {
+  position: relative;
+  z-index: 45;
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+}
+
+.chat-container.assis-chat-v2 .header-menu {
+  right: 0;
+  left: auto;
+  width: max-content;
+  min-width: 168px;
+  max-width: min(320px, calc(100vw - 48px));
+}
+
+.chat-container.assis-chat-v2 .chat-header--with-promo .header-actions {
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: flex-end;
+  margin-inline-start: 0;
+}
+
+.chat-container.assis-chat-v2 .chat-content,
+.chat-container.assis-chat-v2 .chat-interface,
+.chat-container.assis-chat-v2 .chat-messages {
+  background: transparent;
+}
+
+.chat-container.assis-chat-v2 .chat-messages {
+  padding-left: 14px;
+  padding-right: 14px;
+}
+
+.chat-container.assis-chat-v2 .ai-today-message {
+  color: #9ca3af;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.chat-container.assis-chat-v2 .message.sender-client {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.chat-container.assis-chat-v2 .message.sender-client .message-content {
+  max-width: 72%;
+  width: auto;
+  align-items: flex-end;
+  overflow: visible;
+}
+
+.chat-container.assis-chat-v2 .message.sender-client .message-content-container {
+  display: flex;
+  justify-content: flex-end;
+  width: max-content;
+  max-width: 100%;
+  margin-left: auto;
+}
+
+.assis-contact-submission {
+  width: min(300px, 100%);
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  animation: assis-agent-card-in 0.48s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.assis-contact-submission-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  width: 100%;
+  min-height: 68px;
+  margin: 0;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.06);
+  transition: translate 0.3s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.3s ease;
+}
+
+.assis-contact-submission-channels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.assis-contact-submission-channels--he {
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+}
+
+.assis-contact-submission-channel {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  height: 20px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 999px;
+  background: #f3f1ec;
+  color: #7c8593;
+  font-size: 10px;
+  font-weight: 550;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.assis-contact-submission-channel:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+span.assis-contact-submission-channel {
+  cursor: default;
+}
+
+.assis-contact-submission-channel[data-active="true"] {
+  color: #1d6fee;
+  background: rgba(29, 111, 238, 0.1);
+  box-shadow: inset 0 0 0 1.5px rgba(29, 111, 238, 0.35);
+}
+
+.assis-contact-submission-channel svg {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+}
+
+.assis-contact-submission-edited {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(29, 111, 238, 0.08);
+  color: #1d6fee;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.assis-contact-submission-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+  direction: ltr;
+}
+
+.assis-contact-submission-prefix {
+  flex: 0 0 auto;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #f3f1ec;
+  color: #3a3f46;
+  font-size: 11px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+.assis-contact-submission-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 999px;
+  background: #f7f8fa;
+  color: #6b7280;
+  -webkit-text-fill-color: #6b7280;
+  font-size: 11.5px;
+  font-weight: 500;
+  font-family: inherit;
+  outline: none;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.06);
+  cursor: default;
+  opacity: 1;
+}
+
+.assis-contact-submission-input:disabled,
+.assis-contact-submission-input[readonly] {
+  background: #f7f8fa;
+}
+
+.assis-contact-submission-input--email {
+  text-align: left;
+}
+
+.assis-contact-submission-edit {
+  appearance: none;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: #f3f1ec;
+  color: #6b7280;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.assis-contact-submission-edit:hover {
+  color: #1d6fee;
+  background: rgba(29, 111, 238, 0.1);
+}
+
+.assis-contact-submission-edit svg {
+  display: block;
+}
+
+.chat-container.assis-chat-v2 .message.message--contact-submission .message-content {
+  max-width: min(300px, 100%);
+  width: min(300px, 100%);
+}
+
+.chat-container.assis-chat-v2 .message.sender-client .message-bubble {
+  background-color: #1d6fee;
+  color: #ffffff;
+  border: none;
+  border-radius: 14px;
+  border-bottom-right-radius: 4px;
+  box-shadow: 0 4px 12px rgba(29, 111, 238, 0.16);
+  font-size: 13px !important;
+  line-height: 1.45;
+  padding: 7px 11px;
+  width: max-content;
+  max-width: 100%;
+  word-break: normal;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.chat-container.assis-chat-v2 .message.sender-client .message-bubble p {
+  margin: 0;
+}
+
+/* Hebrew: consumer on the left, Assis/AI on the right */
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.sender-client {
+  justify-content: flex-start;
+}
+
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.sender-client .message-content {
+  align-items: flex-start;
+}
+
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.sender-client .message-content-container {
+  justify-content: flex-start;
+  margin-left: 0;
+  margin-right: auto;
+}
+
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.sender-client .message-bubble {
+  border-bottom-right-radius: 14px;
+  border-bottom-left-radius: 4px;
+}
+
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.sender-ai,
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.sender-agent,
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.sender-assis,
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.sender-business {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.sender-ai .message-content,
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.sender-agent .message-content,
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.sender-assis .message-content,
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.sender-business .message-content {
+  margin-inline-start: auto;
+  align-items: flex-end;
+}
+
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.sender-ai .message-content-container,
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.sender-agent .message-content-container,
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.sender-assis .message-content-container,
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.sender-business .message-content-container {
+  flex-direction: row-reverse;
+  margin-inline-start: auto;
+}
+
+.chat-container.assis-chat-v2.assis-chat-he-flip .loading-message-bubble,
+.chat-container.assis-chat-v2 .loading-message-bubble--he-flip {
+  display: flex !important;
+  width: 100% !important;
+  max-width: 100%;
+  box-sizing: border-box;
+  /* row-reverse puts heart on the outer right; flex-start packs to the reversed axis start (= physical right) */
+  justify-content: flex-start !important;
+  flex-direction: row-reverse;
+  align-items: flex-start;
+  gap: 8px;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.chat-container.assis-chat-v2.assis-chat-he-flip .loading-message-bubble .message-bubble,
+.chat-container.assis-chat-v2 .loading-message-bubble--he-flip .message-bubble {
+  text-align: right;
+  margin-left: 0;
+}
+
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.message--contact-submission {
+  justify-content: flex-end;
+}
+
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.message--contact-submission .message-content {
+  margin-inline-start: auto;
+  align-items: flex-end;
+}
+
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.sender-ai .message-bubble,
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.sender-agent .message-bubble,
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.sender-assis .message-bubble,
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.sender-business .message-bubble {
+  border-bottom-left-radius: 14px;
+  border-bottom-right-radius: 4px;
+}
+
+.chat-container.assis-chat-v2 .message.sender-ai .message-content,
+.chat-container.assis-chat-v2 .message.sender-agent .message-content,
+.chat-container.assis-chat-v2 .message.sender-assis .message-content,
+.chat-container.assis-chat-v2 .message.sender-business .message-content {
+  max-width: 80%;
+  width: auto;
+  overflow: visible;
+}
+
+.message-content:has(.assis-products-container),
+.message-content:has(.assis-orders-container),
+.message-content:has(.assis-orders-inline),
+.message-content:has(.assis-order-preview),
+.message-content:has(.assis-order-verification),
+.message-content:has(.orders-container) {
+  overflow: visible;
+}
+
+.chat-container.assis-chat-v2 .message.sender-ai .message-content:has(.assis-orders-container),
+.chat-container.assis-chat-v2 .message.sender-ai .message-content:has(.assis-orders-inline),
+.chat-container.assis-chat-v2 .message.sender-ai .message-content:has(.assis-order-preview),
+.chat-container.assis-chat-v2 .message.sender-agent .message-content:has(.assis-orders-container),
+.chat-container.assis-chat-v2 .message.sender-agent .message-content:has(.assis-orders-inline),
+.chat-container.assis-chat-v2 .message.sender-agent .message-content:has(.assis-order-preview),
+.chat-container.assis-chat-v2 .message.sender-assis .message-content:has(.assis-orders-container),
+.chat-container.assis-chat-v2 .message.sender-assis .message-content:has(.assis-orders-inline),
+.chat-container.assis-chat-v2 .message.sender-assis .message-content:has(.assis-order-preview) {
+  max-width: 80%;
+  width: auto;
+}
+
+.message-content:has(.ai-phone-input-group--prefix-open),
+.message-content:has(.assis-order-verification-card--prefix-open) {
+  position: relative;
+  z-index: 10;
+  overflow: visible;
+}
+
+.message:has(.ai-phone-input-group--prefix-open),
+.message:has(.assis-order-verification-card--prefix-open) {
+  position: relative;
+  z-index: 10;
+  overflow: visible;
+}
+
+.message-content-container:has(.ai-phone-input-group--prefix-open),
+.message-content-container:has(.assis-order-verification-card--prefix-open) {
+  overflow: visible;
+}
+
+.assis-orders-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 2px 0;
+  margin-bottom: 14px;
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+.assis-orders-dock {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  margin: 0 0 10px;
+  box-sizing: border-box;
+}
+
+.assis-message-with-order {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.chat-container.assis-chat-v2.assis-chat-he-flip .assis-message-with-order {
+  align-items: flex-end;
+}
+
+.assis-order-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(300px, 100%);
+  max-width: 100%;
+  padding: 8px;
+  box-sizing: border-box;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+}
+
+.assis-order-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.assis-order-preview-number {
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 650;
+  color: #0f172a;
+}
+
+.assis-order-preview-enlarge {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 999px;
+  background: #1d6fee;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 650;
+  font-family: inherit;
+  line-height: 1;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.assis-order-preview-enlarge:hover {
+  background: #1558c7;
+}
+
+.assis-order-preview-enlarge--quiet {
+  background: rgba(29, 111, 238, 0.1);
+  color: #1d6fee;
+  white-space: nowrap;
+}
+
+.assis-order-preview-enlarge--quiet:hover {
+  background: rgba(29, 111, 238, 0.16);
+}
+
+.assis-order-inline-host {
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+  max-width: 100%;
+  margin-bottom: 15px;
+}
+
+.assis-order-inline-host .assis-order-preview {
+  flex: 0 0 auto;
+}
+
+.assis-orders-inline {
+  width: min(300px, 100%);
+  max-width: min(300px, 100%);
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.assis-orders-inline .assis-orders-section-header {
+  width: 100%;
+  max-width: none;
+}
+
+.assis-orders-inline .assis-lh-section-title {
+  max-width: none;
+  margin: 0;
+}
+
+.assis-orders-inline[dir="rtl"] .assis-lh-section-title {
+  text-transform: none;
+}
+
+.assis-orders-section-heading {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.assis-orders-section-title {
+  margin: 0 !important;
+  text-transform: none !important;
+  letter-spacing: 0.01em !important;
+  font-size: 12px !important;
+  font-weight: 650 !important;
+  color: #64748b !important;
+  line-height: 1.3 !important;
+  white-space: nowrap;
+}
+
+.assis-orders-section-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-inline-start: auto;
+  flex: 0 0 auto;
+}
+
+.assis-order-collapse-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.assis-order-preview-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.assis-order-preview-media {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f1f5f9;
+  flex: 0 0 auto;
+}
+
+.assis-order-preview-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.assis-order-preview-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.assis-order-preview-statuses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.assis-order-preview-summary {
+  font-size: 12px;
+  font-weight: 600;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.assis-order-preview-meta {
+  font-size: 11px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.assis-order-preview-meta-label {
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.assis-order-preview-caption {
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #64748b;
+}
+
+.assis-order-pinned-wrap {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-start;
+  padding: 6px 12px 2px;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 40;
+  /* Keep physical LTR so flex-end always means the right side of the chat */
+  direction: ltr;
+}
+
+.assis-order-pinned-wrap--he,
+.chat-container.assis-chat-v2.assis-chat-he-flip .assis-order-pinned-wrap {
+  justify-content: flex-end;
+}
+
+.assis-order-pinned-group {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  max-width: min(240px, calc(100vw - 48px));
+}
+
+.assis-order-pinned-hover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: auto;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: min(240px, calc(100vw - 48px));
+  max-width: min(240px, calc(100vw - 48px));
+  padding: 8px 10px;
+  box-sizing: border-box;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
+  pointer-events: auto;
+  overflow: hidden;
+  text-align: start;
+}
+
+/* Hebrew: tab on the right - anchor popup to the right so it opens into the chat */
+.chat-container.assis-chat-v2.assis-chat-he-flip .assis-order-pinned-hover,
+.assis-order-pinned-group[dir="rtl"] .assis-order-pinned-hover {
+  left: auto;
+  right: 0;
+}
+
+.chat-container.assis-chat-v2.assis-chat-he-flip .assis-order-pinned-picker,
+.assis-order-pinned-group[dir="rtl"] .assis-order-pinned-picker {
+  left: auto;
+  right: 0;
+}
+
+/* Invisible bridge over the 6px gap so moving into the popup does not close it */
+.assis-order-pinned-hover::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -6px;
+  height: 6px;
+}
+
+.assis-order-pinned-tab {
+  display: inline-flex;
+  align-items: stretch;
+  width: auto;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  border: 1px solid rgba(29, 111, 238, 0.18);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.05);
+  overflow: hidden;
+}
+
+.assis-order-pinned-tab--open,
+.assis-order-pinned-tab--picker-open {
+  border-color: rgba(29, 111, 238, 0.36);
+  background: #f5f9ff;
+}
+
+.assis-order-pinned-tab-main {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  padding: 3px 6px 3px 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: start;
+}
+
+.assis-order-pinned-tab-main:hover {
+  background: rgba(29, 111, 238, 0.04);
+}
+
+.assis-order-pinned-tab-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(29, 111, 238, 0.1);
+  color: #1d6fee;
+}
+
+.assis-order-pinned-tab-number {
+  font-size: 11px;
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+}
+
+.assis-order-pinned-tab-divider {
+  flex: 0 0 auto;
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 0;
+  background: rgba(29, 111, 238, 0.18);
+}
+
+.assis-order-pinned-tab-extra {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0 7px 0 6px;
+  border: 0;
+  background: transparent;
+  color: #1d6fee;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.assis-order-pinned-tab-extra:hover {
+  background: rgba(29, 111, 238, 0.08);
+}
+
+.assis-order-pinned-tab .assis-order-card-status {
+  height: 15px;
+  padding: 0 5px;
+  max-width: 64px;
+  font-size: 8.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assis-order-pinned-tab-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: #1d6fee;
+  opacity: 0.85;
+}
+
+.assis-order-pinned-hover-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.assis-order-pinned-hover-number {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.assis-order-pinned-hover-line {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: start;
+}
+
+.assis-order-pinned-hover-label {
+  font-weight: 600;
+  color: #94a3b8;
+  margin-inline-end: 4px;
+}
+
+.assis-order-pinned-hover-items {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 120px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  min-width: 0;
+  width: 100%;
+}
+
+.assis-order-pinned-hover-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+}
+
+.assis-order-pinned-hover-item-media {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #f1f5f9;
+}
+
+.assis-order-pinned-hover-item-media--empty {
+  background: #f3f1ec;
+}
+
+.assis-order-pinned-hover-item-media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.assis-order-pinned-hover-item-copy {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: start;
+  gap: 1px;
+  min-width: 0;
+  overflow: hidden;
+  text-align: start;
+}
+
+.assis-order-pinned-hover-item-title {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: start;
+}
+
+.assis-order-pinned-hover-item-meta {
+  display: block;
+  max-width: 100%;
+  font-size: 9.5px;
+  color: #94a3b8;
+  text-align: start;
+  unicode-bidi: isolate;
+}
+
+.assis-order-pinned-picker {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: auto;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 100%;
+  max-width: min(280px, calc(100vw - 48px));
+  max-height: min(220px, 40vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 6px;
+  box-sizing: border-box;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+}
+
+.assis-order-pinned-picker-item {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #0f172a;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: start;
+}
+
+.assis-order-pinned-picker-item:hover {
+  background: rgba(29, 111, 238, 0.06);
+}
+
+.assis-order-pinned-picker-item--active {
+  background: rgba(29, 111, 238, 0.1);
+}
+
+.assis-order-pinned-picker-number {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+}
+
+.assis-order-pinned-picker-summary {
+  width: 100%;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.assis-order-popup {
+  position: absolute;
+  z-index: 40;
+  bottom: calc(100% + 8px);
+  inset-inline-start: 0;
+  width: min(100%, 300px);
+  max-width: min(100%, 300px);
+}
+
+.assis-order-popup-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  max-height: min(260px, 46vh);
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16);
+  animation: assis-order-popup-in 160ms ease;
+}
+
+@media (max-width: 767px) {
+  .assis-order-popup-card {
+    max-height: min(460px, calc(100svh - 250px));
+  }
+}
+
+.assis-order-popup-card::after {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  inset-inline-start: 28px;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-inline-end: 1px solid rgba(15, 23, 42, 0.08);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  transform: rotate(45deg);
+}
+
+.assis-order-popup-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 8px;
+}
+
+.assis-order-popup-change {
+  appearance: none;
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: #1d6fee;
+  font-size: 12px;
+  font-weight: 650;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.assis-order-popup-head h4 {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #0f172a;
+}
+
+.assis-order-popup-close {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-inline-start: auto;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #334155;
+  cursor: pointer;
+}
+
+.assis-order-popup-close:hover {
+  background: #e2e8f0;
+}
+
+.assis-order-popup-body {
+  overflow: auto;
+  min-height: 0;
+  padding: 0 12px 12px;
+}
+
+.assis-order-popup .assis-order-card {
+  width: 100%;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.assis-order-popup-pick {
+  appearance: none;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 0 0 6px;
+  padding: 8px 10px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+}
+
+.assis-order-popup-pick-media {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f7f8fa;
+}
+
+.assis-order-popup-pick-media--empty {
+  background: #f3f1ec;
+}
+
+.assis-order-popup-pick-media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.assis-order-popup-pick-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+
+.assis-order-popup-pick-copy span + span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+@keyframes assis-order-popup-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.assis-orders-dock-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-height: none;
+  padding: 10px 12px 12px;
+  box-sizing: border-box;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  overflow: visible;
+}
+
+.assis-orders-dock .assis-orders-container {
+  flex: none;
+  min-height: auto;
+  max-height: none;
+  margin-bottom: 0;
+  overflow: visible;
+}
+
+.assis-orders-dock .assis-order-selection-change {
+  margin-inline-end: 0;
+}
+
+.assis-order-selection-change {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: #1d6fee;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: start;
+}
+
+.assis-orders-dock .assis-orders-section-header,
+.assis-orders-dock .assis-order-selection-subtitle,
+.assis-orders-dock .assis-order-selection-list,
+.assis-orders-dock .assis-order-card {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.chat-container.assis-chat-v2 .assis-orders-dock {
+  padding: 0 2px;
+}
+
+.chat-container.assis-chat-v2 .assis-orders-dock-panel {
+  background: #ffffff;
+}
+
+.assis-orders-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  width: min(300px, 100%);
+  max-width: 100%;
+  margin-bottom: 4px;
+}
+
+.assis-orders-container .assis-lh-section-title {
+  margin: 0 0 2px;
+  font-size: 11.5px;
+  font-weight: 650;
+  color: #64748b;
+  letter-spacing: 0.02em;
+}
+
+.assis-order-selection-subtitle {
+  margin: 0 0 2px;
+  width: min(300px, 100%);
+  max-width: 100%;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: #9ca3af;
+  font-weight: 500;
+}
+
+.assis-order-selection-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(300px, 100%);
+  max-width: 100%;
+  /* Show about 3 order rows, then scroll */
+  max-height: calc((48px + 16px) * 3 + 10px * 2);
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 2px 2px 4px;
+  box-sizing: border-box;
+  scrollbar-width: thin;
+}
+
+.assis-order-selection-list--popup {
+  width: 100%;
+  max-width: none;
+}
+
+.assis-order-selection-item {
+  appearance: none;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 8px 10px;
+  border: var(--assis-chat-card-border, 1px solid rgba(15, 23, 42, 0.06));
+  border-radius: var(--assis-chat-card-radius, 16px);
+  background: var(--assis-chat-card-bg, #ffffff);
+  box-shadow: var(--assis-chat-card-shadow, 0 4px 12px rgba(15, 23, 42, 0.06));
+  cursor: pointer;
+  font-family: inherit;
+  text-align: inherit;
+  box-sizing: border-box;
+  animation: assis-product-card-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(0.06s + (var(--assis-order-i, 0) * 0.09s));
+}
+
+.assis-order-selection-item:hover {
+  background: #fafbfc;
+  border-color: rgba(29, 111, 238, 0.12);
+}
+
+.assis-order-selection-item-media {
+  position: relative;
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  background: #f7f8fa;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.assis-order-selection-item-media--empty {
+  background: #f3f1ec;
+}
+
+.assis-order-selection-item-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.assis-order-selection-item-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+  text-align: left;
+}
+
+.assis-orders-container[dir="rtl"] .assis-order-selection-item-body {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.assis-order-selection-item-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+}
+
+.assis-order-selection-item-number {
+  font-size: 12px;
+  font-weight: 650;
+  color: #1f2937;
+}
+
+.assis-order-selection-item-meta {
+  width: 100%;
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: #9ca3af;
+}
+
+.assis-order-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(300px, 100%);
+  max-width: 100%;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  border-radius: var(--assis-chat-card-radius, 14px);
+  background: var(--assis-chat-card-bg, #ffffff);
+  border: var(--assis-chat-card-border, 1px solid rgba(15, 23, 42, 0.06));
+  box-shadow: var(--assis-chat-card-shadow, 0 3px 10px rgba(15, 23, 42, 0.05));
+}
+
+.assis-order-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.assis-order-card-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.assis-order-card-number {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: #1f2937;
+}
+
+.assis-order-card-status {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #f9fafb;
+  color: #374151;
+  border: 1px solid #f3f4f6;
+  font-size: 9.5px;
+  font-weight: 550;
+  line-height: 1;
+}
+
+.assis-order-card-status[data-color="indigo"] {
+  background: #eef2ff;
+  color: #4338ca;
+  border-color: #e0e7ff;
+}
+
+.assis-order-card-status[data-color="amber"] {
+  background: #fffbeb;
+  color: #b45309;
+  border-color: #fef3c7;
+}
+
+.assis-order-card-status[data-color="yellow"] {
+  background: #fefce8;
+  color: #a16207;
+  border-color: #fef9c3;
+}
+
+.assis-order-card-status[data-color="blue"] {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #dbeafe;
+}
+
+.assis-order-card-status[data-color="red"] {
+  background: #fef2f2;
+  color: #b91c1c;
+  border-color: #fee2e2;
+}
+
+.assis-order-card-status[data-color="green"] {
+  background: #f0fdf4;
+  color: #15803d;
+  border-color: #dcfce7;
+}
+
+.assis-order-card-status[data-color="orange"] {
+  background: #fff7ed;
+  color: #c2410c;
+  border-color: #ffedd5;
+}
+
+.assis-order-card-status[data-color="gray"] {
+  background: #f9fafb;
+  color: #374151;
+  border-color: #f3f4f6;
+}
+
+.assis-order-card-date {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  color: #9ca3af;
+  font-weight: 500;
+}
+
+.assis-order-card-meta {
+  font-size: 10.5px;
+  color: #6b7280;
+  line-height: 1.4;
+}
+
+.assis-order-card-meta-label {
+  color: #9ca3af;
+  font-weight: 500;
+  margin-inline-end: 4px;
+}
+
+.assis-order-card-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.assis-order-card-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.assis-order-card-item--ask {
+  cursor: pointer;
+  border-radius: 10px;
+  margin: 0 -4px;
+  padding: 4px;
+  transition: background-color 0.15s ease;
+}
+
+.assis-order-card-item--ask:hover,
+.assis-order-card-item--ask:focus-visible {
+  background: rgba(29, 111, 238, 0.06);
+  outline: none;
+}
+
+.assis-order-card-item-media {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f7f8fa;
+}
+
+.assis-order-card-item-media--empty {
+  background: #f3f1ec;
+}
+
+.assis-order-card-item-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.assis-order-card-item-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.assis-order-card-item-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.assis-order-card-item-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.assis-order-card-item-title {
+  font-size: 11.5px;
+  font-weight: 550;
+  color: #1f2937;
+  line-height: 1.3;
+}
+
+.assis-order-card-item-meta {
+  margin-top: 2px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #9ca3af;
+}
+
+.assis-order-card-item-price-original {
+  text-decoration: line-through;
+  color: #9ca3af;
+}
+
+.assis-order-card-item-price {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 650;
+  color: #1f2937;
+}
+
+.assis-order-card-item-discount {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  line-height: 1.35;
+  color: #6b7280;
+}
+
+.assis-order-card-item-discount-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assis-order-card-item-discount-value {
+  flex: 0 0 auto;
+}
+
+.assis-order-card-discounts {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.assis-order-card-discount-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.assis-order-card-discount-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(29, 111, 238, 0.08);
+  color: #1d6fee;
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.assis-order-card-totals,
+.assis-order-card-fulfillment {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-top: 5px;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.assis-order-card-fulfillment-title {
+  margin: 0 0 2px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #475569;
+}
+
+.assis-order-card-total-row,
+.assis-order-card-fulfillment-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  line-height: 1.35;
+  color: #6b7280;
+}
+
+.assis-order-card-total-row--nested {
+  padding-inline-start: 8px;
+  color: #9ca3af;
+}
+
+.assis-order-card-total-row--strong {
+  font-size: 11px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.assis-order-card-fulfillment-label,
+.assis-order-card-fulfillment-value {
+  font-size: 10px;
+  line-height: 1.35;
+  color: #6b7280;
+}
+
+.assis-order-card-fulfillment-link {
+  color: #1d6fee;
+  text-decoration: none;
+  font-size: 10px;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.assis-order-card-fulfillment-link:hover {
+  text-decoration: underline;
+}
+
+.assis-order-card-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+  font-size: 11.5px;
+  color: #6b7280;
+}
+
+.assis-order-card-total strong {
+  color: #111827;
+  font-weight: 650;
+}
+
+.chat-container.assis-chat-v2 .message.sender-ai .message-content-container,
+.chat-container.assis-chat-v2 .message.sender-agent .message-content-container,
+.chat-container.assis-chat-v2 .message.sender-assis .message-content-container,
+.chat-container.assis-chat-v2 .message.sender-business .message-content-container {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 100%;
+  width: auto;
+  min-width: 0;
+}
+
+.chat-container.assis-chat-v2 .assis-msg-heart {
+  width: 15px;
+  height: 15px;
+  display: block;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.chat-container.assis-chat-v2 .loading-message-bubble {
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.chat-container.assis-chat-v2 .loading-message-bubble .message-bubble {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  padding: 2px 0;
+  margin: 0;
+  min-height: 16px;
+  max-width: 100%;
+  display: flex;
+  align-items: baseline;
+}
+
+.assis-gemini-caret {
+  display: inline-block;
+  width: 1.5px;
+  height: 0.85em;
+  margin-inline-start: 1px;
+  background: #1d6fee;
+  vertical-align: -1px;
+  animation: assis-gemini-caret 0.7s step-end infinite;
+}
+
+.assis-thinking-line[dir="rtl"] .assis-gemini-caret,
+.assis-typewriter[dir="rtl"] .assis-gemini-caret {
+  margin-inline-start: 0;
+  margin-inline-end: 1px;
+}
+
+.assis-thinking-line {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.assis-thinking-line[dir="rtl"],
+.assis-typewriter[dir="rtl"],
+.assis-typewriter[dir="rtl"] p {
+  text-align: right;
+  direction: rtl;
+  unicode-bidi: isolate;
+}
+
+.assis-thinking-line[dir="ltr"],
+.assis-typewriter[dir="ltr"],
+.assis-typewriter[dir="ltr"] p {
+  text-align: left;
+  direction: ltr;
+}
+
+.assis-thinking-text {
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+.assis-typewriter {
+  word-break: normal;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.assis-typewriter p {
+  white-space: pre-wrap;
+}
+
+@keyframes assis-gemini-caret {
+  50% { opacity: 0; }
+}
+
+.chat-container.assis-chat-v2 .ai-agent-info {
+  display: flex;
+  align-items: flex-start;
+  align-self: flex-start;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  gap: 0;
+  width: 15px;
+  height: 15px;
+}
+
+.chat-container.assis-chat-v2 .message.sender-ai .message-bubble,
+.chat-container.assis-chat-v2 .message.sender-agent .message-bubble,
+.chat-container.assis-chat-v2 .message.sender-assis .message-bubble,
+.chat-container.assis-chat-v2 .message.sender-business .message-bubble {
+  background: transparent;
+  border: none;
+  color: #1a1a1a;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 2px 0;
+  max-width: 100%;
+  width: fit-content;
+  min-width: 0;
+  font-size: 13px !important;
+  line-height: 1.55;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+.chat-container.assis-chat-v2 .message.sender-ai .message-bubble :deep(p),
+.chat-container.assis-chat-v2 .message.sender-agent .message-bubble :deep(p),
+.chat-container.assis-chat-v2 .message.sender-assis .message-bubble :deep(p) {
+  margin: 0 0 1em;
+}
+
+.chat-container.assis-chat-v2 .message.sender-ai .message-bubble :deep(p:last-child),
+.chat-container.assis-chat-v2 .message.sender-agent .message-bubble :deep(p:last-child),
+.chat-container.assis-chat-v2 .message.sender-assis .message-bubble :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.chat-container.assis-chat-v2 .ai-human-contact-sheet {
+  display: flex;
+}
+
+.chat-container.assis-chat-v2:has(.chat-input-area > .ai-human-contact-sheet--v2:not(.ai-human-contact-sheet--collapsed)) .assis-suggest-chips {
+  display: none;
+}
+
+.chat-container.assis-chat-v2 .chat-input-area {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  border-top: none;
+  background: transparent;
+  padding: 0 14px 0;
+  box-shadow: none;
+}
+
+.chat-container.assis-chat-v2 .flex.gap-2 {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.chat-container.assis-chat-v2 .input-container {
+  position: relative;
+  min-height: 44px;
+  height: auto;
+  align-items: flex-end;
+  background: #ffffff;
+  border-radius: 22px;
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  padding: 14px 42px 14px 14px !important;
+  gap: 8px;
+}
+
+.chat-container.assis-chat-v2 .input-container:focus-within {
+  border-color: #1d6fee;
+  box-shadow: 0 0 0 1px #1d6fee;
+}
+
+.chat-container.assis-chat-v2 .chat-input {
+  font-size: 13px !important;
+  line-height: 20px;
+  padding: 0;
+  height: 20px;
+  min-height: 20px;
+  max-height: 80px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.chat-container.assis-chat-v2 .chat-input::placeholder {
+  font-size: 13px !important;
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.chat-container.assis-chat-v2 .attach-btn {
+  width: 16px;
+  height: 16px;
+  opacity: 0.55;
+  color: #6b7280;
+}
+
+.chat-container.assis-chat-v2 .send-btn {
+  position: absolute;
+  right: 7px;
+  top: 50%;
+  bottom: auto;
+  translate: none;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  background: #1d6fee;
+}
+
+.chat-container.assis-chat-v2 .chat-input-multiline .send-btn {
+  top: auto;
+  bottom: 8px;
+  transform: none;
+}
+
+.chat-container.assis-chat-v2 .flex-rtl .send-btn {
+  right: auto;
+  left: 7px;
+}
+
+.chat-container.assis-chat-v2 .flex-rtl .input-container {
+  padding: 14px 14px 14px 42px !important;
+}
+
+.assis-suggest-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 8px 18px 4px 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 22px), transparent 100%);
+}
+
+.assis-suggest-chips--rtl {
+  justify-content: flex-start;
+  direction: rtl;
+  padding: 8px 0 4px 18px;
+  mask-image: linear-gradient(to left, #000 0, #000 calc(100% - 22px), transparent 100%);
+}
+
+.assis-suggest-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.assis-suggest-chips button {
+  flex: 0 0 auto;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: auto;
+  padding-block: 4px;
+  padding-inline: 4px 14px;
+  border: 1px solid rgba(29, 111, 238, 0.18);
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #374151;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  font-family: inherit;
+  line-height: 1.3;
+  white-space: nowrap;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  animation: assis-agent-card-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+  cursor: pointer;
+}
+
+.assis-suggest-chips button:nth-child(1),
+.assis-home-chips button:nth-child(1) { animation-delay: 0.02s; }
+.assis-suggest-chips button:nth-child(2),
+.assis-home-chips button:nth-child(2) { animation-delay: 0.08s; }
+.assis-suggest-chips button:nth-child(3),
+.assis-home-chips button:nth-child(3) { animation-delay: 0.14s; }
+.assis-suggest-chips button:nth-child(4),
+.assis-home-chips button:nth-child(4) { animation-delay: 0.2s; }
+.assis-suggest-chips button:nth-child(5),
+.assis-home-chips button:nth-child(5) { animation-delay: 0.26s; }
+
+.assis-suggest-chips button:hover {
+  color: #1d6fee;
+  background: #ffffff;
+  border-color: rgba(29, 111, 238, 0.28);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.assis-chat-footer {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  width: 100%;
+  padding: 8px 14px 10px;
+  background: transparent;
+  text-align: unset;
+  box-sizing: border-box;
+}
+
+.chat-container.assis-chat-v2 .chat-footer {
+  border-top: none;
+  background: transparent;
+  padding-left: 14px;
+  padding-right: 14px;
+}
+
+.assis-home {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 24px 16px;
+  box-sizing: border-box;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #1a1a1a;
+  overflow: visible;
+}
+
+.assis-home-main {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  overflow: visible;
+  padding: 8px;
+}
+
+.assis-home-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: start;
+  max-width: 220px;
+  width: 100%;
+  flex: 1 1 160px;
+}
+
+.assis-home-brand {
+  display: grid;
+  place-items: start;
+  margin: 0 0 14px;
+}
+
+.assis-home-brand-icon {
+  width: 34px;
+  height: 34px;
+  display: block;
+  overflow: visible;
+  filter: drop-shadow(0 1px 2px rgba(29, 111, 238, 0.28));
+}
+
+.assis-home-title {
+  margin: 0 0 8px;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: #303030;
+}
+
+.assis-home-body {
+  margin: 0;
+  max-width: 210px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #5b5b5b;
+  font-weight: 400;
+}
+
+.assis-home-cards {
+  position: relative;
+  flex: 0 0 168px;
+  width: 168px;
+  height: 156px;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.assis-home-cards::before {
+  content: "";
+  position: absolute;
+  left: 48%;
+  top: 48%;
+  width: 180px;
+  height: 150px;
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(29, 111, 238, 0.38) 0%,
+    rgba(29, 111, 238, 0.16) 42%,
+    rgba(29, 111, 238, 0.05) 65%,
+    transparent 78%
+  );
+  filter: blur(16px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.assis-home-card {
+  position: absolute;
+  width: 112px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 16px;
+  background: #ffffff;
+  border: none;
+  padding: 0;
+  box-shadow: 0 0 0 3px #ffffff, 0 0 0 4px rgba(15, 23, 42, 0.05), 0 14px 30px rgba(15, 23, 42, 0.16);
+  box-sizing: border-box;
+  color: #3a3f46;
+  pointer-events: auto;
+  transform-origin: center center;
+  isolation: isolate;
+  z-index: 1;
+  transition: rotate 0.32s cubic-bezier(0.22, 1, 0.36, 1), translate 0.32s cubic-bezier(0.22, 1, 0.36, 1), scale 0.32s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.32s ease, top 0.35s cubic-bezier(0.22, 1, 0.36, 1), left 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: assis-home-card-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.assis-home-card-link {
+  display: flex;
+  flex-direction: column;
+  color: inherit;
+  text-decoration: none;
+  min-width: 0;
+  -webkit-tap-highlight-color: transparent;
+  tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  outline: none;
+}
+
+@keyframes assis-home-card-in {
+  from {
+    opacity: 0;
+    translate: 0 16px;
+    scale: 0.94;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+}
+
+/* Compact web: exact FURI 2-card stack — front left (-8deg), back lower-right (+10deg) */
+.assis-home-card--a {
+  top: 0;
+  left: 0;
+  rotate: -8deg;
+  z-index: 3;
+  animation-delay: 0.12s;
+}
+
+.assis-home-card--b {
+  top: 36px;
+  left: 52px;
+  rotate: 10deg;
+  z-index: 2;
+  animation-delay: 0.24s;
+}
+
+.assis-home-card--c {
+  /* Parked at maximized coords while hidden — no slide/fade on minimize */
+  display: flex;
+  top: 56px;
+  left: 168px;
+  rotate: 9deg;
+  z-index: 1;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  animation: none;
+  transition: none;
+}
+
+.chat-container.chat-maximized .assis-home-card--c {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.assis-home-card:hover {
+  rotate: 0deg;
+  translate: 0 -6px;
+  scale: 1.05;
+  z-index: 5;
+  box-shadow: 0 0 0 3px #ffffff, 0 0 0 4px rgba(29, 111, 238, 0.16), 0 22px 44px rgba(15, 23, 42, 0.2);
+}
+
+.assis-home-card-add {
+  appearance: none;
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  z-index: 3;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: #1d6fee;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: 0 6px 14px rgba(29, 111, 238, 0.28);
+}
+
+.assis-home-card-add:hover:not(:disabled) {
+  background: #1557c0;
+}
+
+.assis-home-card-add[data-added="true"],
+.assis-home-card-add:disabled {
+  background: #1557c0;
+  cursor: default;
+  pointer-events: none;
+  opacity: 1;
+}
+
+.assis-home-card-add svg {
+  width: 12px;
+  height: 12px;
+}
+
+.assis-home-card-image {
+  display: block;
+  width: 100%;
+  height: 96px;
+  background: #f3f1ec;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.assis-home-card-image--empty {
+  background: linear-gradient(135deg, #f3f4f6, #e5e7eb);
+}
+
+.assis-home-card img {
+  display: block;
+  width: 100%;
+  height: 96px;
+  object-fit: contain;
+  object-position: center;
+  background: #f3f1ec;
+  padding: 14px 12px 10px;
+  box-sizing: border-box;
+}
+
+.assis-home-card-title {
+  display: block;
+  padding: 8px 9px 10px;
+  background: #fff;
+}
+
+.assis-home-card-title-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-height: 1.35em;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  color: #5b6470;
+  text-align: left;
+  word-break: break-word;
+}
+
+.assis-home-actions {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin-top: 2px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.assis-home[dir="ltr"] .assis-home-copy,
+.assis-home[dir="ltr"] .assis-home-body {
+  max-width: 250px;
+}
+
+.assis-home[dir="ltr"] .assis-home-title {
+  font-size: 22px;
+  line-height: 1.12;
+}
+
+.assis-home-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  /* Start inset so the first chip is not flush-clipped; end inset for the fade. */
+  padding: 2px 18px 2px 4px;
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 22px), transparent 100%);
+}
+
+.assis-home[dir="rtl"] .assis-home-chips {
+  padding: 2px 4px 2px 18px;
+  mask-image: linear-gradient(to left, #000 0, #000 calc(100% - 22px), transparent 100%);
+}
+
+.assis-home-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.assis-home-chips button {
+  flex: 0 0 auto;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: auto;
+  padding-block: 4px;
+  padding-inline: 4px 14px;
+  border: 1px solid rgba(29, 111, 238, 0.18);
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #374151;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  font-family: inherit;
+  line-height: 1.3;
+  white-space: nowrap;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  cursor: pointer;
+  animation: assis-agent-card-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.assis-chip-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #e8f3ff;
+  color: #1d6fee;
+  flex: 0 0 auto;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.assis-plugin-root .assis-chip-label {
+  min-width: 0;
+  font-weight: inherit;
+  white-space: nowrap;
+}
+
+.assis-suggest-chips button:hover .assis-chip-icon,
+.assis-suggest-chips button:active .assis-chip-icon,
+.assis-home-chips button:hover .assis-chip-icon,
+.assis-home-chips button:active .assis-chip-icon {
+  background: #1d6fee;
+  color: #ffffff;
+}
+
+.assis-chip-icon svg {
+  width: 13px;
+  height: 13px;
+}
+
+.assis-home-chips button:hover {
+  color: #1d6fee;
+  background: #ffffff;
+  border-color: rgba(29, 111, 238, 0.28);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.assis-home-composer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  height: auto;
+  margin-top: 10px;
+  margin-bottom: 12px;
+  padding: 8px 14px;
+  box-sizing: border-box;
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  border-radius: 22px;
+  background: #ffffff;
+  flex-shrink: 0;
+}
+
+.assis-home-composer:focus-within {
+  border-color: #1d6fee;
+  box-shadow: 0 0 0 1px #1d6fee;
+}
+
+.assis-home-continue-composer {
+  appearance: none;
+  gap: 10px;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: start;
+  color: inherit;
+  background: #ffffff;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.assis-home-continue-composer:hover {
+  border-color: #1d6fee;
+  box-shadow: 0 0 0 1px #1d6fee;
+}
+
+.assis-home-continue-composer-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: #8a8a8a;
+  display: grid;
+  place-items: center;
+}
+
+.assis-home-continue-composer-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.assis-home-continue-composer-msg {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 18px;
+  color: #9a9a9a;
+  font-weight: 400;
+  text-align: start;
+}
+
+.assis-home-continue-composer-msg bdi {
+  display: inline;
+}
+
+.assis-home-continue-composer-cta {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #1d6fee;
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.assis-home-clip {
+  appearance: none;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #8a8a8a;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.assis-home-clip svg {
+  width: 16px;
+  height: 16px;
+}
+
+.assis-home-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  line-height: 18px;
+  color: #111;
+  font-family: inherit;
+  padding: 0;
+  margin: 0;
+  resize: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  height: 18px;
+  min-height: 18px;
+  max-height: 88px;
+}
+
+.assis-home-input::placeholder {
+  font-size: 13px;
+  color: #9a9a9a;
+}
+
+.assis-home-send {
+  appearance: none;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 999px;
+  background: #1d6fee;
+  color: #fff;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.assis-home-composer[data-has-text="true"] .assis-home-send {
+  display: inline-flex;
+}
+
+.assis-home-send svg {
+  width: 14px;
+  height: 14px;
+}
+
+.assis-home-cared {
+  width: 100%;
+  margin: 8px 0 0;
+  padding: 0 4px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.assis-home-mistakes,
+.assis-home-privacy {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 8.5px;
+  font-weight: 400;
+  color: #b0b6bf;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.assis-home-mistakes {
+  grid-column: 1;
+  justify-self: start;
+  text-align: start;
+}
+
+.assis-home-privacy {
+  grid-column: 3;
+  justify-self: end;
+  font-size: 8px;
+  text-decoration: none;
+  text-align: end;
+}
+
+.assis-home-powered {
+  grid-column: 2;
+  margin: 0;
+  justify-self: center;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 500;
+  color: #9ca3af;
+  line-height: 1.2;
+}
+
+.assis-home-powered a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.assis-footer-credit-off {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0px) minmax(0, 1fr) !important;
+}
+
+.assis-home-powered--reserved {
+  visibility: hidden;
+  overflow: hidden;
+  width: 0;
+  max-width: 0;
+  min-width: 0;
+  padding: 0;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.assis-home-powered a:hover,
+.assis-home-privacy:hover {
+  color: #1d6fee;
+}
+
+.chat-container.chat-maximized .assis-home {
+  padding: 8px 32px 16px;
+}
+
+.chat-container.chat-maximized .assis-home-copy {
+  max-width: 300px;
+}
+
+.chat-container.chat-maximized .assis-home-title {
+  font-size: 28px;
+}
+
+.chat-container.chat-maximized .assis-home-cards {
+  flex-basis: 292px;
+  width: 292px;
+  height: 210px;
+  overflow: visible;
+}
+
+.chat-container.chat-maximized .assis-home-cards::before {
+  width: 280px;
+  height: 190px;
+  left: 50%;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(29, 111, 238, 0.4) 0%,
+    rgba(29, 111, 238, 0.18) 40%,
+    rgba(29, 111, 238, 0.05) 65%,
+    transparent 78%
+  );
+}
+
+.chat-container.chat-maximized .assis-home-card {
+  width: 124px;
+  padding: 0;
+  border-radius: 16px;
+}
+
+.chat-container.chat-maximized .assis-home-card-image,
+.chat-container.chat-maximized .assis-home-card img {
+  height: 108px;
+}
+
+.chat-container.chat-maximized .assis-home-card-title {
+  padding: 10px 11px 12px;
+}
+
+.chat-container.chat-maximized .assis-home-card-title-text {
+  font-size: 11px;
+}
+
+/* Maximized: exact FURI 3-card fan */
+.chat-container.chat-maximized .assis-home-card--a {
+  top: 52px;
+  left: 0;
+  rotate: -11deg;
+  z-index: 2;
+}
+
+.chat-container.chat-maximized .assis-home-card--b {
+  top: 0;
+  left: 82px;
+  rotate: 4deg;
+  z-index: 3;
+}
+
+.chat-container.chat-maximized .assis-home-card--c {
+  top: 56px;
+  left: 168px;
+  rotate: 9deg;
+  z-index: 1;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 0.22s ease;
+}
+
+.chat-container.chat-maximized .assis-home-card:hover {
+  rotate: 0deg;
+  translate: 0 -6px;
+  scale: 1.05;
+  z-index: 5;
+  box-shadow: 0 0 0 3px #ffffff, 0 0 0 4px rgba(29, 111, 238, 0.16), 0 22px 44px rgba(15, 23, 42, 0.2);
+}
+
+@media (max-width: 767px) {
+  .chat-container.assis-home-open,
+  .chat-container.assis-home-open.chat-maximized,
+  .chat-container.assis-chat-v2,
+  .chat-container.assis-chat-v2.chat-maximized {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    margin: 0;
+    transform: none;
+    width: 100vw;
+    min-width: 0;
+    max-width: 100vw;
+    height: calc(100svh - 104px);
+    max-height: calc(100svh - 104px);
+    border-radius: 28px 28px 0 0;
+    box-shadow:
+      0 -8px 32px rgba(0, 0, 0, 0.12),
+      0 0 0 1px rgba(0, 0, 0, 0.04);
+    z-index: 1000;
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .chat-container.assis-chat-v2:not(.assis-home-open),
+  .chat-container.assis-chat-v2.chat-maximized:not(.assis-home-open) {
+    height: calc(100svh - 16px);
+    max-height: calc(100svh - 16px);
+  }
+
+  .chat-container.assis-chat-v2 .header-actions {
+    gap: 8px;
+  }
+
+  .assis-plugin-root .assis-demo-chat-promo {
+    max-width: 46%;
+  }
+
+  .ai-human-contact-sheet--v2 {
+    position: relative !important;
+    inset: auto !important;
+    height: auto !important;
+    justify-content: flex-start !important;
+  }
+
+  .chat-container.assis-chat-v2 .header-actions > button,
+  .chat-container.assis-chat-v2 .header-menu-wrapper > button {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    min-height: 34px;
+    max-width: 34px;
+    max-height: 34px;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  .chat-container.assis-chat-v2 .header-actions > button svg,
+  .chat-container.assis-chat-v2 .header-menu-wrapper > button svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .chat-container.assis-chat-v2 #assis-furisport-cart-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .chat-container.assis-chat-v2 .header-menu {
+    width: max-content;
+    min-width: 168px;
+    max-width: min(320px, calc(100vw - 24px));
+  }
+
+  .chat-container.assis-chat-v2 .header-menu-item {
+    height: 40px;
+    font-size: 13px;
+  }
+
+  .chat-container.assis-chat-v2 .header-menu-item-maximize {
+    display: none !important;
+  }
+
+  .chat-container.assis-chat-v2 .chat-messages {
+    padding-left: 12px;
+    padding-right: 12px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .chat-container.assis-chat-v2 .message.sender-client .message-content {
+    max-width: 84%;
+  }
+
+  .chat-container.assis-chat-v2 .chat-input-area {
+    padding-bottom: 0;
+  }
+
+  .chat-container.assis-chat-v2 .input-container {
+    display: flex;
+    align-items: center;
+    height: 48px;
+    min-height: 48px;
+    padding: 0 48px 0 14px !important;
+  }
+
+  .chat-container.assis-chat-v2 .flex-rtl .input-container {
+    padding: 0 14px 0 48px !important;
+  }
+
+  .chat-container.assis-chat-v2 .chat-input-multiline .input-container {
+    height: auto;
+    min-height: 48px;
+    align-items: flex-end;
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+  }
+
+  .chat-container.assis-chat-v2 .send-btn {
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    right: 7px;
+  }
+
+  .chat-container.assis-chat-v2 .flex-rtl .send-btn {
+    left: 7px;
+  }
+
+  .chat-container.assis-chat-v2 .attach-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    align-self: center;
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px !important;
+    margin: 0;
+    padding: 0;
+  }
+
+  .assis-home-composer {
+    height: auto;
+    min-height: 48px;
+  }
+
+  .chat-container.assis-chat-v2 .chat-input,
+  .assis-home-input {
+    font-size: 16px !important;
+    line-height: 20px !important;
+    -webkit-text-size-adjust: 100% !important;
+  }
+
+  .chat-container.assis-chat-v2 .chat-input {
+    /* No !important on height — autoResizeTextarea sets inline px height for multiline */
+    height: 20px;
+    min-height: 20px !important;
+    max-height: 88px !important;
+    padding: 0 !important;
+    margin: 0;
+    align-self: center;
+  }
+
+  .chat-container.assis-chat-v2 .chat-input-multiline .chat-input {
+    align-self: flex-end;
+  }
+
+  .assis-home-input::placeholder,
+  .chat-container.assis-chat-v2 .chat-input::placeholder {
+    font-size: 16px !important;
+    line-height: 20px !important;
+  }
+
+  .chat-container.assis-chat-v2 .chat-footer,
+  .chat-container.assis-chat-v2 .assis-chat-footer {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    padding: 8px 12px max(12px, env(safe-area-inset-bottom));
+  }
+
+  .chat-container.assis-chat-v2 .assis-home-mistakes {
+    font-size: 7.5px;
+  }
+
+  .chat-container.assis-chat-v2 .assis-home-powered {
+    font-size: 9px;
+  }
+
+  .chat-container.assis-chat-v2 .assis-home-privacy {
+    font-size: 7.5px;
+    text-align: end;
+    white-space: nowrap;
+  }
+
+  .assis-home {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 8px 20px max(12px, env(safe-area-inset-bottom));
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Keep a real containing block for absolute home cards.
+     display:contents breaks positioning in Safari and drops the fan over the copy/composer. */
+  .assis-home-main {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: 8px;
+    overflow: visible;
+  }
+
+  .assis-home-copy {
+    margin-top: 8px;
+    text-align: start;
+    width: 100%;
+    max-width: none;
+    flex: 0 0 auto;
+  }
+
+  .assis-home-brand {
+    display: grid;
+    place-items: start;
+    margin: 0 0 10px;
+  }
+
+  .assis-home-brand-icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .assis-home-title {
+    font-size: 22px;
+    margin-bottom: 8px;
+    text-align: start;
+    max-width: 100%;
+    padding-inline-end: 8px;
+  }
+
+  .assis-home-body {
+    max-width: none;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+
+  /* Regular mobile: same fan as before */
+  .assis-home-cards {
+    position: relative;
+    top: auto;
+    right: auto;
+    left: auto;
+    flex: 0 0 auto;
+    align-self: center;
+    width: min(292px, calc(100% - 4px));
+    max-width: 100%;
+    height: 210px;
+    margin: 4px auto 0;
+    pointer-events: auto;
+    overflow: visible;
+    isolation: isolate;
+  }
+
+  .assis-home-cards::before {
+    width: 82%;
+    height: 80%;
+  }
+
+  .assis-home-card {
+    width: 42.5%;
+    max-width: 124px;
+    border-radius: 16px;
+    padding: 0;
+  }
+
+  .assis-home-card--a {
+    top: 24.5%;
+    left: 0;
+    rotate: -11deg;
+    z-index: 2;
+  }
+
+  .assis-home-card--b {
+    display: flex;
+    top: 0;
+    left: 28%;
+    rotate: 4deg;
+    z-index: 3;
+  }
+
+  .assis-home-card--c {
+    display: flex;
+    top: 26.5%;
+    left: 57.5%;
+    rotate: 9deg;
+    z-index: 1;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  .assis-home-card-image,
+  .assis-home-card img {
+    height: 108px;
+    padding: 14px 12px 10px;
+  }
+
+  .assis-home-card-image {
+    padding: 0;
+  }
+
+  .assis-home-card-title {
+    padding: 10px 11px 12px;
+  }
+
+  .assis-home-card-title-text {
+    font-size: 11px;
+    text-align: start;
+  }
+
+  .assis-home-actions {
+    margin-top: 0;
+    justify-content: flex-start;
+    flex: 0 0 auto;
+  }
+
+  .assis-home-chips button {
+    height: 34px;
+    padding: 0 12px 0 10px;
+    font-size: 12.5px;
+  }
+
+  .assis-home-composer {
+    margin-top: 16px;
+    height: auto;
+    min-height: 48px;
+    flex: 0 0 auto;
+  }
+
+  .assis-home-cared {
+    margin: 8px 0 max(4px, env(safe-area-inset-bottom));
+    padding: 0 2px;
+    flex: 0 0 auto;
+  }
+
+  .assis-home-mistakes {
+    font-size: 7.5px;
+  }
+
+  .assis-home-powered {
+    font-size: 9px;
+  }
+
+  .assis-home-privacy {
+    font-size: 7.5px;
+    text-align: end;
+    white-space: nowrap;
+  }
+
+  /* Narrow phones only: scale the same fan, do not switch layout */
+  @media (max-width: 380px) {
+    .assis-home {
+      padding-left: 16px;
+      padding-right: 16px;
+    }
+
+    .assis-home-cards {
+      width: min(260px, calc(100vw - 28px));
+      height: 190px;
+      overflow: hidden;
+    }
+
+    .assis-home-card {
+      width: 40%;
+      max-width: 100px;
+      border-radius: 14px;
+    }
+
+    .assis-home-card--a {
+      top: 20%;
+      left: 1%;
+      rotate: -9deg;
+    }
+
+    .assis-home-card--b {
+      top: 2%;
+      left: 28%;
+      rotate: 3deg;
+    }
+
+    .assis-home-card--c {
+      top: 22%;
+      left: 56%;
+      rotate: 8deg;
+    }
+
+    .assis-home-card-image,
+    .assis-home-card img {
+      height: 92px;
+      padding: 10px 9px 8px;
+    }
+
+    .assis-home-card-image {
+      padding: 0;
+    }
+
+    .assis-home-card-title {
+      padding: 8px 9px 9px;
+    }
+
+    .assis-home-card-title-text {
+      font-size: 10px;
+    }
+
+    .assis-home-card-add {
+      top: 6px;
+      right: 6px;
+      width: 22px;
+      height: 22px;
+    }
+  }
+
+  /* Short viewport only (not normal phone height): compact 2-card fan */
+  @media (max-height: 560px) {
+    .assis-home-title {
+      font-size: 20px;
+      margin-bottom: 6px;
+    }
+
+    .assis-home-body {
+      font-size: 13px;
+      line-height: 1.35;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      overflow: hidden;
+    }
+
+    .assis-home-cards {
+      width: min(240px, calc(100% - 8px));
+      height: 150px;
+      margin-top: 2px;
+      overflow: hidden;
+    }
+
+    .assis-home-card {
+      width: 46%;
+      max-width: 104px;
+    }
+
+    .assis-home-card--a {
+      top: 14%;
+      left: 3%;
+      rotate: -8deg;
+    }
+
+    .assis-home-card--b {
+      top: 2%;
+      left: 40%;
+      rotate: 5deg;
+    }
+
+    .assis-home-card--c {
+      display: none;
+    }
+
+    .assis-home-card-image,
+    .assis-home-card img {
+      height: 78px;
+      padding: 8px;
+    }
+
+    .assis-home-card-image {
+      padding: 0;
+    }
+
+    .assis-home-card-title {
+      padding: 6px 8px 8px;
+    }
+
+    .assis-home-actions,
+    .assis-home-composer,
+    .assis-home-cared {
+      position: relative;
+      z-index: 2;
+    }
+
+    .assis-home-composer {
+      margin-top: 10px;
+    }
+  }
+
+  /* Very short viewport (e.g. 375×500 DevTools): greeting + actions only */
+  @media (max-height: 500px) {
+    .assis-home-cards {
+      display: none;
+    }
+
+    .assis-home-body {
+      -webkit-line-clamp: 3;
+    }
+
+    .assis-home-composer {
+      margin-top: 10px;
+      min-height: 44px;
+    }
+  }
+}
+
+.chat-mobile-backdrop {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .chat-mobile-backdrop--sheet {
+    display: block;
+    position: fixed;
+    inset: 0;
+    height: 100dvh;
+    background: rgba(12, 14, 18, 0.48);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    z-index: 999;
+    pointer-events: none;
+  }
+
+  html:has(body.assis-chat-panel-open),
+  body.assis-chat-panel-open {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+}
+
+.chat-open-animate {
+  animation: slideInUp 0.3s ease-out;
+}
+
+.disable-initial-animations,
+.disable-initial-animations  {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* Maximized chat size */
+.chat-maximized {
+  width: 640px;
+  max-width: calc(100vw - 60px);
+}
+
+/* Chat positioning variants */
+.chat-left {
+  right: auto;
+  left: 24px;
+}
+
+.chat-right {
+  right: 24px;
+  left: auto;
+}
+
+.slide-up-animation {
+  animation: slideInUp 0.48s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Animation for chat opening */
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Animation for new messages */
+@keyframes slideUpMessage {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Heart beat animation */
+@keyframes heartbeat {
+  0% {
+    transform: scale(calc(1 * var(--hover-scale)));
+  }
+
+  14% {
+    transform: scale(calc(1.1 * var(--hover-scale)));
+  }
+
+  28% {
+    transform: scale(calc(1 * var(--hover-scale)));
+  }
+
+  42% {
+    transform: scale(calc(1.1 * var(--hover-scale)));
+  }
+
+  70% {
+    transform: scale(calc(1 * var(--hover-scale)));
+  }
+}
+
+
+
+/* Chat Header */
+.chat-header {
+  color: #000;
+  padding: 8px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #e5e7eb;
+  height:59px;
+}
+
+@media (min-width: 768px) {
+  .chat-header {
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+}
+
+.chat-container.chat-dragging {
+  animation: none !important;
+  transition: none !important;
+  will-change: transform;
+}
+
+.chat-container.chat-dragging .chat-header {
+  cursor: grabbing;
+}
+
+.chat-header-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 14px;
+  background: #eaf8ef;
+  color: #166534;
+  font-size: 10.5px;
+  font-weight: 400;
+  border-bottom: 1px solid rgba(229, 231, 235, 0.9);
+  user-select: none;
+  overflow: hidden;
+}
+
+.banner-enter-active,
+.banner-leave-active {
+  transition: opacity 0.4s ease, transform 0.4s ease, max-height 0.4s ease, padding 0.4s ease, border-width 0.4s ease;
+}
+
+.banner-enter-from,
+.banner-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-bottom-width: 0;
+}
+
+.banner-enter-to,
+.banner-leave-from {
+  max-height: 64px;
+}
+
+.chat-header-banner-text-wrap {
+  position: relative;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+}
+
+.banner-text-enter-active,
+.banner-text-leave-active {
+  transition: opacity 0.45s ease, transform 0.45s ease;
+}
+
+.banner-text-enter-from,
+.banner-text-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.banner-text-leave-active {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+
+.chat-header-banner-whatsapp {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  width: 100%;
+}
+
+.chat-header-banner-whatsapp-rtl {
+  flex-direction: row-reverse;
+}
+
+.chat-header-banner-icon {
+  flex-shrink: 0;
+}
+
+.chat-header-banner-arrow {
+  flex-shrink: 0;
+}
+
+.chat-header-banner-whatsapp .chat-header-banner-text {
+  width: auto;
+  flex: 0 1 auto;
+  font-weight: 700;
+}
+
+.chat-header-banner-rtl {
+  direction: rtl;
+}
+
+.chat-header-banner-text {
+  line-height: 1.3;
+  font-weight: 400;
+  text-align: center;
+  width: 100%;
+}
+
+.chat-header-banner-text-rtl {
+  direction: rtl;
+  text-align: center;
+}
+
+.chat-header-banner-text-ltr {
+  direction: ltr;
+  text-align: center;
+}
+
+.chat-header-banner-text :deep(a),
+.chat-header-banner-text :deep(a:link),
+.chat-header-banner-text :deep(a:visited),
+.chat-header-banner-text :deep(a:hover),
+.chat-header-banner-text :deep(a:active) {
+  color: inherit !important;
+  font-weight: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.chat-header-banner-text :deep(b),
+.chat-header-banner-text :deep(strong) {
+  font-weight: 700 !important;
+}
+
+.header-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-icon {
+  color: #3b82f6;
+  flex-shrink: 0;
+}
+
+.header-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.header-info-tooltip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-inline-start: 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 9999px;
+  color: #9ca3af;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: default;
+  user-select: none;
+}
+
+.header-info-tooltip-portal {
+  position: fixed;
+  z-index: 100000;
+  transform: translateX(-50%);
+  background: #ffffff;
+  color: #111827;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  max-width: min(320px, calc(100vw - 24px));
+  white-space: normal;
+  overflow-wrap: anywhere;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+}
+
+.header-info-tooltip-portal-rtl {
+  direction: rtl;
+  text-align: right;
+}
+
+.header-info-tooltip-portal::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 10px;
+  height: 10px;
+  background: #ffffff;
+  border-left: 1px solid #e5e7eb;
+  border-top: 1px solid #e5e7eb;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.header-info-tooltip:hover {
+  color: #6b7280;
+  border-color: #9ca3af;
+}
+
+.header-emoji {
+  font-size: 18px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 4px;
+}
+
+#assis-furisport-cart-btn {
+  appearance: none;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 999px;
+  border: none;
+  background: rgba(255, 255, 255, 0.72);
+  color: #7a8490;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05);
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#assis-furisport-cart-btn:hover {
+  background: #ffffff;
+  color: #1d6fee;
+  box-shadow: 0 0 0 1px rgba(29, 111, 238, 0.18);
+}
+
+#assis-furisport-cart-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+#assis-furisport-cart-btn .cart-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: #1d6fee;
+  color: #fff;
+  font-size: 8.5px;
+  font-weight: 650;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+}
+
+#assis-furisport-cart-btn .cart-badge:empty,
+#assis-furisport-cart-btn .cart-badge[data-count="0"] {
+  display: none;
+}
+
+@keyframes assis-lh-badge-bump {
+  0% { scale: 1; }
+  35% { scale: 1.45; }
+  70% { scale: 0.92; }
+  100% { scale: 1; }
+}
+
+@keyframes assis-lh-cart-ring {
+  0% { box-shadow: 0 0 0 0 rgba(29, 111, 238, 0.35); }
+  100% { box-shadow: 0 0 0 10px rgba(29, 111, 238, 0); }
+}
+
+#assis-furisport-cart-btn .cart-badge.is-bump {
+  animation: assis-lh-badge-bump 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+#assis-furisport-cart-btn.is-bump::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  animation: assis-lh-cart-ring 0.6s ease-out;
+  pointer-events: none;
+}
+
+#assis-furisport-cart-panel {
+  display: none;
+  position: absolute;
+  top: 52px;
+  right: 12px;
+  bottom: auto;
+  z-index: 80;
+  width: min(280px, calc(100% - 24px));
+  max-height: min(380px, calc(100% - 72px));
+  overflow: hidden;
+  padding: 10px 12px;
+  border-radius: var(--assis-chat-card-radius, 16px);
+  background: var(--assis-chat-card-bg, #ffffff);
+  color: #0f172a;
+  border: var(--assis-chat-card-border, 1px solid rgba(15, 23, 42, 0.06));
+  box-shadow: var(--assis-chat-card-shadow, 0 8px 22px rgba(15, 23, 42, 0.12));
+  box-sizing: border-box;
+}
+
+.chat-container.assis-chat-he-flip #assis-furisport-cart-panel,
+#assis-furisport-cart-panel[dir="rtl"] {
+  right: auto;
+  left: 12px;
+}
+
+#assis-furisport-cart-panel[data-open="true"] {
+  display: flex;
+  flex-direction: column;
+}
+
+#assis-furisport-cart-panel .cart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+#assis-furisport-cart-panel .cart-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  scrollbar-width: thin;
+}
+
+#assis-furisport-cart-panel .cart-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+#assis-furisport-cart-panel .cart-body::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.16);
+  border-radius: 999px;
+}
+
+#assis-furisport-cart-panel h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+#assis-furisport-cart-panel .cart-close {
+  appearance: none;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: #f3f1ec;
+  color: #64748b;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+#assis-furisport-cart-panel .cart-close:hover {
+  background: rgba(29, 111, 238, 0.1);
+  color: #1d6fee;
+}
+
+#assis-furisport-cart-panel .cart-close svg {
+  width: 10px;
+  height: 10px;
+}
+
+#assis-furisport-cart-panel .cart-foot {
+  flex-shrink: 0;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+  background: transparent;
+}
+
+#assis-furisport-cart-panel .cart-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+#assis-furisport-cart-panel .cart-total span {
+  font-size: 11px;
+  color: #64748b;
+}
+
+#assis-furisport-cart-panel .cart-total strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+#assis-furisport-cart-panel .cart-coupon {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin: 0 0 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: rgba(29, 111, 238, 0.08);
+  color: #1d6fee;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+#assis-furisport-cart-panel .cart-checkout {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 32px;
+  border: none;
+  border-radius: 9999px;
+  background: #1d6fee;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 550;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: none;
+  transition: background 0.18s ease;
+}
+
+#assis-furisport-cart-panel .cart-checkout:hover {
+  background: #1557c0;
+}
+
+#assis-furisport-cart-panel .cart-checkout:active {
+  background: #134bab;
+}
+
+#assis-furisport-cart-panel .cart-foot-note {
+  margin: 6px 0 0;
+  font-size: 10px;
+  color: #94a3b8;
+  text-align: center;
+}
+
+#assis-furisport-cart-panel .cart-empty {
+  margin: 4px 0 2px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #64748b;
+}
+
+#assis-furisport-cart-panel .cart-row {
+  /* Image left, text + qty beside it, remove top-right */
+  direction: ltr;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  margin: 0;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 12px;
+  background: #fafbfc;
+  cursor: pointer;
+}
+
+#assis-furisport-cart-panel .cart-row img,
+#assis-furisport-cart-panel .cart-row-placeholder {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 10px;
+  background: #f1f5f9;
+  padding: 0;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+#assis-furisport-cart-panel .cart-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#assis-furisport-cart-panel .cart-row-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+#assis-furisport-cart-panel .cart-row-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+#assis-furisport-cart-panel .cart-row-meta strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #0f172a;
+}
+
+#assis-furisport-cart-panel .cart-row-variant {
+  display: block;
+  margin-top: 2px;
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#assis-furisport-cart-panel .cart-row-price {
+  display: block;
+  margin-top: 3px;
+  font-size: 11.5px;
+  font-weight: 650;
+  color: #0f172a;
+}
+
+#assis-furisport-cart-panel .cart-row button {
+  appearance: none;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: #f3f1ec;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#assis-furisport-cart-panel .cart-qty-step {
+  display: flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 2px;
+  width: fit-content;
+  padding: 2px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.04);
+}
+
+#assis-furisport-cart-panel .cart-qty {
+  min-width: 16px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #334155;
+  text-align: center;
+}
+
+#assis-furisport-cart-panel .cart-row .cart-qty-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: transparent;
+  color: #64748b;
+  font-weight: 400;
+}
+
+#assis-furisport-cart-panel .cart-row .cart-qty-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
+#assis-furisport-cart-panel .cart-row .cart-qty-btn:hover {
+  background: rgba(29, 111, 238, 0.08);
+  color: #1d6fee;
+}
+
+#assis-furisport-cart-panel .cart-more {
+  appearance: none;
+  align-self: center;
+  margin-top: 4px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(29, 111, 238, 0.1);
+  color: #1d6fee;
+  font-size: 11px;
+  font-weight: 650;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+#assis-furisport-cart-panel .cart-row .cart-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+}
+
+#assis-furisport-cart-panel .cart-row .cart-remove svg {
+  width: 10px;
+  height: 10px;
+}
+
+#assis-furisport-cart-panel .cart-row:hover .cart-remove,
+#assis-furisport-cart-panel .cart-row:focus-within .cart-remove {
+  opacity: 1;
+}
+
+#assis-furisport-cart-panel .cart-row button:hover {
+  background: rgba(15, 23, 42, 0.04);
+  color: #334155;
+}
+
+.header-menu-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.header-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: max-content;
+  min-width: 168px;
+  max-width: min(320px, calc(100vw - 48px));
+  padding: 6px;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.12);
+  z-index: 9999;
+  box-sizing: border-box;
+}
+
+.header-menu-channels {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  width: 100%;
+}
+
+.header-menu-item {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: none;
+  color: #5b6470;
+  font-size: 11.5px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: start;
+  line-height: 1;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.header-menu-item-channel {
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 0 10px;
+}
+
+.header-menu-item-channel .header-menu-item-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.header-menu-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: rgba(15, 23, 42, 0.08);
+  flex-shrink: 0;
+}
+
+.header-menu-item-secondary {
+  color: #8b949e;
+  font-size: 11px;
+  height: 28px;
+}
+
+.header-menu-item-secondary:hover:not(:disabled) {
+  color: #5b6470;
+  background: rgba(15, 23, 42, 0.04);
+}
+
+.header-menu-item svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.header-menu-item svg[fill="currentColor"] {
+  fill: currentColor;
+  stroke: none;
+}
+
+.header-menu-item-label {
+  flex: 1 1 auto;
+  text-align: start;
+  font-size: inherit;
+  font-weight: 400;
+  color: inherit;
+  white-space: nowrap;
+}
+
+.header-menu-item:hover:not(:disabled) {
+  background: rgba(29, 111, 238, 0.06);
+  color: #1d6fee;
+}
+
+.header-menu-item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.header-menu-enter-active {
+  animation: header-menu-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: top right;
+}
+.header-menu-leave-active {
+  animation: header-menu-in 160ms cubic-bezier(0.4, 0, 0.2, 1) reverse both;
+  transform-origin: top right;
+}
+
+@keyframes header-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+.action-btn {
+  background: none;
+  border: none;
+  border-radius: 6px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #6b7280;
+  transition: all 0.2s ease;
+}
+
+.action-btn:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  transform: scale(1.05);
+}
+
+.disconnect-btn:hover {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.disconnect-btn:hover svg {
+  stroke: #dc2626;
+}
+
+/* Chat Content */
+.chat-content {
+  /* padding: 24px 20px; */
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
+  /* Allow content to shrink */
+  justify-content: center;
+}
+
+.full-conversation {
+  padding: 20px 8px 20px 8px;
+}
+
+.full-conversation-ai {
+  padding: 8px 0 8px 0;
+}
+
+
+.welcome-section {
+  text-align: center;
+  margin-bottom: 32px;
+  padding: 0 16px;
+}
+
+.audio-container {
+  width: 150px;
+  border-radius: 12px;
+}
+
+.welcome-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #3b82f6;
+  margin-bottom: 8px;
+}
+
+.welcome-emoji {
+  font-size: 28px;
+  display: block;
+  margin-bottom: 12px;
+}
+
+.welcome-subtitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 12px;
+}
+
+.welcome-description {
+  font-size: 16px;
+  color: #6b7280;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+/* Chat Options */
+.chat-options {
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.options-intro {
+  text-align: center;
+  color: #6b7280;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.chat-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 16px;
+  font-weight: 500;
+  text-align: left;
+  width: 100%;
+}
+
+.chat-option:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.whatsapp-option {
+  background: #25d366;
+  color: white;
+  height: 40px;
+  justify-content: center;
+}
+
+.whatsapp-option:hover {
+  background: #22c55e;
+}
+
+.google-option {
+  background: white;
+  color: #374151;
+  border: 2px solid #e5e7eb;
+  height: 40px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  text-align: center;
+  font-weight: 500;
+  font-size: 16px;
+  justify-content: center;
+}
+
+.google-option:hover {
+  border-color: #d1d5db;
+  background: #f9fafb;
+}
+
+.guest-section {
+  text-align: center;
+}
+
+.guest-text {
+  color: #9ca3af;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.guest-option {
+  background: #eef6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  font-weight: 500;
+  font-size: 14px;
+  text-align: center;
+  height: 40px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  justify-content: center;
+}
+
+.guest-option:hover {
+  background: #d5e7fd;
+}
+
+.option-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+/* Chat Footer */
+.chat-footer {
+  padding: 2px 4px 10px 4px;
+  text-align: center;
+  line-height: 1;
+
+  flex-shrink: 0;
+  /* Prevent footer from shrinking */
+  margin-top: auto;
+  font-size: 9px;
+  color: #9ca3af;
+  font-weight: 500;
+}
+
+.footer-message-enter-active,
+.footer-message-leave-active {
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.footer-message-enter-from,
+.footer-message-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.footer-message-enter-to,
+.footer-message-leave-from {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.footer-emoji {
+  color: #3b82f6;
+  font-size: 16px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 480px) {
+  .chat-mobile-backdrop:not(.chat-mobile-backdrop--sheet) {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    /* Match the chat container: use 100dvh so this also stays above the
+       keyboard and doesn't extend into the layout viewport behind it. */
+    height: 100dvh;
+    background: #ffffff;
+    z-index: 999;
+    /* swallow touch scroll to avoid page "peeking" under the chat */
+    touch-action: none;
+    overscroll-behavior: none;
+  }
+
+  .header-menu-item-maximize {
+    display: none !important;
+  }
+
+  .chat-container:not(.assis-chat-v2):not(.assis-home-open) {
+    top: 0;
+    right: 0;
+    left: 0;
+    width: 100vw;
+    max-width: none;
+    border-radius: 0;
+    /* 100dvh shrinks when the iOS keyboard opens, so the chat always
+       fills exactly the visible area above the keyboard.
+       We intentionally omit bottom: 0 - on iOS, position:fixed bottom:0
+       anchors to the layout viewport (behind the keyboard), not the
+       visual viewport, which would hide the input area. */
+    height: 100dvh;
+    max-height: none;
+    z-index: 1000;
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+
+    &.chat-container-small, &.chat-container-medium, &.chat-container-large {
+      bottom: unset !important;
+    }
+  }
+
+  .chat-container:not(.assis-chat-v2):not(.assis-home-open).chat-left,
+  .chat-container:not(.assis-chat-v2):not(.assis-home-open).chat-right {
+    right: 0;
+    left: 0;
+  }
+
+  .maximize-btn {
+    display: none;
+  }
+}
+
+/* Vertical nudge from host setting; launcher only - chat stays docked to bottom. */
+.fixed-heart-btn,
+.quick-actions {
+  translate: 0 calc(-1 * var(--assis-bottom-offset, 0px));
+}
+
+/* Fixed Heart Button */
+.fixed-heart-btn {
+  position: fixed;
+  /* bottom: 30px;
+  right: 50px; */
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  z-index: 1000;
+  background-color: transparent;
+  gap: 0;
+  width: 100px;
+  height: 100px;
+  -webkit-tap-highlight-color: transparent;
+  tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  outline: none;
+}
+
+.fixed-heart-btn.plan-subscription-off {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.fixed-heart-btn.plan-subscription-off--can-close {
+  cursor: pointer;
+}
+
+.fixed-heart-btn.plan-powered-by-assis {
+  background-color: #ffffff;
+  border-radius: 31px;
+  overflow: hidden;
+  box-shadow:
+    0 6px 16px rgba(148, 163, 184, 0.28),
+    0 0 0 1px rgba(203, 213, 225, 0.95);
+}
+
+.fixed-heart-btn.plan-powered-by-assis::before,
+.fixed-heart-btn.plan-powered-by-assis::after {
+  content: none;
+}
+
+.fixed-heart-btn.plan-powered-by-assis .heart-image {
+  width: 52%;
+  height: 52%;
+  inset: 0;
+  margin: auto;
+  z-index: 2;
+  filter: none;
+  object-fit: contain;
+  animation: assis-heart-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes assis-heart-pulse {
+  0% {
+    transform: scale(1);
+  }
+  14% {
+    transform: scale(1.05);
+  }
+  28% {
+    transform: scale(1);
+  }
+  42% {
+    transform: scale(1.03);
+  }
+  55%, 100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fixed-heart-btn.plan-powered-by-assis .heart-image {
+    animation: none;
+  }
+}
+
+.fixed-heart-btn.heart-chat-open {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Quick actions panel (above the heart button) */
+.quick-actions {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  z-index: 1000;
+}
+
+.quick-actions--starter {
+  gap: 5px;
+  width: max-content;
+  max-width: min(340px, calc(100vw - 40px));
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.quick-actions--starter .quick-actions-list {
+  position: relative;
+  gap: 5px;
+}
+
+.quick-actions--starter .quick-starter-intro {
+  margin-bottom: 2px;
+}
+
+.quick-actions.quick-layout-side_one.plan-powered-by-assis,
+.quick-actions.quick-layout-side_two.plan-powered-by-assis,
+.quick-actions.quick-layout-side_long.plan-powered-by-assis {
+  align-items: flex-end;
+  width: max-content;
+  max-width: min(340px, calc(100vw - 120px));
+  transform: translateY(50%);
+}
+
+.quick-actions.quick-layout-side_one.plan-powered-by-assis.quick-small,
+.quick-actions.quick-layout-side_two.plan-powered-by-assis.quick-small,
+.quick-actions.quick-layout-side_long.plan-powered-by-assis.quick-small {
+  bottom: 67px;
+}
+
+.quick-actions.quick-layout-side_one.plan-powered-by-assis.quick-medium,
+.quick-actions.quick-layout-side_two.plan-powered-by-assis.quick-medium,
+.quick-actions.quick-layout-side_long.plan-powered-by-assis.quick-medium,
+.quick-actions.quick-layout-side_one.plan-powered-by-assis.quick-large,
+.quick-actions.quick-layout-side_two.plan-powered-by-assis.quick-large,
+.quick-actions.quick-layout-side_long.plan-powered-by-assis.quick-large {
+  bottom: 71px;
+}
+
+.quick-actions.quick-layout-side_one.plan-powered-by-assis.quick-right,
+.quick-actions.quick-layout-side_two.plan-powered-by-assis.quick-right,
+.quick-actions.quick-layout-side_long.plan-powered-by-assis.quick-right {
+  right: 98px;
+  left: auto;
+}
+
+.quick-actions.quick-layout-side_one.plan-powered-by-assis.quick-left,
+.quick-actions.quick-layout-side_two.plan-powered-by-assis.quick-left,
+.quick-actions.quick-layout-side_long.plan-powered-by-assis.quick-left {
+  left: 98px;
+  right: auto;
+}
+
+/* Side: the first bubble stays centered on the square. The rest sit above it. */
+.quick-actions.quick-layout-side_one .quick-starter-intro-wrap,
+.quick-actions.quick-layout-side_two .quick-starter-intro-wrap,
+.quick-actions.quick-layout-side_long .quick-starter-intro-wrap {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 2px);
+  margin: 0;
+}
+
+.quick-actions.quick-layout-side_two .quick-actions-list:has(.quick-starter-item--follow) .quick-starter-intro-wrap,
+.quick-actions.quick-layout-side_long .quick-actions-list:has(.quick-starter-item--follow) .quick-starter-intro-wrap {
+  bottom: calc(100% + 40px);
+}
+
+.quick-actions.quick-layout-side_long .quick-actions-list:has(.quick-starter-item--follow ~ .quick-starter-item--follow) .quick-starter-intro-wrap {
+  bottom: calc(100% + 76px);
+}
+
+.quick-actions.quick-layout-side_two .quick-starter-item--follow,
+.quick-actions.quick-layout-side_long .quick-starter-item--follow {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+}
+
+.quick-actions.quick-layout-side_long .quick-starter-item--follow ~ .quick-starter-item--follow {
+  bottom: calc(100% + 40px);
+}
+
+.quick-actions.quick-layout-side_one.quick-left .quick-starter-intro-wrap,
+.quick-actions.quick-layout-side_two.quick-left .quick-starter-intro-wrap,
+.quick-actions.quick-layout-side_long.quick-left .quick-starter-intro-wrap,
+.quick-actions.quick-layout-side_two.quick-left .quick-starter-item--follow,
+.quick-actions.quick-layout-side_long.quick-left .quick-starter-item--follow {
+  right: auto;
+  left: 0;
+}
+
+.quick-starter-intro-wrap {
+  position: relative;
+  align-self: flex-end;
+  z-index: 4;
+  width: auto;
+  height: auto;
+  margin: 0 0 2px;
+  pointer-events: none;
+}
+
+.quick-left .quick-starter-intro-wrap {
+  align-self: flex-start;
+}
+
+.quick-starter-intro {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  width: fit-content;
+  max-width: 100%;
+  padding-block: 10px 9px;
+  padding-inline: 14px 16px;
+  box-sizing: border-box;
+  border-radius: 20px 20px 7px 20px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(29, 111, 238, 0.18);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.quick-starter-intro__copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.quick-left .quick-starter-intro {
+  border-radius: 20px 20px 20px 7px;
+}
+
+.quick-starter-intro[dir="rtl"],
+.quick-starter-btn[dir="rtl"],
+.quick-starter-title[dir="rtl"],
+.quick-starter-sub[dir="rtl"] {
+  direction: rtl;
+  text-align: right;
+}
+
+.quick-starter-intro[dir="ltr"] {
+  text-align: left;
+}
+
+.quick-starter-close {
+  appearance: none;
+  pointer-events: auto;
+  position: static;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: none;
+  background: #ffffff;
+  color: #9aa3af;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+  box-shadow:
+    0 1px 2px rgba(148, 163, 184, 0.18),
+    0 4px 10px rgba(148, 163, 184, 0.12);
+  transition: color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.quick-left .quick-starter-close {
+  right: auto;
+  left: auto;
+}
+
+.quick-starter-close:hover {
+  color: #1d6fee;
+  background: #ffffff;
+  box-shadow:
+    0 2px 4px rgba(15, 23, 42, 0.05),
+    0 10px 18px rgba(15, 23, 42, 0.1);
+}
+
+.quick-starter-close svg {
+  width: 8px;
+  height: 8px;
+}
+
+.quick-starter-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+  color: #1f2937;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The root star reset forces every child to weight 400, which flattens editor markup. */
+.quick-starter-title :deep(*) {
+  font-weight: inherit;
+}
+
+.quick-starter-sub {
+  margin: 2px 0 0;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.35;
+  color: #9aa1ad;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quick-starter-sub :deep(*) {
+  font-weight: inherit;
+}
+
+/* HTML from plugin_outside_bubbles — respect payload styles (font-size, color, etc.).
+   Use :deep() so rules apply to v-html nodes (they don't get scoped data-v attrs).
+   The root `* { font-weight: 400 }` reset otherwise keeps <b> at 400. */
+.quick-starter-intro--html {
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+  color: #1f2937;
+}
+
+.quick-starter-intro--html :deep(p),
+.quick-starter-intro--html :deep(div),
+.quick-starter-intro--html :deep(span),
+.quick-starter-intro--html :deep(li) {
+  font-weight: 600;
+}
+
+.quick-starter-intro--html :deep(p + p),
+.quick-starter-intro--html :deep(div + div),
+.quick-starter-intro--html :deep(p + p span),
+.quick-starter-intro--html :deep(div + div span) {
+  font-weight: 400;
+}
+
+.quick-starter-intro--html :deep(b),
+.quick-starter-intro--html :deep(strong) {
+  font-weight: 700 !important;
+  color: inherit;
+}
+
+.quick-starter-intro--html :deep(div) {
+  margin: 2px 0 0;
+  width: fit-content;
+  max-width: 100%;
+  line-height: 1.35;
+  /* Do not force color/font-size — inline styles from the payload must win */
+  color: inherit;
+  font-size: inherit;
+}
+
+.quick-starter-intro--html :deep(span) {
+  color: inherit;
+}
+
+.quick-starter-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(29, 111, 238, 0.18);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #374151;
+  border-radius: 9999px;
+  padding-block: 4px;
+  padding-inline: 4px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+  width: fit-content;
+  max-width: 100%;
+  white-space: nowrap;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  transition: translate 0.16s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.16s ease, color 0.16s ease, background 0.16s ease;
+}
+
+.assis-plugin-root .quick-starter-btn__label {
+  min-width: 0;
+  font-weight: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quick-starter-btn__icon {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  background: #e8f3ff;
+  color: #1d6fee;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.quick-starter-item {
+  position: relative;
+  max-width: 100%;
+  animation: assis-bubble-in 0.35s ease;
+}
+
+.quick-starter-item--float,
+.quick-starter-intro--float {
+  animation: assis-bubble-in 0.35s ease, assis-bubble-float 5.6s ease-in-out infinite;
+}
+
+@keyframes assis-bubble-in {
+  from { opacity: 0.4; }
+  to { opacity: 1; }
+}
+
+@keyframes assis-bubble-float {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -3px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quick-starter-item,
+  .quick-starter-item--float,
+  .quick-starter-intro--float {
+    animation: none;
+  }
+}
+
+.quick-starter-tail {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #ffffff;
+  pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(203, 213, 225, 0.7);
+}
+
+.quick-right .quick-starter-tail--down {
+  right: 18px;
+  bottom: -4px;
+  border-bottom-right-radius: 7px;
+}
+
+.quick-left .quick-starter-tail--down {
+  left: 18px;
+  bottom: -4px;
+  border-bottom-left-radius: 7px;
+}
+
+.quick-right .quick-starter-tail--up {
+  right: 18px;
+  top: -4px;
+  border-top-right-radius: 7px;
+}
+
+.quick-left .quick-starter-tail--up {
+  left: 18px;
+  top: -4px;
+  border-top-left-radius: 7px;
+}
+
+.quick-starter-btn__icon :deep(svg) {
+  display: block;
+  width: 13px;
+  height: 13px;
+  margin: 0;
+}
+
+.quick-starter-btn[dir="rtl"] {
+  text-align: right;
+}
+
+.quick-starter-btn--static {
+  cursor: pointer;
+}
+
+.quick-starter-btn:hover {
+  translate: none;
+  color: #1d6fee;
+  background: #ffffff;
+  border-color: rgba(29, 111, 238, 0.28);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+  transform: none;
+}
+
+.quick-starter-btn:hover .quick-starter-btn__icon,
+.quick-starter-btn:active .quick-starter-btn__icon {
+  background: #1d6fee;
+  color: #ffffff;
+}
+
+.quick-starter-btn:active {
+  translate: none;
+  background: #eef4ff;
+  box-shadow:
+    inset 0 1px 3px rgba(148, 163, 184, 0.22),
+    0 0 0 1px rgba(203, 213, 225, 0.7);
+}
+
+.quick-starter-btn--static:hover {
+  translate: none;
+  color: #374151;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quick-starter-btn:hover .quick-starter-btn__icon {
+    scale: 1;
+  }
+}
+
+@media (max-width: 767px) {
+  .quick-actions--starter {
+    width: max-content;
+    max-width: min(280px, calc(100vw - 80px));
+  }
+
+  .quick-starter-intro {
+    padding: 9px 12px 8px;
+  }
+
+  .quick-starter-close {
+    width: 20px;
+    height: 20px;
+  }
+
+  .quick-starter-title,
+  .quick-starter-sub,
+  .quick-starter-intro--html {
+    font-size: 13px;
+  }
+
+  .quick-starter-btn {
+    font-size: 13px;
+    padding-inline: 4px 12px;
+    min-height: 0;
+  }
+
+  .quick-starter-btn__icon {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+.quick-actions-tail {
+  position: absolute;
+  bottom: -10px;
+  transform: translateX(-50%);
+  overflow: visible;
+  filter: drop-shadow(rgba(0, 0, 0, 0.06) 0px 3px 3px);
+  width: 20px;
+  height: 11px;
+  pointer-events: none;
+  border-color: #e5e5e5;
+  outline-color: #0a0a0a80;
+}
+
+.quick-actions-tail-left {
+  &.quick-actions-tail-small {
+    right: 62%;
+  }
+  &.quick-actions-tail-medium {
+    right: 54%;
+    @media (max-width: 480px) {
+      right: 62%;
+    }
+  }
+  &.quick-actions-tail-large {
+    right: 54%;
+  }
+}
+
+.quick-actions-tail-right {
+  &.quick-actions-tail-small {
+    left: 75%;
+  }
+  &.quick-actions-tail-medium {
+    left: 67%;
+    @media (max-width: 480px) {
+      left: 75%;
+    }
+  }
+  &.quick-actions-tail-large {
+    left: 67%;
+  }
+}
+
+.quick-left .quick-actions-tail {
+  align-self: flex-start;
+}
+
+.quick-actions-tail--ai {
+  position: absolute;
+  bottom: -10px;
+  transform: translateX(-50%);
+  overflow: visible;
+  filter: drop-shadow(rgba(0, 0, 0, 0.06) 0px 3px 3px);
+  width: 20px;
+  height: 11px;
+  pointer-events: none;
+  border-color: #e5e5e5;
+  outline-color: #0a0a0a80;
+}
+
+.quick-actions-tail--ai-left {
+  &.quick-actions-tail--ai-small {
+    right: 55%;
+    bottom: -7px;
+  }
+  &.quick-actions-tail--ai-medium {
+    right: 47%;
+    bottom: -7px;
+    @media (max-width: 480px) {
+      right: 57%;
+    }
+  }
+  &.quick-actions-tail--ai-large {
+    right: 47%;
+    bottom: -7px;
+  }
+}
+
+.quick-actions-tail--ai-right {
+  &.quick-actions-tail--ai-small {
+    left: 70%;
+    bottom: -7px;
+  }
+  &.quick-actions-tail--ai-medium {
+    left: 63%;
+    bottom: -7px;
+    @media (max-width: 480px) {
+      left: 72%;
+    }
+  }
+  &.quick-actions-tail--ai-large {
+    left: 63%;
+    bottom: -7px;
+  }
+}
+
+.quick-left .quick-actions-tail--ai {
+  align-self: flex-start;
+}
+
+.quick-actions-close {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  margin-bottom: -2px;
+  border: 1px solid rgba(220, 228, 240, 0.55);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: rgba(0, 0, 0, 0.10) 0px 1px 4px;
+  transition: 0.18s ease-out;
+  opacity: 1;
+  transform: translateY(0px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.quick-actions-close:hover {
+  background: rgba(0, 0, 0, 0.04);
+  box-shadow: rgba(0, 0, 0, 0.13) 0px 4px 10px;
+  transform: translateY(-2px);
+}
+
+.quick-action-close-left {
+  left: -12px;
+  right: auto;
+  margin-left: 2px;
+}
+
+.quick-action-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 12.3px 16.3px;
+  border-radius: 20px;
+  border: 1px solid rgba(200, 222, 255, 0.65);
+  background: rgba(255, 255, 255, 0.98);
+  color: #475569;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.05;
+  white-space: nowrap;
+  box-shadow: rgba(0, 0, 0, 0.10) 0px 4px 16px, rgba(0, 0, 0, 0.06) 0px 1px 4px;
+  transition: 0.18s ease-out;
+  transform: translateY(0px);
+  cursor: pointer;
+  user-select: none;
+  width: fit-content;
+}
+
+.quick-action-btn:hover {
+  border: 1px solid rgba(59, 130, 246, 0.70);
+  box-shadow: rgba(0, 0, 0, 0.18) 0px 10px 24px, rgba(0, 0, 0, 0.06) 0px 1px 4px;
+  transform: translateY(-2px);
+}
+
+.quick-action-btn:active {
+  transform: translateY(0px) scale(0.95);
+}
+
+.quick-action-icon {
+  flex: 0 0 auto;
+}
+
+/* Appear transition */
+.quick-actions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.quick-actions-enter-active .quick-actions-list .quick-action-btn,
+.quick-actions-appear-active .quick-actions-list .quick-action-btn,
+.quick-actions-enter-active .quick-actions-list .quick-starter-intro-wrap,
+.quick-actions-appear-active .quick-actions-list .quick-starter-intro-wrap,
+.quick-actions-enter-active .quick-actions-list .quick-starter-intro,
+.quick-actions-appear-active .quick-actions-list .quick-starter-intro,
+.quick-actions-enter-active .quick-actions-list .quick-starter-btn,
+.quick-actions-appear-active .quick-actions-list .quick-starter-btn,
+.quick-actions-leave-active .quick-actions-list .quick-starter-intro-wrap,
+.quick-actions-leave-active .quick-actions-list .quick-starter-intro,
+.quick-actions-leave-active .quick-actions-list .quick-starter-btn,
+.quick-actions-leave-active .quick-actions-list .quick-action-btn {
+  transition:
+    opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+    translate 0.65s cubic-bezier(0.22, 1, 0.36, 1),
+    scale 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, translate, scale;
+}
+
+.quick-actions-enter-from .quick-actions-list .quick-action-btn,
+.quick-actions-appear-from .quick-actions-list .quick-action-btn,
+.quick-actions-enter-from .quick-actions-list .quick-starter-intro-wrap,
+.quick-actions-appear-from .quick-actions-list .quick-starter-intro-wrap,
+.quick-actions-enter-from .quick-actions-list .quick-starter-intro,
+.quick-actions-appear-from .quick-actions-list .quick-starter-intro,
+.quick-actions-enter-from .quick-actions-list .quick-starter-btn,
+.quick-actions-appear-from .quick-actions-list .quick-starter-btn,
+.quick-actions-leave-to .quick-actions-list .quick-starter-intro-wrap,
+.quick-actions-leave-to .quick-actions-list .quick-starter-intro,
+.quick-actions-leave-to .quick-actions-list .quick-starter-btn,
+.quick-actions-leave-to .quick-actions-list .quick-action-btn {
+  opacity: 0;
+  translate: 0 16px;
+  scale: 0.94;
+}
+
+/* Staggered entrance: intro then prompts */
+.quick-actions-enter-active .quick-actions-list .quick-starter-intro-wrap,
+.quick-actions-appear-active .quick-actions-list .quick-starter-intro-wrap,
+.quick-actions-enter-active .quick-actions-list .quick-starter-intro,
+.quick-actions-appear-active .quick-actions-list .quick-starter-intro,
+.quick-actions-enter-active .quick-actions-list .quick-action-btn:nth-child(1),
+.quick-actions-appear-active .quick-actions-list .quick-action-btn:nth-child(1) {
+  transition-delay: 0.06s;
+}
+
+.quick-actions-enter-active .quick-actions-list .quick-starter-btn[data-quick-prompt-index="0"],
+.quick-actions-appear-active .quick-actions-list .quick-starter-btn[data-quick-prompt-index="0"],
+.quick-actions-enter-active .quick-actions-list .quick-action-btn:nth-child(2),
+.quick-actions-appear-active .quick-actions-list .quick-action-btn:nth-child(2) {
+  transition-delay: 0.16s;
+}
+
+.quick-actions-enter-active .quick-actions-list .quick-starter-btn[data-quick-prompt-index="1"],
+.quick-actions-appear-active .quick-actions-list .quick-starter-btn[data-quick-prompt-index="1"],
+.quick-actions-enter-active .quick-actions-list .quick-action-btn:nth-child(3),
+.quick-actions-appear-active .quick-actions-list .quick-action-btn:nth-child(3) {
+  transition-delay: 0.26s;
+}
+
+.quick-actions-leave-active .quick-actions-list .quick-starter-btn[data-quick-prompt-index="1"],
+.quick-actions-leave-active .quick-actions-list .quick-action-btn:nth-child(3) {
+  transition-delay: 0s;
+}
+
+.quick-actions-leave-active .quick-actions-list .quick-starter-btn[data-quick-prompt-index="0"],
+.quick-actions-leave-active .quick-actions-list .quick-action-btn:nth-child(2) {
+  transition-delay: 0.05s;
+}
+
+.quick-actions-leave-active .quick-actions-list .quick-starter-intro-wrap,
+.quick-actions-leave-active .quick-actions-list .quick-starter-intro,
+.quick-actions-leave-active .quick-actions-list .quick-action-btn:nth-child(1) {
+  transition-delay: 0.1s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quick-actions-enter-active .quick-actions-list .quick-action-btn,
+  .quick-actions-appear-active .quick-actions-list .quick-action-btn,
+  .quick-actions-enter-active .quick-actions-list .quick-starter-intro-wrap,
+  .quick-actions-appear-active .quick-actions-list .quick-starter-intro-wrap,
+  .quick-actions-enter-active .quick-actions-list .quick-starter-intro,
+  .quick-actions-appear-active .quick-actions-list .quick-starter-intro,
+  .quick-actions-enter-active .quick-actions-list .quick-starter-btn,
+  .quick-actions-appear-active .quick-actions-list .quick-starter-btn,
+  .quick-actions-leave-active .quick-actions-list .quick-starter-intro-wrap,
+  .quick-actions-leave-active .quick-actions-list .quick-starter-intro,
+  .quick-actions-leave-active .quick-actions-list .quick-starter-btn,
+  .quick-actions-leave-active .quick-actions-list .quick-action-btn {
+    transition: none;
+  }
+}
+
+/* Position variants (same side as the heart). Size/plan rules below
+   override the inset so the stack lines up with the visual heart box.
+   Heart is 100×100, scaled from center:
+   visual edge = layoutEdge + 50×(1 − scale)
+   visual top  = layoutBottom + 50×(1 + scale)
+   Quick actions sit 10px (12px on small screens) above that top. */
+.quick-left {
+  left: 50px;
+  right: auto;
+}
+
+.quick-right {
+  right: 50px;
+  left: auto;
+}
+
+/* Classic heart (not Powered by Assis) */
+.quick-small:not(.plan-powered-by-assis) {
+  bottom: 110px;
+}
+
+.quick-small:not(.plan-powered-by-assis).quick-right {
+  right: 30px;
+}
+
+.quick-small:not(.plan-powered-by-assis).quick-left {
+  left: 30px;
+}
+
+.quick-medium:not(.plan-powered-by-assis) {
+  bottom: 124px;
+}
+
+.quick-medium:not(.plan-powered-by-assis).quick-right {
+  right: 32px;
+}
+
+.quick-medium:not(.plan-powered-by-assis).quick-left {
+  left: 24px;
+}
+
+.quick-large:not(.plan-powered-by-assis) {
+  bottom: 130px;
+}
+
+.quick-large:not(.plan-powered-by-assis).quick-right {
+  right: 30px;
+}
+
+.quick-large:not(.plan-powered-by-assis).quick-left {
+  left: 16px;
+}
+
+/* Powered by Assis - smaller scaled heart */
+.quick-small.plan-powered-by-assis {
+  bottom: 98px;
+}
+
+.quick-small.plan-powered-by-assis.quick-right {
+  right: 44px;
+}
+
+.quick-small.plan-powered-by-assis.quick-left {
+  left: 44px;
+}
+
+.quick-medium.plan-powered-by-assis {
+  bottom: 106px;
+}
+
+.quick-medium.plan-powered-by-assis.quick-right {
+  right: 44px;
+}
+
+.quick-medium.plan-powered-by-assis.quick-left {
+  left: 44px;
+}
+
+.quick-large.plan-powered-by-assis {
+  bottom: 110px;
+}
+
+.quick-large.plan-powered-by-assis.quick-right {
+  right: 40px;
+}
+
+.quick-large.plan-powered-by-assis.quick-left {
+  left: 40px;
+}
+
+@media (max-width: 480px) {
+  .quick-small:not(.plan-powered-by-assis) {
+    bottom: 96px;
+  }
+
+  .quick-small:not(.plan-powered-by-assis).quick-right {
+    right: 18px;
+  }
+
+  .quick-small:not(.plan-powered-by-assis).quick-left {
+    left: 18px;
+  }
+
+  .quick-medium:not(.plan-powered-by-assis) {
+    bottom: 106px;
+  }
+
+  .quick-medium:not(.plan-powered-by-assis).quick-right {
+    right: 8px;
+  }
+
+  .quick-medium:not(.plan-powered-by-assis).quick-left {
+    left: 8px;
+  }
+
+  .quick-large:not(.plan-powered-by-assis) {
+    bottom: 110px;
+  }
+
+  .quick-large:not(.plan-powered-by-assis).quick-right {
+    right: 8px;
+  }
+
+  .quick-large:not(.plan-powered-by-assis).quick-left {
+    left: 8px;
+  }
+}
+
+/* Powered by Assis mobile heart is a fixed 52px tile at 16px (plus safe area). */
+@media (max-width: 767px) {
+  .quick-actions.plan-powered-by-assis.quick-small,
+  .quick-actions.plan-powered-by-assis.quick-medium,
+  .quick-actions.plan-powered-by-assis.quick-large {
+    bottom: calc(56px + max(16px, env(safe-area-inset-bottom, 0px)));
+  }
+
+  .quick-actions.plan-powered-by-assis.quick-right {
+    right: max(16px, env(safe-area-inset-right, 0px));
+    left: auto;
+  }
+
+  .quick-actions.plan-powered-by-assis.quick-left {
+    left: max(16px, env(safe-area-inset-left, 0px));
+    right: auto;
+  }
+
+  .quick-actions.quick-layout-side_one.plan-powered-by-assis.quick-small,
+  .quick-actions.quick-layout-side_two.plan-powered-by-assis.quick-small,
+  .quick-actions.quick-layout-side_long.plan-powered-by-assis.quick-small,
+  .quick-actions.quick-layout-side_one.plan-powered-by-assis.quick-medium,
+  .quick-actions.quick-layout-side_two.plan-powered-by-assis.quick-medium,
+  .quick-actions.quick-layout-side_long.plan-powered-by-assis.quick-medium,
+  .quick-actions.quick-layout-side_one.plan-powered-by-assis.quick-large,
+  .quick-actions.quick-layout-side_two.plan-powered-by-assis.quick-large,
+  .quick-actions.quick-layout-side_long.plan-powered-by-assis.quick-large {
+    bottom: calc(23px + max(16px, env(safe-area-inset-bottom, 0px)));
+    align-items: flex-end;
+    transform: translateY(50%);
+  }
+
+  .quick-actions.quick-layout-side_one.plan-powered-by-assis.quick-right,
+  .quick-actions.quick-layout-side_two.plan-powered-by-assis.quick-right,
+  .quick-actions.quick-layout-side_long.plan-powered-by-assis.quick-right {
+    right: calc(70px + env(safe-area-inset-right, 0px));
+    left: auto;
+  }
+
+  .quick-actions.quick-layout-side_one.plan-powered-by-assis.quick-left,
+  .quick-actions.quick-layout-side_two.plan-powered-by-assis.quick-left,
+  .quick-actions.quick-layout-side_long.plan-powered-by-assis.quick-left {
+    left: calc(70px + env(safe-area-inset-left, 0px));
+    right: auto;
+  }
+}
+
+/* Position variants */
+.button-left {
+  /* right: auto;
+  left: 50px; */
+  /* justify-content: flex-start; */
+
+  .heart-text-bubble {
+    padding: 8px 16px 8px 32px;
+  }
+
+  .heart-image {
+    rotate: -10deg;
+    /* left: -40px;
+    bottom: -12px; */
+  }
+
+  .no-rotation {
+    rotate: 0deg;
+  }
+}
+
+.button-left .heart-text-bubble {
+  margin-right: 0;
+  margin-left: -5px;
+  left: 72px;
+  top: 12px;
+}
+
+.button-left .heart-text-bubble.bubble-whatsapp {
+  left: 85px;
+}
+
+.button-left .heart-text-bubble::after {
+  right: auto;
+  left: -8px;
+  border-left: none;
+  border-right: 8px solid #ffffff;
+}
+
+.button-right {
+  /* right: 50px;
+  left: auto; */
+  /* justify-content: flex-end; */
+
+  .heart-text-bubble {
+    padding: 8px 32px 8px 16px;
+    right: 72px;
+    top: 12px;
+  }
+
+  .heart-image {
+    rotate: 10deg;
+    /* right: -40px;
+    bottom: -12px; */
+  }
+
+  .no-rotation {
+    rotate: 0deg;
+  }
+}
+
+.button-right .heart-text-bubble.bubble-whatsapp {
+  right: 85px;
+}
+
+/* Size scaling variants */
+.button-small {
+  transform: scale(0.8);
+  bottom: 20px;
+
+  &.plan-powered-by-assis {
+    transform: scale(0.52);
+  }
+
+  &.plan-powered-by-assis:active {
+    transform: scale(0.48);
+  }
+
+  /* Mobile */
+  @media (max-width: 480px) {
+    bottom: 8px;
+  }
+
+  &.button-right {
+    right: 20px;
+
+    /* Mobile */
+    @media (max-width: 480px) {
+      right: 8px;
+    }
+  }
+
+  &.button-left {
+    left: 20px;
+
+    /* Mobile */
+    @media (max-width: 480px) {
+      left: 8px;
+    }
+  }
+}
+
+.button-medium {
+  transform: scale(1);
+  bottom: 24px;
+
+  &.plan-powered-by-assis {
+    transform: scale(0.60);
+  }
+
+  /* Mobile */
+  @media (max-width: 480px) {
+    bottom: 8px;
+  }
+
+  &.button-right {
+    right: 24px;
+
+    /* Mobile */
+    @media (max-width: 480px) {
+      right: 8px;
+    }
+  }
+
+  &.button-left {
+    left: 24px;
+
+    /* Mobile */
+    @media (max-width: 480px) {
+      left: 8px;
+    }
+  }
+}
+
+.button-large {
+  transform: scale(1.2);
+  bottom: 24px;
+
+  &.plan-powered-by-assis {
+    transform: scale(0.68);
+  }
+
+  /* Mobile */
+  @media (max-width: 480px) {
+    bottom: 8px;
+  }
+
+  &.button-right {
+    right: 24px;
+
+    /* Mobile */
+    @media (max-width: 480px) {
+      right: 8px;
+    }
+  }
+
+  &.button-left {
+    left: 24px;
+
+    /* Mobile */
+    @media (max-width: 480px) {
+      left: 8px;
+    }
+  }
+}
+
+@media (max-width: 767px) {
+  .fixed-heart-btn.plan-powered-by-assis,
+  .fixed-heart-btn.plan-powered-by-assis.button-small,
+  .fixed-heart-btn.plan-powered-by-assis.button-medium,
+  .fixed-heart-btn.plan-powered-by-assis.button-large {
+    width: 52px;
+    height: 52px;
+    min-width: 52px;
+    max-width: 52px;
+    transform: none;
+    border-radius: 16px;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    overflow: visible;
+    box-sizing: border-box;
+  }
+
+  .fixed-heart-btn.plan-powered-by-assis.button-right {
+    right: max(16px, env(safe-area-inset-right));
+    left: auto;
+  }
+
+  .fixed-heart-btn.plan-powered-by-assis.button-left {
+    left: max(16px, env(safe-area-inset-left));
+    right: auto;
+  }
+
+  .fixed-heart-btn.plan-powered-by-assis:active {
+    transform: scale(0.94);
+  }
+}
+
+/* Bubble size variants */
+.heart-bubble-small {
+  padding: 6px 10px 6px 6px;
+  font-size: 12px;
+}
+
+/* Heart Text Bubble */
+.heart-text-bubble {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: #ffffffea;
+  border: 1px solid #007bff;
+  border-radius: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin-right: -5px;
+  position: relative;
+  z-index: 2;
+
+}
+
+.ai-single-quick-bubble {
+  cursor: pointer;
+  position: relative;
+}
+
+.ai-single-quick-bubble:hover,
+.ai-single-quick-bubble:active {
+  border: 1px solid rgba(200, 222, 255, 0.65);
+  box-shadow: rgba(0, 0, 0, 0.10) 0px 4px 16px, rgba(0, 0, 0, 0.06) 0px 1px 4px;
+  transform: translateY(0px);
+}
+
+.ai-single-quick-bubble-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.ai-single-quick-bubble-close {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  border: 1px solid rgba(229, 231, 235, 0.9);
+  background: rgba(255, 255, 255, 0.95);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.ai-single-quick-bubble-close-left {
+  top: -5px;
+  left: -5px;
+}
+
+.ai-single-quick-bubble-close:hover {
+  background: rgba(255, 255, 255, 1);
+  border-color: rgba(209, 213, 219, 1);
+}
+
+.ai-single-quick-bubble-close:active {
+  transform: translateY(0.5px);
+}
+
+
+.bubble-text {
+  font-size: 14px;
+  font-weight: 400;
+  color: #026ee7;
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* Bubble label appear animation (AI only) */
+.bubble-label-enter-active {
+  animation: bubble-label-in 800ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: opacity, transform, filter;
+}
+.bubble-label-leave-active {
+  animation: bubble-label-in 260ms cubic-bezier(0.4, 0, 0.2, 1) reverse both;
+  will-change: opacity, transform, filter;
+}
+@keyframes bubble-label-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+    filter: blur(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+.whatsapp-number {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0px;
+  margin-right: 4px;
+}
+
+.whatsapp-number svg {
+  width: 18px;
+  height: 18px;
+  fill: #2563eb;
+}
+
+.whatsapp-number--ai {
+  display: inline-flex;
+  align-items: center;
+  fill: #60a5fa;
+}
+
+/* RTL support for bubble text */
+.bubble-text[dir="rtl"] {
+  text-align: right;
+  direction: rtl;
+}
+
+.bubble-text[dir="ltr"] {
+  text-align: left;
+  direction: ltr;
+}
+
+/* Heart Image */
+.heart-image {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+
+  z-index: 3;
+  transition: transform 0.3s ease;
+  animation: heartbeat 1.5s ease-in-out infinite;
+  --hover-scale: 1;
+  filter: drop-shadow(rgba(59, 130, 246, 0.5) 0px 3px 8px) drop-shadow(rgba(0, 0, 0, 0.06) 0px 1px 3px);
+  -webkit-tap-highlight-color: transparent;
+  pointer-events: none;
+}
+
+.heart-image.no-heartbeat {
+  animation: none;
+}
+
+.heart-image:hover {
+  animation-play-state: paused;
+}
+
+.fixed-heart-btn:active {
+  transform: scale(0.95);
+}
+
+/* Guest Input Section */
+.guest-input-section {
+  text-align: center;
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.guest-input-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #3b82f6;
+  margin-bottom: 8px;
+}
+
+.guest-input-description {
+  font-size: 16px;
+  color: #6b7280;
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+.step-content {
+  flex: 1;
+  margin-bottom: 20px;
+  /* Space between content and navigation */
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.input-group {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  align-items: center;
+}
+
+.guest-name-input {
+  flex: 1;
+  padding: 14px 16px;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  font-size: 16px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+/* RTL support for guest name input */
+.guest-name-input[dir="rtl"] {
+  text-align: right;
+  direction: rtl;
+}
+
+.guest-name-input[dir="ltr"] {
+  text-align: left;
+  direction: ltr;
+}
+
+.guest-name-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.next-btn {
+  padding: 14px 24px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.next-btn:hover:not(:disabled) {
+  background: #2563eb;
+  transform: translateY(-1px);
+}
+
+.next-btn:disabled {
+  background: #d1d5db;
+  cursor: not-allowed;
+  color: #9ca3af;
+  transform: none;
+}
+
+.back-btn {
+  padding: 10px 20px;
+  background: #f3f4f6;
+  color: #3b82f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.back-btn:hover {
+  background: #e5e7eb;
+  border-color: #d1d5db;
+}
+
+/* Contact Inputs */
+.contact-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.input-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.input-field label {
+  font-size: 14px;
+  color: #6b7280;
+  margin-bottom: 8px;
+  text-align: left;
+}
+
+.contact-input {
+  flex: 1;
+  padding: 14px 16px;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  font-size: 16px;
+  outline: none;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+/* RTL support for contact inputs */
+.contact-input[dir="rtl"] {
+  text-align: right;
+  direction: rtl;
+}
+
+.contact-input[dir="ltr"] {
+  text-align: left;
+  direction: ltr;
+}
+
+.contact-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.contact-input.error {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+}
+
+.error-message {
+  color: #dc2626;
+  font-size: 12px;
+  margin-top: 4px;
+  text-align: left;
+  display: block;
+}
+
+.step-navigation {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: auto;
+  /* Push navigation to bottom */
+  padding-top: 20px;
+  border-top: 1px solid #e5e7eb;
+}
+
+/* Acknowledgment Checkbox */
+.acknowledgment-checkbox {
+  margin-bottom: 20px;
+  text-align: left;
+  padding-left: 8px;
+  /* Indent for checkbox */
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: 16px;
+  color: #333;
+  user-select: none;
+  margin-bottom: 10px;
+}
+
+.acknowledgment-input {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+  height: 0;
+  width: 0;
+}
+
+.checkmark {
+  height: 24px;
+  width: 24px;
+  background-color: #eee;
+  border: 2px solid #ccc;
+  border-radius: 8px;
+  margin-right: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.acknowledgment-input:checked~.checkmark {
+  background-color: white;
+  border-color: #3b82f6;
+  border-width: 2px;
+}
+
+.checkmark:after {
+  content: "";
+  position: absolute;
+  display: none;
+  width: 12px;
+  height: 12px;
+  background-color: #3b82f6;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.acknowledgment-input:checked~.checkmark:after {
+  display: block;
+}
+
+.checkbox-text {
+  flex: 1;
+}
+
+/* Chat Interface */
+.chat-interface {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  /* Allow content to shrink */
+  flex: 1;
+  /* Take up all available space */
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 10px;
+  /* Space for input area */
+  min-height: 0;
+  /* Allow messages to shrink */
+  scroll-behavior: smooth;
+  padding-right: 16px;
+  padding-left: 16px;
+}
+
+.message {
+  display: flex;
+  margin-bottom: 15px;
+  width: 100%;
+  animation: slideUpMessage 0.46s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.message.message-no-animation {
+  animation: none !important;
+}
+
+.message.message-no-animation .assis-product-card-slot,
+.message.message-no-animation .assis-products-container .assis-lh-section-title,
+.message.message-no-animation .assis-lh-coupon-card,
+.message.message-no-animation .assis-discounts-container .assis-lh-section-title,
+.message.message-no-animation .assis-contact-submission {
+  animation: none !important;
+}
+
+.message.user {
+  justify-content: flex-end;
+  /* Align user messages to the right */
+}
+
+.message.agent,
+.message.business,
+.message.assis,
+.message.ai {
+  justify-content: flex-start;
+  /* Align agent messages to the left */
+}
+
+.message-content {
+  display: flex;
+  flex-direction: column;
+  max-width: 80%;
+  overflow: hidden;
+}
+
+.agent-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  justify-content: start;
+  color: #6b7280;
+  font-size: 12px;
+  width: 52px;
+}
+
+.agent-info-business {
+  margin-left: -4px;
+}
+
+.agent-avatar {
+  width: 24px;
+  height: 24px;
+  background: #3b83f65a;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+}
+
+.agent-name {
+  font-weight: 600;
+}
+
+.message-bubble {
+  padding: 6px 12px;
+  border-radius: 15px;
+  font-size: 11px !important;
+  line-height: 1.6;
+  word-break: break-word;
+  width: fit-content;
+  height: fit-content;
+  transition: text-align 0.2s ease;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  font-weight: 400;
+  font-style: normal;
+  text-size-adjust: 100%;
+}
+
+.message-text {
+  margin: 0;
+  padding: 0;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.text-white {
+  color: white !important;
+}
+
+.text-white a {
+  color: white !important;
+  text-decoration: underline;
+}
+
+.text-white a:hover {
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+.message-text strong {
+  font-weight: 700;
+}
+
+.message-text a {
+  color: #3b82f6;
+  text-decoration: underline;
+}
+
+.message-text a:hover {
+  color: #2563eb;
+}
+
+.message-bubble a {
+  color: #3b82f6;
+  text-decoration: underline;
+}
+
+.message-bubble a:hover {
+  color: #2563eb;
+}
+
+.message-bubble strong {
+  font-weight: 700;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .message-text a {
+    color: #60a5fa;
+  }
+
+  .message-text a:hover {
+    color: #3b82f6;
+  }
+
+  .message-bubble a {
+    color: #60a5fa;
+  }
+
+  .message-bubble a:hover {
+    color: #3b82f6;
+  }
+}
+
+/* RTL support for message bubbles */
+.message-bubble[dir="rtl"] {
+  text-align: right;
+  direction: rtl;
+}
+
+.message-bubble[dir="ltr"] {
+  text-align: left;
+  direction: ltr;
+}
+
+/* RTL support for message text */
+.message-bubble[dir="rtl"] .message-text {
+  text-align: right;
+  direction: rtl;
+}
+
+.message-bubble[dir="ltr"] .message-text {
+  text-align: left;
+  direction: ltr;
+}
+
+.message.sender-client .message-bubble {
+  background-color: #3b82f6;
+  border-bottom-right-radius: calc(0.5rem - 2px);
+  /* Blue for client messages */
+  color: white !important;
+  border: none;
+}
+
+/* RTL message alignment adjustments */
+.message.sender-client .message-bubble[dir="rtl"] {
+  margin-left: auto;
+  margin-right: 0;
+}
+
+.message.sender-agent .message-bubble[dir="rtl"],
+.message.sender-ai .message-bubble[dir="rtl"],
+.message.sender-assis .message-bubble[dir="rtl"],
+.message.sender-business .message-bubble[dir="rtl"] {
+  margin-right: auto;
+  margin-left: 0;
+}
+
+.sender-client {
+  justify-content: flex-end;
+
+  .message-content {
+    align-items: start;
+  }
+
+  .message-content-container {
+    align-items: end;
+    justify-content: end;
+    max-width: 100%;
+  }
+}
+
+.message-content-container {
+  display: flex;
+  gap: 8px;
+}
+
+.client-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  justify-content: start;
+  color: #6b7280;
+  font-size: 12px;
+  width: 52px
+}
+
+.client-avatar {
+  width: 24px;
+  height: 24px;
+  background: #6b728018;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+}
+
+.message.sender-agent .message-bubble {
+  border: 1px solid rgb(235, 235, 240);
+  box-shadow: rgba(0, 0, 0, 0.03) 0px 1px 2px, rgba(0, 0, 0, 0.05) 0px 1px 4px;
+  border-radius: 1rem;
+  border-bottom-left-radius: calc(0.5rem - 2px);
+  /* Light grey for user messages */
+  color: #333;
+}
+
+.message.sender-ai .message-bubble {
+  border: 1px solid rgb(235, 235, 240);
+  box-shadow: rgba(0, 0, 0, 0.03) 0px 1px 2px, rgba(0, 0, 0, 0.05) 0px 1px 4px;
+  border-radius: 1rem;
+  border-bottom-left-radius: calc(0.5rem - 2px);
+  /* Light grey for user messages */
+  color: #333;
+}
+
+.message.sender-assis .message-bubble {
+  border: 1px solid rgb(235, 235, 240);
+  box-shadow: rgba(0, 0, 0, 0.03) 0px 1px 2px, rgba(0, 0, 0, 0.05) 0px 1px 4px;
+  border-bottom-left-radius: calc(0.5rem - 2px);
+  border-radius: 1rem;
+  /* Light grey for user messages */
+  color: #333;
+}
+
+.message.sender-business .message-bubble {
+  border: 1px solid rgb(235, 235, 240);
+  box-shadow: rgba(0, 0, 0, 0.03) 0px 1px 2px, rgba(0, 0, 0, 0.05) 0px 1px 4px;
+  border-bottom-left-radius: calc(0.5rem - 2px);
+  border-radius: 1rem;
+  /* Light grey for user messages */
+  color: #333;
+}
+
+.message-timestamp {
+  font-size: 11px !important;
+  margin-top: 5px;
+  color: #9ca3af;
+  text-align: right;
+}
+
+.chat-input-area {
+  padding-top: 12px;
+  padding-right: 16px;
+  padding-left: 16px;
+  border-top: 1px solid #d9e6fb;
+  margin-top: auto;
+  /* Push input area to bottom */
+  flex-shrink: 0;
+  /* Prevent input area from shrinking */
+}
+
+.assis-checkout-slot {
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+  margin: 8px 0 12px;
+}
+
+.assis-checkout-slot.assis-checkout--end {
+  justify-content: flex-end;
+}
+
+.assis-checkout-card {
+  position: relative;
+  width: max-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px 10px 16px;
+  transform-origin: center bottom;
+  border-radius: 16px;
+  background: #ffffff;
+  border: 1px solid rgba(29, 111, 238, 0.22);
+  box-shadow: 0 0 0 3px rgba(29, 111, 238, 0.06), 0 8px 22px rgba(15, 23, 42, 0.08);
+  animation: assis-product-card-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.chat-container.assis-chat-he-flip .assis-checkout-card {
+  padding: 10px 16px 10px 12px;
+}
+
+.assis-checkout-card.is-closing {
+  pointer-events: none;
+  overflow: hidden;
+  animation: assis-checkout-fold 0.42s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes assis-checkout-fold {
+  0% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.86) translateY(12px);
+  }
+}
+
+.chat-container.assis-chat-he-flip .assis-checkout-row {
+  flex-direction: row-reverse;
+}
+
+.chat-container.assis-chat-he-flip .assis-checkout-side {
+  align-items: flex-end;
+}
+
+.assis-checkout-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.assis-checkout-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.assis-checkout-title {
+  font-size: 13px;
+  font-weight: 650;
+  color: #0f172a;
+  line-height: 1.2;
+}
+
+.assis-checkout-thumbs {
+  display: flex;
+  align-items: center;
+  align-self: center;
+  height: 72px;
+  padding: 4px 8px 0;
+}
+
+.assis-checkout-thumb {
+  position: relative;
+  width: 42px;
+  height: 54px;
+  margin-inline-start: -16px;
+  border-radius: 10px;
+  background: #f3f1ec;
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 1px rgba(15, 23, 42, 0.05), 0 6px 14px rgba(15, 23, 42, 0.12);
+  overflow: visible;
+  flex-shrink: 0;
+  transform-origin: 50% 100%;
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: assis-product-card-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.assis-checkout-thumb-link {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  border-radius: inherit;
+  background: transparent;
+  overflow: hidden;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.assis-checkout-thumb-remove {
+  position: absolute;
+  top: -5px;
+  inset-inline-end: -5px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #64748b;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.16);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.assis-checkout-thumb-remove svg {
+  width: 10px;
+  height: 10px;
+}
+
+.assis-checkout-thumb:hover .assis-checkout-thumb-remove,
+.assis-checkout-thumb:focus-within .assis-checkout-thumb-remove {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: none) {
+  .assis-checkout-thumb-remove {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.assis-checkout-thumb:first-child {
+  margin-inline-start: 0;
+  z-index: 1;
+  transform: rotate(-14deg);
+}
+
+.assis-checkout-thumb:nth-child(2) {
+  z-index: 3;
+  transform: rotate(2deg);
+  animation-delay: 0.06s;
+}
+
+.assis-checkout-thumb:nth-child(3) {
+  z-index: 2;
+  transform: rotate(16deg);
+  animation-delay: 0.12s;
+}
+
+.assis-checkout-thumb:hover {
+  z-index: 5;
+}
+
+.assis-checkout-thumb:first-child:hover {
+  transform: rotate(-22deg) translateY(-6px);
+}
+
+.assis-checkout-thumb:nth-child(2):hover {
+  transform: rotate(0deg) translateY(-8px);
+}
+
+.assis-checkout-thumb:nth-child(3):hover {
+  transform: rotate(22deg) translateY(-6px);
+}
+
+.assis-checkout-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: inherit;
+}
+
+.assis-checkout-more {
+  position: relative;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  width: 42px;
+  height: 54px;
+  margin-inline-start: -22px;
+  padding: 0 6px 0 0;
+  border: none;
+  border-radius: 10px;
+  background: #f4f1ec;
+  color: #1d6fee;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1;
+  font-family: inherit;
+  cursor: pointer;
+  transform: rotate(16deg);
+  transform-origin: 50% 100%;
+  box-shadow: 0 0 0 2px #ffffff, 0 4px 10px rgba(15, 23, 42, 0.08);
+}
+
+.assis-checkout-card-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  width: 156px;
+  min-width: 0;
+  text-align: start;
+}
+
+.assis-checkout-card-copy strong {
+  font-size: 13px;
+  font-weight: 650;
+  color: #0f172a;
+}
+
+.assis-checkout-card-copy span {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.assis-checkout-names {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.3;
+  color: #475569;
+}
+
+.assis-checkout-names-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.assis-checkout-card-copy .assis-checkout-names-more {
+  position: relative;
+  flex-shrink: 0;
+  color: #1d6fee;
+  font-weight: 650;
+  cursor: default;
+  outline: none;
+}
+
+.assis-checkout-names-tip {
+  display: none;
+  flex: 1 0 100%;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.assis-checkout-card-copy .assis-checkout-names-tip span {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 1.35;
+  font-size: 11px;
+  font-weight: 450;
+  color: #64748b;
+}
+
+.assis-checkout-names:hover .assis-checkout-names-tip,
+.assis-checkout-names:focus-within .assis-checkout-names-tip {
+  display: flex;
+}
+
+.assis-checkout-price {
+  font-size: 13px;
+  font-weight: 650;
+  color: #0f172a;
+}
+
+.assis-checkout-card .assis-go-checkout {
+  align-self: stretch;
+  width: 100%;
+  height: 32px;
+  margin: 2px 0 0;
+  padding: 0 12px;
+  gap: 4px;
+  font-size: 12px;
+  color: #ffffff;
+}
+
+.assis-checkout-card .assis-go-checkout span {
+  color: #ffffff;
+}
+
+.assis-checkout-card .assis-go-checkout-arrow {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.chat-container.assis-chat-he-flip .assis-go-checkout-arrow {
+  transform: scaleX(-1);
+}
+
+.assis-go-checkout {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 36px;
+  margin: 0;
+  padding: 0 14px;
+  border: none;
+  border-radius: 9999px;
+  background-color: #1d6fee;
+  background-image: linear-gradient(110deg, #1557c0 0%, #1d6fee 42%, #1d6fee 47%, rgba(255, 255, 255, 0.55) 50%, #1d6fee 53%, #1d6fee 58%, #134bab 100%);
+  background-size: 220% 100%;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 550;
+  font-family: inherit;
+  line-height: 1;
+  cursor: pointer;
+  box-sizing: border-box;
+  box-shadow: 0 8px 18px rgba(29, 111, 238, 0.32);
+  animation: assis-product-add-sheen 3.4s ease-in-out infinite;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.assis-go-checkout:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 22px rgba(29, 111, 238, 0.4);
+}
+
+.assis-go-checkout:active {
+  transform: scale(0.98);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assis-go-checkout {
+    animation: none;
+  }
+}
+
+.assis-checkout-inline {
+  display: inline-flex;
+  align-items: stretch;
+  direction: ltr;
+  width: max-content;
+  max-width: 100%;
+  height: 36px;
+  margin: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  background-color: #1d6fee;
+  background-image: linear-gradient(110deg, #1557c0 0%, #1d6fee 42%, #1d6fee 47%, rgba(255, 255, 255, 0.55) 50%, #1d6fee 53%, #1d6fee 58%, #134bab 100%);
+  background-size: 220% 100%;
+  box-shadow: 0 8px 18px rgba(29, 111, 238, 0.32);
+  animation:
+    assis-checkout-pill-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both,
+    assis-product-add-sheen 3.4s ease-in-out infinite;
+}
+
+@keyframes assis-checkout-pill-in {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.assis-checkout-inline-main,
+.assis-checkout-inline-arrow {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: #ffffff;
+  font-family: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.assis-checkout-inline-main {
+  gap: 8px;
+  padding: 0 6px 0 14px;
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.assis-checkout-inline-main.has-thumbs {
+  padding-right: 6px;
+}
+
+.assis-checkout-inline-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assis-checkout-inline-price {
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.assis-checkout-inline-thumbs {
+  display: inline-flex;
+  align-items: center;
+}
+
+.assis-checkout-inline-thumb,
+.assis-checkout-inline-more {
+  width: 22px;
+  height: 22px;
+  margin-inline-start: -7px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.22);
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.assis-checkout-inline-thumb:first-child {
+  margin-inline-start: 0;
+}
+
+.assis-checkout-inline-thumb {
+  overflow: hidden;
+}
+
+.assis-checkout-inline-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.assis-checkout-inline-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.assis-checkout-inline-arrow {
+  padding: 0 12px 0 4px;
+}
+
+.assis-checkout-inline-arrow svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.chat-container.assis-chat-he-flip .assis-checkout-inline-arrow svg {
+  transform: scaleX(-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assis-checkout-inline,
+  .assis-checkout-card.is-closing {
+    animation: none;
+  }
+}
+
+.chat-input-area--with-contact-sheet {
+  padding-top: 0;
+  padding-right: 0;
+  padding-left: 0;
+  border-top: none;
+}
+
+.chat-input-row--with-contact-sheet {
+  padding: 12px 16px 0;
+  border-top: 1px solid #e8edf3;
+}
+
+/* Chat Login Form */
+.chat-login-form {
+  padding: 20px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  margin-top: auto;
+  flex-shrink: 0;
+  background: #f9fafb;
+}
+
+/* Login form inside chat-messages (scrolling area) */
+.chat-messages .chat-login-form {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+.login-form-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.email-input {
+  width: 100%;
+  padding: 14px 16px;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.2s ease;
+  background: white;
+  box-sizing: border-box;
+  height: 46px;
+}
+
+.email-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* RTL support for email input */
+.email-input[dir="rtl"] {
+  text-align: right;
+  direction: rtl;
+}
+
+.email-input[dir="ltr"] {
+  text-align: left;
+  direction: ltr;
+}
+
+.email-continue-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 20px;
+  background: #e5e7eb;
+  color: #9ca3af;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: not-allowed;
+  transition: all 0.2s ease;
+  height: 40px;
+}
+
+.email-continue-btn:not(:disabled) {
+  background: #3b82f6;
+  color: white;
+  cursor: pointer;
+}
+
+.email-continue-btn:not(:disabled):hover {
+  background: #2563eb;
+  transform: translateY(-1px);
+}
+
+.email-continue-btn:disabled {
+  opacity: 0.6;
+}
+
+.login-separator {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0;
+}
+
+.separator-line {
+  flex: 1;
+  height: 1px;
+  background: #e5e7eb;
+}
+
+.separator-text {
+  color: #9ca3af;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.google-continue-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 14px 20px;
+  background: white;
+  color: #374151;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  height: 40px;
+}
+
+.google-continue-btn:hover:not(:disabled) {
+  border-color: #d1d5db;
+  background: #f9fafb;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.google-continue-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.whatsapp-continue-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 14px 20px;
+  background: #25d366;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  height: 40px;
+}
+
+.whatsapp-continue-btn:hover:not(:disabled) {
+  background: #22c55e;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37, 211, 102, 0.3);
+}
+
+.whatsapp-continue-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.chat-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.guest-notice {
+  padding: 8px;
+  margin-bottom: 12px;
+  background: #f3f4f6;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #6b7280;
+  text-align: center;
+}
+
+.guest-tag {
+  padding-top: 0.125rem;
+  padding-bottom: 0.125rem;
+  padding-left: 0.625rem;
+  padding-right: 0.625rem;
+  background: #f3f4f6;
+  border-width: 1px;
+  border-radius: 9999px;
+  align-items: center;
+  display: inline-flex;
+  margin-left: 0.5rem;
+  font-size: 12px;
+  color: #6b7280;
+  text-align: center;
+  font-weight: 600;
+}
+
+.input-container {
+  display: flex;
+  align-items: center;
+  background: #fff;
+  border-radius: 9999px;
+  border: 1px solid #d9e6fb;
+  flex: 1;
+}
+
+.chat-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 11px !important;
+  background: transparent;
+  transition: text-align 0.2s ease;
+  resize: none;
+  box-sizing: border-box;
+  padding: 10.5px 4px;
+  min-height: 32px;
+  max-height: 120px;
+  overflow-y: auto;
+  font-family: inherit;
+  line-height: 1;
+  color: #111827;
+
+}
+
+.chat-input::placeholder {
+  color: #a7acb3;
+}
+
+/* RTL support for chat input */
+.chat-input[dir="rtl"] {
+  text-align: right;
+  direction: rtl;
+}
+
+.chat-input[dir="ltr"] {
+  text-align: left;
+  direction: ltr;
+}
+
+.send-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #2563eb;
+  border: none;
+  cursor: pointer;
+  color: #fff;
+  border-radius: 9999px;
+  transition: all 0.2s ease;
+  width: 32px;
+  height: 32px;
+}
+
+.send-btn:hover:not(:disabled) {
+  background: #3b82f6;
+}
+
+.send-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.expand-btn {
+  @media (max-width: 767px) {
+    display: none;
+  }
+}
+
+/* Authenticated User Info */
+.authenticated-user {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  border-top: 1px solid #e5e7eb;
+  margin-top: 15px;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.user-initial {
+  width: 100%;
+  height: 100%;
+  background-color: #3b82f6;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.user-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.user-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+.user-email {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.sign-out-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  color: #dc2626;
+  transition: all 0.2s ease;
+}
+
+.sign-out-btn:hover {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+/* File Upload Styles */
+.attach-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6b7280;
+  transition: all 0.2s ease;
+  opacity: 0.6;
+  width: 16px;
+  height: 16px !important;
+}
+
+.attach-btn:hover {
+  opacity: 1;
+}
+
+.attach-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.emoji-picker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.emoji-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6b7280;
+  transition: all 0.2s ease;
+  opacity: 0.6;
+  width: 16px;
+  height: 16px !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.emoji-btn:hover:not(:disabled) {
+  opacity: 1;
+}
+
+.emoji-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.emoji-popover {
+  z-index: 999999;
+  border-radius: 14px;
+  border: 1px solid rgba(220, 228, 240, 0.65);
+  box-shadow: rgba(0, 0, 0, 0.18) 0px 10px 24px, rgba(0, 0, 0, 0.06) 0px 1px 4px;
+  pointer-events: auto;
+}
+
+.emoji-popover-fixed {
+  position: fixed;
+}
+
+.upload-progress {
+  padding: 10px 20px;
+  background: #f3f4f6;
+  border-top: 1px solid #e5e7eb;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 4px;
+  background: #e5e7eb;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #3b82f6;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.selected-files {
+  padding: 10px 20px;
+  background: #f9fafb;
+  border-top: 1px solid #e5e7eb;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.selected-file {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.selected-file:last-child {
+  margin-bottom: 0;
+}
+
+.file-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.file-icon {
+  font-size: 16px;
+}
+
+.file-name {
+  font-size: 14px;
+  color: #374151;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-size {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.remove-file-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #dc2626;
+  font-size: 18px;
+  padding: 4px;
+  border-radius: 50%;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.remove-file-btn:hover {
+  background: #fef2f2;
+}
+
+/* Media Files Display */
+.media-files {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: calc(100% - 36px);
+}
+
+.media-file {
+  max-width: 100%;
+}
+
+.image-container {
+  border-radius: 12px;
+  overflow: hidden;
+  max-width: 100%;
+  position: relative;
+}
+
+.media-image {
+  width: 100%;
+  height: auto;
+  max-height: 200px;
+  object-fit: cover;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.media-image:hover {
+  transform: scale(1.02);
+}
+
+.video-container {
+  border-radius: 12px;
+  overflow: hidden;
+  max-width: 300px;
+  position: relative;
+}
+
+.media-video {
+  width: 100%;
+  height: auto;
+  max-height: 200px;
+}
+
+.document-container {
+  max-width: 100%;
+  position: relative;
+}
+
+.document-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  text-decoration: none;
+  color: #374151;
+  transition: all 0.2s ease;
+}
+
+.document-link:hover {
+  background: #e5e7eb;
+  border-color: #d1d5db;
+}
+
+.document-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.document-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.document-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 2px;
+}
+
+.document-size {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* Download Button Wrapper */
+.download-btn-wrapper {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+}
+
+/* Download Button */
+.download-btn {
+  background: rgba(0, 0, 0, 0.7);
+  border: none;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: white;
+  transition: all 0.2s ease;
+  opacity: 0;
+  transform: scale(0.8);
+}
+
+.image-container:hover .download-btn,
+.video-container:hover .download-btn,
+.document-container:hover .download-btn {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.image-container:hover .download-btn-wrapper .download-btn,
+.video-container:hover .download-btn-wrapper .download-btn,
+.document-container:hover .download-btn-wrapper .download-btn {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.download-btn:hover {
+  background: rgba(0, 0, 0, 0.9);
+  transform: scale(1.1);
+}
+
+.download-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Image Modal */
+.image-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  cursor: pointer;
+}
+
+.modal-content {
+  position: relative;
+  max-width: 90%;
+  max-height: 90%;
+  cursor: default;
+}
+
+.modal-close {
+  position: absolute;
+  top: -40px;
+  right: 0;
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  font-size: 18px;
+  color: #374151;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.modal-close:hover {
+  background: white;
+  transform: scale(1.1);
+}
+
+.modal-image {
+  max-width: 90vw;
+  max-height: 90dvh;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+/* Error Toast */
+.chat-inline-toast {
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  animation: slideUpToast 0.3s ease-out;
+  pointer-events: none;
+  max-width: calc(100% - 24px);
+}
+
+.chat-inline-toast-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #dc2626;
+  color: white;
+  padding: 10px 14px;
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
+}
+
+.chat-inline-toast-message {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.error-toast {
+  position: fixed;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10001;
+  animation: slideUpToast 0.3s ease-out;
+}
+
+.toast-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #dc2626;
+  color: white;
+  padding: 12px 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 200px;
+  max-width: 360px;
+}
+
+.toast-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.toast-message {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.error-ai-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-self: flex-start;
+  max-width: 80%;
+  margin: 4px 12px 8px 12px;
+  padding: 10px 14px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 0 12px 12px 12px;
+  color: #dc2626;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow: visible;
+  position: relative;
+}
+
+.error-ai-bubble-text {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  word-break: break-word;
+  font-size: 11px;
+}
+
+.error-ai-bubble-text[dir="rtl"] {
+  flex-direction: row-reverse;
+  text-align: right;
+}
+
+.error-ai-bubble-input {
+  width: 100%;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  overflow: visible;
+  position: relative;
+  z-index: 2;
+}
+
+/* Error bubble WhatsApp input: allow the input to shrink/wrap in narrow containers */
+.error-ai-bubble-input.ai-whatsapp-input-field .ai-whatsapp-input {
+  width: auto !important;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.error-ai-bubble-input.ai-whatsapp-input-field .ai-whatsapp-send-btn {
+  flex: 0 0 auto;
+}
+
+@keyframes slideUpToast {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* OAuth Debug Toast */
+.oauth-debug-toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10002;
+  animation: slideUpToast 0.3s ease-out;
+  max-width: 90%;
+}
+
+.debug-content {
+  background: #3b82f6;
+  color: white;
+  padding: 16px 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 280px;
+  max-width: 500px;
+  position: relative;
+}
+
+.debug-message {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.debug-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  color: white;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+}
+
+.debug-close:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* WhatsApp Modal */
+.whatsapp-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  cursor: pointer;
+}
+
+.whatsapp-modal-content {
+  position: relative;
+  background: white;
+  border-radius: 16px;
+  width: 90%;
+  max-width: 360px;
+  max-height: 90dvh;
+  overflow-y: auto;
+  cursor: default;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: slideInUp 0.3s ease-out;
+}
+
+.whatsapp-modal-header {
+  padding: 24px 24px 16px;
+  text-align: center;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.whatsapp-icon-large {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.whatsapp-modal-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 8px;
+}
+
+.whatsapp-modal-description {
+  font-size: 14px;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.whatsapp-modal-body {
+  padding: 24px;
+}
+
+.whatsapp-input-group {
+  margin-bottom: 20px;
+}
+
+.whatsapp-input-group:last-child {
+  margin-bottom: 0;
+}
+
+.whatsapp-input-group label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 8px;
+}
+
+.whatsapp-input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  font-size: 16px;
+  outline: none;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.whatsapp-input:focus {
+  border-color: #25d366;
+  box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.1);
+}
+
+.whatsapp-input.error {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+}
+
+.whatsapp-input-group .error-message {
+  color: #dc2626;
+  font-size: 12px;
+  margin-top: 4px;
+  display: block;
+}
+
+.whatsapp-modal-footer {
+  padding: 16px 24px 24px;
+  display: flex;
+  gap: 12px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.whatsapp-cancel-btn {
+  flex: 1;
+  padding: 12px 24px;
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.whatsapp-cancel-btn:hover {
+  background: #e5e7eb;
+  border-color: #d1d5db;
+}
+
+.whatsapp-submit-btn {
+  flex: 1;
+  padding: 12px 24px;
+  background: #25d366;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.whatsapp-submit-btn:hover:not(:disabled) {
+  background: #22c55e;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37, 211, 102, 0.3);
+}
+
+.whatsapp-submit-btn:disabled {
+  background: #d1d5db;
+  cursor: not-allowed;
+  color: #9ca3af;
+  transform: none;
+}
+
+/* Product Cards */
+.assis-products-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 0 4px;
+  margin-top: 8px;
+  margin-bottom: 4px;
+  box-sizing: border-box;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  overflow: visible;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.assis-products-container--carousel {
+  position: relative;
+  display: block;
+  padding-inline: 0;
+  padding-bottom: 10px;
+  overflow: visible;
+}
+
+@keyframes assis-lh-caption-in {
+  from { opacity: 0; translate: 0 6px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+.assis-lh-section-title,
+.assis-lh-caption,
+.assis-lh-caption--mid,
+.assis-lh-list,
+.assis-lh-reco {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+.assis-lh-section-title {
+  margin: 0 0 4px !important;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: uppercase;
+  color: #9aa1ad;
+  line-height: 1.6;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  box-sizing: border-box;
+  animation: assis-lh-caption-in 0.35s ease both;
+}
+
+.assis-products-viewport {
+  width: 100%;
+}
+
+.assis-products-track {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.assis-product-card-slot {
+  width: clamp(156px, calc((100cqi - 30px) / 4), 210px);
+  max-width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  animation: assis-product-card-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(0.06s + (var(--assis-product-i, 0) * 0.09s));
+}
+
+.assis-products-container .assis-lh-section-title {
+  animation: assis-product-card-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes assis-product-card-in {
+  from {
+    opacity: 0;
+    translate: 0 12px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assis-product-card-slot,
+  .assis-products-container .assis-lh-section-title,
+  .assis-lh-coupon-card,
+  .assis-discounts-container .assis-lh-section-title,
+  .assis-contact-submission,
+  .assis-checkout-card,
+  .assis-checkout-thumb,
+  .assis-checkout-inline,
+  .ai-human-contact-sheet--v2,
+  .assis-suggest-chips button,
+  .assis-home-chips button,
+  .slide-up-animation,
+  .message {
+    animation: none;
+  }
+}
+
+.assis-products-container--carousel .assis-products-viewport {
+  overflow-x: auto;
+  overflow-y: hidden;
+  overflow-anchor: none;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+  padding: 0 10px 0 4px;
+  scroll-padding-inline: 4px;
+  container-type: inline-size;
+}
+
+/* Let the card option menu paint above the trigger (viewport clips y by default). */
+.assis-products-container--carousel .assis-products-viewport:has(.lh-variant-select-wrap.is-open) {
+  overflow: visible;
+}
+
+.assis-products-container--carousel .assis-product-card-slot:has(.lh-variant-select-wrap.is-open) {
+  position: relative;
+  z-index: 8;
+}
+
+.assis-products-container--carousel .assis-products-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.assis-products-container--carousel .assis-products-track {
+  flex-direction: row;
+  align-items: stretch;
+  gap: 10px;
+  width: max-content;
+  padding: 4px 4px 10px 4px;
+}
+
+.assis-products-container--carousel .assis-product-card-slot {
+  flex: 0 0 clamp(156px, calc((100cqi - 30px) / 4), 210px);
+  width: clamp(156px, calc((100cqi - 30px) / 4), 210px);
+  min-width: clamp(156px, calc((100cqi - 30px) / 4), 210px);
+  max-width: clamp(156px, calc((100cqi - 30px) / 4), 210px);
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  scroll-snap-align: start;
+}
+
+.assis-products-container:not(.assis-products-container--carousel) .assis-product-card-slot {
+  width: min(210px, 100%);
+  padding-bottom: 10px;
+}
+
+.assis-products-container--carousel .assis-products-carousel-arrow {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: #1d6fee;
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(29, 111, 238, 0.32);
+}
+
+.assis-products-container--carousel .assis-products-carousel-arrow:hover:not(:disabled) {
+  background: #1557c0;
+  transform: translateY(-50%) scale(1.04);
+}
+
+.assis-products-container--carousel .assis-products-carousel-arrow:disabled {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.assis-products-carousel-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.92);
+  color: #111827;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.assis-products-carousel-arrow:hover:not(:disabled) {
+  background: #ffffff;
+  transform: translateY(-50%) scale(1.04);
+}
+
+.assis-products-carousel-arrow:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.assis-products-carousel-arrow--prev {
+  left: 2px;
+  right: auto;
+}
+
+.assis-products-carousel-arrow--next {
+  right: 2px;
+  left: auto;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: auto;
+  flex: 1 1 auto;
+  min-height: 100%;
+  padding: 0;
+  box-sizing: border-box;
+  border-radius: 12px;
+  background: #ffffff;
+  border: none;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.05), 0 8px 18px rgba(15, 23, 42, 0.1);
+  overflow: hidden;
+  cursor: pointer;
+  line-height: normal;
+  transition: translate 0.3s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.3s ease;
+  -webkit-tap-highlight-color: transparent;
+  tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  outline: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  @media (prefers-reduced-motion: no-preference) {
+    .assis-plugin-root .assis-product-card.assis-lh-tile-card:hover,
+    .assis-plugin-root .assis-lh-coupon-card:hover,
+    .assis-contact-submission-card:hover {
+      translate: 0 -2px;
+      box-shadow: 0 0 0 1px rgba(29, 111, 238, 0.14), 0 14px 28px rgba(15, 23, 42, 0.14);
+    }
+  }
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-media {
+  position: relative;
+  flex: 0 0 auto;
+  width: 100%;
+  height: 108px;
+  padding: 8px;
+  margin: 0;
+  border: none;
+  border-radius: 12px 12px 0 0;
+  background: #f3f1ec;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-media--gallery {
+  touch-action: pan-y;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-media-nav {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #64748b;
+  cursor: pointer;
+  transform: translateY(-50%);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-media-nav svg {
+  width: 12px;
+  height: 12px;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-media-nav--prev {
+  inset-inline-start: 4px;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-media-nav--next {
+  inset-inline-end: 4px;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-media-nav:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-media-dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 4px;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  gap: 3px;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-media-dot {
+  width: 4px;
+  height: 4px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.22);
+  cursor: pointer;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-media-dot.is-active {
+  background: #1d6fee;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-media.assis-product-image-wrapper--empty {
+  background: linear-gradient(135deg, #f3f4f6, #e5e7eb);
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-media img,
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-media .assis-product-image {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+  border: none;
+  border-radius: 4px;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .assis-product-image-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-oos-badge {
+  position: absolute;
+  top: 6px;
+  inset-inline-start: 6px;
+  z-index: 1;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 999px;
+  background: #e8e8e8c4;
+  color: #6b6b6b;
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0;
+  white-space: nowrap;
+  box-shadow: none;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-preorder-badge {
+  background: rgba(29, 111, 238, 0.14);
+  color: #1d6fee;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-media-badges-left {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  right: auto;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  max-width: calc(100% - 16px);
+  pointer-events: none;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-sale-badge,
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-club-badge {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 3px 7px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-sale-badge {
+  /* Soft brand blue - sale cue without heavy black; club stays solid blue. */
+  background: rgba(29, 111, 238, 0.12);
+  color: #1d6fee;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-club-badge {
+  /* Same mirror sheen as מעבר לתשלום / add-to-cart */
+  background-color: #1d6fee;
+  background-image: linear-gradient(110deg, #1557c0 0%, #1d6fee 42%, #1d6fee 47%, rgba(255, 255, 255, 0.55) 50%, #1d6fee 53%, #1d6fee 58%, #134bab 100%);
+  background-size: 220% 100%;
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 4px 10px rgba(29, 111, 238, 0.32);
+  animation: assis-product-add-sheen 3.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-club-badge {
+    animation: none;
+  }
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 8px 8px 10px;
+  background: #ffffff;
+  overflow: visible;
+  text-align: center;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card[dir="rtl"] .lh-info,
+.assis-plugin-root .assis-product-card.assis-lh-tile-card[dir="ltr"] .lh-info {
+  text-align: center;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-info > * {
+  max-width: 100%;
+  margin: 0 !important;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-title,
+.assis-plugin-root .message-bubble .assis-product-card.assis-lh-tile-card .lh-title {
+  flex: 0 0 auto;
+  color: #111827 !important;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  text-decoration: none;
+  letter-spacing: 0.02em;
+  width: 100%;
+  height: calc(1.35em * 2);
+  min-height: calc(1.35em * 2);
+  max-height: calc(1.35em * 2);
+  line-height: 1.35;
+  overflow: hidden;
+  padding-bottom: 0;
+  text-align: center !important;
+  display: block;
+  word-break: break-word;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card:hover .lh-title {
+  color: #1d6fee !important;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-desc {
+  flex: 0 0 auto;
+  min-width: 0;
+  width: 100%;
+  height: calc(1.35em * 2);
+  min-height: calc(1.35em * 2);
+  max-height: calc(1.35em * 2);
+  padding: 0 !important;
+  margin: 0 !important;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: #8b93a1;
+  overflow: hidden;
+  text-align: center !important;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-options {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0;
+  width: 100%;
+  height: 28px;
+  min-height: 28px;
+  max-height: 28px;
+  flex: 0 0 28px;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-foot {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 6px;
+  width: 100%;
+  height: auto;
+  min-height: min-content;
+  margin-top: 2px !important;
+  padding-top: 0;
+  overflow: visible;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-rating {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  height: 16px;
+  min-height: 16px;
+  flex: 0 0 16px;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-rating-stars {
+  display: inline-flex;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-rating-star {
+  position: relative;
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-rating-stars svg {
+  position: absolute;
+  inset: 0;
+  width: 10px;
+  height: 10px;
+  fill: #e7e1d6;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-rating-stars svg.is-on {
+  fill: #e0a106;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-rating-score {
+  color: #0f172a;
+  font-weight: 650;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-rating-count {
+  color: #94a3b8;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-price-block {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-price-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-price-row--eilat {
+  gap: 4px;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-price {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 650;
+  color: #0f172a;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-price-was {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-price-region {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 550;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-add-to-cart {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 9999px;
+  background: #1d6fee;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 550;
+  font-family: inherit;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: none;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-add-to-cart:hover:not(:disabled) {
+  background: #1557c0;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-add-to-cart:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-add-to-cart[data-added="true"] {
+  background: rgba(29, 111, 238, 0.1);
+  color: #1d6fee;
+  opacity: 1;
+  pointer-events: none;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-add-to-cart svg {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  flex: 0 0 auto;
+  gap: 6px;
+  width: 100%;
+  margin-top: auto;
+  overflow: visible;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card:has(.lh-variant-select-wrap.is-open) {
+  overflow: visible;
+  z-index: 5;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-variant-select-wrap {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  min-width: 0;
+  /* Keep closed height fixed so opening the menu does not grow lh-actions upward
+     (margin-top:auto would otherwise push the list into the card body). */
+  flex: 0 0 26px;
+  height: 26px;
+  min-height: 26px;
+  max-height: 26px;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-variant-select-wrap.is-open {
+  z-index: 40;
+  overflow: visible;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-variant-select-wrap--empty {
+  pointer-events: none;
+}
+
+/* Absolute above the trigger - overlays the card body, never grows lh-actions. */
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-card-option-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: auto;
+  bottom: calc(100% + 4px);
+  z-index: 50;
+  width: 100%;
+  max-height: 168px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+  box-sizing: border-box;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-card-option-menu .lh-option-menu-item {
+  min-height: 28px;
+  padding: 6px 8px;
+  font-size: 10px;
+  border-radius: 8px;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-price-was {
+  font-size: 10px;
+  font-weight: 500;
+  color: #9aa1ad;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  white-space: nowrap;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-option-group {
+  width: 100%;
+  min-height: 28px;
+  height: 28px;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-option-group--spacer {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-option-dropdown {
+  position: relative;
+  width: 100%;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-option-select {
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 26px;
+  min-height: 26px;
+  max-height: 26px;
+  margin: 0;
+  padding: 0 24px 0 10px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 999px;
+  background-color: #ffffff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 10px;
+  color: #374151;
+  font-size: 10px;
+  font-weight: 500;
+  font-family: inherit;
+  line-height: 1;
+  cursor: pointer;
+  text-align: center;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-option-select[dir="rtl"] {
+  padding: 0 10px 0 24px;
+  background-position: left 10px center;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-option-select[aria-expanded="true"] {
+  border-color: #1d6fee;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-option-select-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* High enough to win over the chat shell when portaled; host sites often use huge z-index. */
+.assis-internal-teleport-root {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  overflow: visible;
+  z-index: 2147483000;
+  pointer-events: none;
+}
+
+.lh-option-menu-portal {
+  position: fixed;
+  z-index: 2147483646;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+  box-sizing: border-box;
+  pointer-events: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.lh-option-menu-item {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-direction: row;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: #1f2937;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  line-height: 1.2;
+  text-align: start;
+  cursor: pointer;
+}
+
+.lh-option-menu-item > span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.lh-option-menu-item[data-selected="true"] {
+  background: #1d6fee;
+  color: #ffffff;
+}
+
+.lh-option-menu-item[data-unavailable="true"] {
+  color: #c4c9d1;
+  text-decoration: line-through;
+  cursor: not-allowed;
+}
+
+.lh-option-menu-item:disabled {
+  cursor: not-allowed;
+}
+
+.lh-option-menu-check {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-price {
+  font-size: 14px;
+  color: #111827;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-status {
+  font-size: 9.5px;
+  font-weight: 550;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-status[data-kind="oos-some"] {
+  color: #d97706;
+}
+
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-status[data-kind="preorder"],
+.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-status[data-kind="preorder-some"] {
+  color: #1d6fee;
+}
+
+@media (max-width: 767px) {
+  .assis-product-card-slot,
+  .assis-products-container--carousel .assis-product-card-slot {
+    flex-basis: clamp(156px, calc((100cqi - 30px) / 4), 210px);
+    width: clamp(156px, calc((100cqi - 30px) / 4), 210px);
+    min-width: clamp(156px, calc((100cqi - 30px) / 4), 210px);
+    max-width: clamp(156px, calc((100cqi - 30px) / 4), 210px);
+  }
+
+  .assis-products-container--carousel .assis-products-viewport {
+    padding: 0 8px 0 2px;
+  }
+
+  .assis-products-container--carousel .assis-products-track {
+    gap: 10px;
+  }
+
+  .assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-media {
+    height: 100px;
+  }
+
+  .assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-info {
+    gap: 4px;
+    padding: 6px 6px 8px;
+  }
+
+  .assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-title,
+  .assis-plugin-root .message-bubble .assis-product-card.assis-lh-tile-card .lh-title {
+    font-size: 11.5px;
+    line-height: 1.35;
+    height: calc(1.35em * 2);
+    min-height: calc(1.35em * 2);
+    max-height: calc(1.35em * 2);
+  }
+
+  .assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-desc {
+    font-size: 11px;
+  }
+
+  .assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-price {
+    font-size: 13px;
+  }
+
+  .assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-add-to-cart {
+    height: 30px;
+    font-size: 12px;
+  }
+
+}
+
+.assis-discounts-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 0 6px;
+  margin-top: 4px;
+  margin-bottom: 12px;
+  box-sizing: border-box;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.assis-discounts-container .assis-lh-section-title {
+  animation: assis-agent-card-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.assis-discounts-viewport {
+  width: 100%;
+}
+
+.assis-discounts-track {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.assis-discounts-container--carousel {
+  position: relative;
+  display: block;
+}
+
+.assis-discounts-container--carousel .assis-discounts-viewport {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  scroll-snap-type: x mandatory;
+  padding: 8px 10px 16px;
+  scroll-padding-inline: 10px;
+}
+
+.assis-discounts-container--carousel .assis-discounts-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.assis-discounts-container--carousel .assis-discounts-track {
+  flex-direction: row;
+  align-items: stretch;
+  gap: 10px;
+  width: max-content;
+  padding: 0;
+}
+
+.assis-discounts-carousel-nav {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.assis-discounts-container--carousel .assis-products-carousel-arrow,
+.assis-discounts-container--carousel .assis-products-carousel-arrow--prev,
+.assis-discounts-container--carousel .assis-products-carousel-arrow--next {
+  position: static;
+  top: auto;
+  left: auto;
+  right: auto;
+  transform: none;
+}
+
+.assis-discounts-container--carousel .assis-products-carousel-arrow:hover:not(:disabled) {
+  transform: scale(1.04);
+}
+
+.assis-discounts-container--carousel .assis-lh-coupon-card,
+.assis-plugin-root .assis-discounts-container--carousel .assis-lh-coupon-card {
+  flex: 0 0 auto;
+  width: min(210px, 72vw);
+  min-width: 180px;
+  max-width: 220px;
+  margin: 0;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.assis-plugin-root .assis-lh-coupon-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  align-self: stretch;
+  height: auto;
+  gap: 5px;
+  width: min(210px, calc(100% - 8px));
+  max-width: 220px;
+  margin-block: 0;
+  margin-inline-start: 4px;
+  margin-inline-end: 0;
+  padding: 8px 9px;
+  box-sizing: border-box;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px dashed rgba(29, 111, 238, 0.28);
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.03), 0 4px 12px rgba(15, 23, 42, 0.05);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  animation: assis-agent-card-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation-delay: calc(0.05s + (var(--assis-coupon-i, 0) * 0.08s));
+  transition: translate 0.3s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.3s ease;
+}
+
+.assis-plugin-root .assis-lh-coupon-card[data-applied="true"] {
+  border-color: rgba(29, 111, 238, 0.45);
+  background: #f7faff;
+}
+
+.assis-plugin-root .assis-lh-coupon-card .lh-coupon-code-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 4px 0 9px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: rgba(29, 111, 238, 0.07);
+}
+
+.assis-plugin-root .assis-lh-coupon-card .lh-coupon-code {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  color: #1d6fee;
+  line-height: 1.2;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.assis-plugin-root .assis-lh-coupon-card--general {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 1px;
+  align-content: center;
+  padding: 10px 12px;
+  border: 1px solid rgba(29, 111, 238, 0.16);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+}
+
+.assis-plugin-root .assis-lh-coupon-card--general .lh-offer-mark {
+  grid-column: 1;
+  grid-row: 1 / span 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #1d6fee;
+  color: #ffffff;
+}
+
+.assis-plugin-root .assis-lh-coupon-card--general .lh-offer-mark svg {
+  width: 14px;
+  height: 14px;
+}
+
+.assis-plugin-root .assis-lh-coupon-card--general .lh-offer-kicker {
+  grid-column: 2;
+  grid-row: 1;
+  color: #1d6fee;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.assis-plugin-root .assis-lh-coupon-card--general .lh-coupon-code-row {
+  grid-column: 2;
+  grid-row: 2;
+  background: transparent;
+  padding: 0;
+  min-height: 0;
+  border-radius: 0;
+}
+
+.assis-plugin-root .assis-lh-coupon-card--general .lh-coupon-code.lh-coupon-title {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: #0f172a;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  line-height: 1.3;
+}
+
+.assis-plugin-root .assis-lh-coupon-card--general .lh-coupon-note {
+  grid-column: 2;
+  grid-row: 3;
+  padding: 0;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 450;
+  line-height: 1.35;
+}
+
+.assis-plugin-root .assis-lh-coupon-card .lh-coupon-copy {
+  appearance: none;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #1d6fee;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.assis-plugin-root .assis-lh-coupon-card .lh-coupon-copy:hover {
+  background: rgba(29, 111, 238, 0.12);
+}
+
+.assis-plugin-root .assis-lh-coupon-card .lh-coupon-copy[data-copied="true"] {
+  color: #0f9f6e;
+}
+
+.assis-plugin-root .assis-lh-coupon-card .lh-coupon-copy svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
+.assis-plugin-root .assis-lh-coupon-card .lh-coupon-note {
+  margin: 0;
+  padding: 0 2px;
+  font-size: 10px;
+  font-weight: 450;
+  line-height: 1.3;
+  color: #9aa1ad;
+}
+
+.assis-plugin-root .assis-lh-coupon-card[dir="rtl"] .lh-coupon-note {
+  text-align: right;
+}
+
+.assis-plugin-root .assis-lh-coupon-card[dir="ltr"] .lh-coupon-note {
+  text-align: left;
+}
+
+.assis-plugin-root .assis-lh-coupon-card--general .lh-coupon-note {
+  padding: 0;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 450;
+  line-height: 1.35;
+}
+
+.assis-plugin-root .assis-lh-coupon-card .lh-coupon-apply,
+.assis-plugin-root .assis-lh-coupon-card button.lh-coupon-apply {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-top: auto;
+  width: 100%;
+  height: 26px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 9999px;
+  background-color: #1d6fee;
+  background-image: linear-gradient(110deg, #1557c0 0%, #1d6fee 42%, #1d6fee 47%, rgba(255, 255, 255, 0.55) 50%, #1d6fee 53%, #1d6fee 58%, #134bab 100%);
+  background-size: 220% 100%;
+  color: #ffffff;
+  font-size: 10.5px;
+  font-weight: 550;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(29, 111, 238, 0.32);
+  animation: assis-product-add-sheen 3.4s ease-in-out infinite;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.assis-plugin-root .assis-lh-coupon-card .lh-coupon-apply:hover:not(:disabled):not([data-applied="true"]):not([data-inapplicable="true"]),
+.assis-plugin-root .assis-lh-coupon-card button.lh-coupon-apply:hover:not(:disabled):not([data-applied="true"]):not([data-inapplicable="true"]) {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 22px rgba(29, 111, 238, 0.4);
+}
+
+.assis-plugin-root .assis-lh-coupon-card .lh-coupon-apply:disabled,
+.assis-plugin-root .assis-lh-coupon-card button.lh-coupon-apply:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assis-plugin-root .assis-lh-coupon-card .lh-coupon-apply,
+  .assis-plugin-root .assis-lh-coupon-card button.lh-coupon-apply {
+    animation: none;
+  }
+}
+
+.assis-plugin-root .assis-lh-coupon-card .lh-coupon-apply svg,
+.assis-plugin-root .assis-lh-coupon-card button.lh-coupon-apply svg {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+}
+
+.assis-plugin-root .assis-lh-coupon-card .lh-coupon-apply[data-applied="true"],
+.assis-plugin-root .assis-lh-coupon-card button.lh-coupon-apply[data-applied="true"] {
+  background: rgba(29, 111, 238, 0.1);
+  color: #1d6fee;
+  pointer-events: none;
+}
+
+.assis-plugin-root .assis-lh-coupon-card .lh-coupon-apply[data-inapplicable="true"],
+.assis-plugin-root .assis-lh-coupon-card button.lh-coupon-apply[data-inapplicable="true"] {
+  background: #f3f1ec;
+  color: #9aa1ad;
+}
+
+@media (max-width: 767px) {
+  .assis-plugin-root .assis-lh-coupon-card {
+    width: min(210px, calc(100% - 8px));
+    max-width: 220px;
+  }
+
+  .assis-plugin-root .assis-lh-coupon-card .lh-coupon-apply,
+  .assis-plugin-root .assis-lh-coupon-card button.lh-coupon-apply {
+    height: 30px;
+    font-size: 11.5px;
+  }
+
+  .assis-plugin-root .assis-discounts-container--carousel .assis-lh-coupon-card {
+    width: min(210px, 72vw);
+    min-width: 180px;
+    max-width: 220px;
+  }
+}
+
+.sign-in-link {
+  color: #3b82f6;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+
+  input::placeholder,
+  textarea::placeholder,
+  select::placeholder {
+    font-size: 11px !important;
+  }
+
+  /* iOS Safari zoom-prevention: some fields override with 11px !important */
+  .chat-input,
+  .contact-input,
+  .whatsapp-input {
+    font-size: 16px !important;
+  }
+
+  .assis-home-input,
+  .chat-container.assis-chat-v2 .chat-input {
+    font-size: 16px !important;
+    line-height: 20px !important;
+    -webkit-text-size-adjust: 100% !important;
+  }
+
+  .assis-home-input::placeholder,
+  .chat-container.assis-chat-v2 .chat-input::placeholder {
+    font-size: 16px !important;
+  }
+
+  .chat-input::placeholder,
+  .contact-input::placeholder,
+  .whatsapp-input::placeholder {
+    font-size: 11px !important;
+  }
+
+  /* Beat `.ai-whatsapp-input { font-size: 11px !important; }` via higher specificity */
+  .ai-whatsapp-input-field .ai-whatsapp-input,
+  .ai-whatsapp-input-field--rtl .ai-whatsapp-input,
+  input.ai-whatsapp-input {
+    font-size: 16px !important;
+    height: 34px;
+  }
+
+  .ai-whatsapp-input-field .ai-phone-prefix-trigger,
+  .ai-whatsapp-input-field--rtl .ai-phone-prefix-trigger,
+  button.ai-phone-prefix-trigger {
+    font-size: 16px !important;
+    height: 34px;
+    min-width: 58px;
+    padding: 4px 6px 4px 8px;
+    line-height: 35px;
+  }
+
+  .ai-whatsapp-input-field .ai-phone-prefix-trigger .ai-phone-prefix-code,
+  .ai-whatsapp-input-field--rtl .ai-phone-prefix-trigger .ai-phone-prefix-code,
+  button.ai-phone-prefix-trigger .ai-phone-prefix-code {
+    font-size: 16px !important;
+  }
+
+  .ai-whatsapp-input-field .ai-phone-prefix-chevron,
+  .ai-whatsapp-input-field--rtl .ai-phone-prefix-chevron {
+    width: 12px;
+    height: 12px;
+  }
+
+  .ai-whatsapp-send-btn {
+    height: 34px !important;
+  }
+
+  .ai-whatsapp-input-field .ai-email-contact-input,
+  .ai-whatsapp-input-field--rtl .ai-email-contact-input,
+  input.ai-email-contact-input {
+    font-size: 16px !important;
+    height: 34px;
+  }
+
+  .ai-whatsapp-input-field .ai-email-contact-input::placeholder,
+  .ai-whatsapp-input-field--rtl .ai-email-contact-input::placeholder,
+  input.ai-email-contact-input::placeholder {
+    font-size: 11px !important;
+  }
+
+  .ai-email-send-btn {
+    height: 34px !important;
+  }
+
+  .ai-whatsapp-input-field .ai-whatsapp-input::placeholder,
+  .ai-whatsapp-input-field--rtl .ai-whatsapp-input::placeholder,
+  input.ai-whatsapp-input::placeholder {
+    font-size: 11px !important;
+  }
+
+  .ai-whatsapp-input {
+    line-height: 35px;
+  }
+
+  /* Hide emoji (smiley) button on mobile */
+  .emoji-picker,
+  .emoji-btn {
+    display: none !important;
+  }
+
+  .ai-whatsapp-input {
+    width: 182px !important;
+  }
+}
+
+.header-logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 100%;
+  overflow: hidden;
+  flex-shrink: 0;
+  object-fit: cover;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+
+.header-connected {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #22c55e;
+}
+
+.connected-pill {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #22c55e;
+}
+
+.connected-text {
+  font-size: 10px;
+  font-weight: 500;
+}
+
+
+.ai-human-contact-sheet {
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border-top: 1px solid #e8edf3;
+}
+
+.ai-human-contact-sheet-body {
+  overflow: hidden;
+  max-height: 360px;
+  opacity: 1;
+  transform: translateY(0);
+  transition: max-height 260ms ease, opacity 200ms ease, transform 260ms ease;
+  will-change: max-height, opacity, transform;
+}
+
+.ai-human-contact-sheet-body--prefix-open {
+  position: relative;
+  z-index: 3;
+  overflow: visible;
+}
+
+.ai-human-contact-sheet--collapsed .ai-human-contact-sheet-body {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+}
+
+.ai-human-contact-sheet--collapsed .ai-contact-sheet-handle {
+  padding-bottom: 10px;
+}
+
+.ai-human-contact-sheet--collapsed {
+  border-top: 1px solid transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-human-contact-sheet-body {
+    transition: none;
+    transform: none;
+  }
+}
+
+.ai-contact-sheet-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding-top: 8px;
+  padding-bottom: 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.ai-contact-sheet-handle:hover .ai-contact-sheet-handle-bar {
+  background: #d1d2d5;
+}
+
+.ai-contact-sheet-handle-bar {
+  display: block;
+  width: 32px;
+  height: 4px;
+  border-radius: 9999px;
+  background: #e5e7eb;
+  transition: background 0.2s ease;
+}
+
+.ai-contact-channel-buttons {
+  display: flex;
+  gap: 12px;
+  padding: 0 16px 12px 16px;
+}
+
+.ai-contact-channel-btn {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 32px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #6b7280;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: none;
+}
+
+.ai-contact-channel-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #6b7280;
+}
+
+.ai-contact-channel-icon {
+  border-radius: 9999px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ai-contact-channel-icon--whatsapp {
+  background-color: #dcfce7;
+
+  svg {
+    fill: #2ea359;
+  }
+}
+
+.ai-contact-channel-icon--email {
+  background-color: #dbeafe;
+
+  svg {
+    stroke: #2563EB;
+  }
+}
+
+
+
+.ai-contact-channel-btn--whatsapp {
+  border: 1px solid #b7e4c7;
+  
+}
+
+.ai-contact-channel-btn--whatsapp:hover {
+  background: #f7fdf9;
+  border-color: #86d8a4;
+}
+
+.ai-contact-channel-btn--email {
+  border: 1px solid #b8d4f8;
+}
+
+.ai-contact-channel-btn--email:hover {
+  background: #f5f9ff;
+  border-color: #93c5fd;
+}
+
+.ai-contact-channel-email-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #4a9ff5;
+  flex: 0 0 auto;
+}
+
+.ai-human-contact-input-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 16px 12px 16px;
+}
+
+.ai-contact-back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  align-self: center;
+  border: none;
+  background: transparent;
+  color: #d1d5db;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.ai-contact-back-btn:hover {
+  color: #9ca3af;
+}
+
+.ai-human-contact-sheet--v2 {
+  --agent-contact-control-height: 40px;
+  position: relative !important;
+  inset: auto !important;
+  z-index: auto !important;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start !important;
+  align-self: stretch;
+  gap: 5px;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  flex: 0 0 auto !important;
+  margin: 0 0 8px !important;
+  padding: 5px 10px 7px;
+  box-sizing: border-box;
+  border-radius: 14px;
+  background: #ffffff;
+  border: none;
+  border-top: none;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.06), 0 6px 16px rgba(15, 23, 42, 0.06);
+  overflow: visible;
+  animation: assis-agent-card-in 0.46s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes assis-agent-card-in {
+  from { opacity: 0; translate: 0 10px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+.ai-human-contact-sheet--v2 .ai-human-contact-sheet-body {
+  overflow: visible;
+  max-height: none;
+  opacity: 1;
+  transform: none;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 5px;
+}
+
+.ai-human-contact-sheet--v2.ai-human-contact-sheet--collapsed {
+  min-height: 22px;
+  padding: 2px 8px;
+  gap: 0;
+  margin-bottom: 8px !important;
+}
+
+.ai-human-contact-sheet--v2.ai-human-contact-sheet--collapsed .ai-human-contact-sheet-body {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+}
+
+.ai-human-contact-sheet--v2 .agent-card-minimize {
+  appearance: none;
+  position: static;
+  align-self: center;
+  width: 100%;
+  height: 18px;
+  flex: 0 0 18px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.ai-human-contact-sheet--v2 .agent-card-minimize:hover {
+  background: rgba(15, 23, 42, 0.04);
+}
+
+.ai-human-contact-sheet--v2 .agent-card-minimize-bar {
+  display: block;
+  width: 38px;
+  height: 4px;
+  border-radius: 999px;
+  background: #d5d9df;
+  transition: background 0.18s ease;
+}
+
+.ai-human-contact-sheet--v2 .agent-card-minimize:hover .agent-card-minimize-bar {
+  background: #aeb6c0;
+}
+
+.ai-human-contact-sheet--v2.ai-human-contact-sheet--collapsed .agent-card-minimize {
+  flex-direction: column;
+  gap: 5px;
+  height: 25px;
+  flex-basis: 25px;
+}
+
+.ai-human-contact-sheet--v2.ai-human-contact-sheet--collapsed .agent-card-minimize-bar {
+  width: 34px;
+  height: 3px;
+}
+
+.ai-human-contact-sheet--v2 .agent-card-minimize-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  color: #7f8996;
+  font-size: 9.5px;
+  font-weight: 550;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.ai-human-contact-sheet--v2 .agent-card-minimize-icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #1d6fee;
+}
+
+.ai-human-contact-sheet--v2 .agent-card-minimize-icons svg {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+}
+
+.ai-human-contact-sheet--v2 .agent-card-title {
+  margin: 0;
+  padding-right: 24px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: #6b7280;
+  letter-spacing: 0.01em;
+  line-height: 1.4;
+}
+
+.ai-human-contact-sheet--v2[dir="rtl"] .agent-card-title {
+  padding-right: 0;
+  padding-left: 24px;
+}
+
+.ai-human-contact-sheet--v2 .agent-card-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  justify-content: stretch;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  margin-inline: 0;
+  padding: 0;
+  border-bottom: none;
+}
+
+.ai-human-contact-sheet--v2 .agent-pill {
+  appearance: none;
+  position: relative;
+  display: flex;
+  flex: 1 1 50%;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  width: 50%;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 9px;
+  border: 1px solid #e3e7ec;
+  background: #f7f8fa;
+  color: #8b93a1;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  line-height: 1;
+  font-family: inherit;
+  box-shadow: none;
+  transition: color 0.18s ease, background 0.18s ease;
+}
+
+.ai-human-contact-sheet--v2 .agent-pill:only-child {
+  width: 100%;
+  flex-basis: 100%;
+}
+
+.ai-human-contact-sheet--v2 .agent-pill:hover {
+  color: #1d6fee;
+  border-color: rgba(29, 111, 238, 0.3);
+  background: rgba(29, 111, 238, 0.06);
+}
+
+.ai-human-contact-sheet--v2 .agent-pill[data-active="true"] {
+  color: #1d6fee;
+  border-color: rgba(29, 111, 238, 0.5);
+  background: rgba(29, 111, 238, 0.09);
+  box-shadow: 0 1px 3px rgba(29, 111, 238, 0.1);
+}
+
+.ai-human-contact-sheet--v2 .agent-pill svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.ai-human-contact-sheet--v2 .ai-human-contact-input-panel,
+.ai-human-contact-sheet--v2 .agent-card-form-wrap {
+  padding: 0;
+  gap: 0;
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+}
+
+.ai-human-contact-sheet--v2 .ai-whatsapp-input-container,
+.ai-human-contact-sheet--v2 .ai-whatsapp-input-container--footer {
+  margin: 0;
+  width: 100%;
+}
+
+.ai-human-contact-sheet--v2 .ai-whatsapp-input-field,
+.ai-human-contact-sheet--v2 .ai-phone-input-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--agent-contact-control-height);
+  max-width: none;
+  overflow: visible;
+  flex-wrap: nowrap;
+  box-shadow: none;
+}
+
+.ai-human-contact-sheet--v2 .ai-whatsapp-input-field {
+  width: 100%;
+}
+
+.ai-human-contact-sheet--v2 .ai-phone-input-group {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ai-human-contact-sheet--v2 .ai-phone-input-group--valid,
+.ai-human-contact-sheet--v2 .ai-phone-input-group--invalid {
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.ai-human-contact-sheet--v2 .ai-phone-prefix-select {
+  flex-shrink: 0;
+}
+
+.ai-human-contact-sheet--v2 .ai-phone-prefix-trigger {
+  height: var(--agent-contact-control-height);
+  min-width: 78px;
+  max-width: 112px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 9999px;
+  background: #f6f5f2;
+  box-shadow: none;
+  font-size: 11px;
+  color: #3a3f46;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.ai-phone-prefix-flag-img {
+  width: 16px;
+  height: 12px;
+  flex: 0 0 16px;
+  object-fit: cover;
+  border-radius: 2px;
+}
+
+.ai-human-contact-sheet--v2 .ai-phone-prefix-trigger:hover,
+.ai-human-contact-sheet--v2 .ai-phone-prefix-trigger[aria-expanded="true"],
+.ai-human-contact-sheet--v2 .ai-phone-input-group--valid .ai-phone-prefix-trigger,
+.ai-human-contact-sheet--v2 .ai-phone-input-group--invalid .ai-phone-prefix-trigger {
+  border: none;
+  box-shadow: none;
+  background: #f3f1ec;
+}
+
+.ai-human-contact-sheet--v2 .ai-phone-prefix-trigger[aria-expanded="true"] {
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1.5px rgba(29, 111, 238, 0.35);
+}
+
+.ai-human-contact-sheet--v2 .ai-whatsapp-input,
+.ai-human-contact-sheet--v2 .ai-email-contact-input,
+.ai-human-contact-sheet--v2 input.ai-whatsapp-input,
+.ai-human-contact-sheet--v2 input.ai-email-contact-input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  height: var(--agent-contact-control-height);
+  padding: 0 10px;
+  border-radius: 9999px;
+  border: none;
+  background: #f6f5f2;
+  background-color: #f6f5f2;
+  font-size: 11.5px !important;
+  line-height: 15px;
+  color: #3a3f46;
+  outline: none;
+  box-shadow: none;
+}
+
+.ai-human-contact-sheet--v2 .ai-whatsapp-input::placeholder,
+.ai-human-contact-sheet--v2 .ai-email-contact-input::placeholder {
+  color: #aeb6c0;
+  font-size: 11.5px !important;
+  opacity: 1;
+  text-align: inherit;
+}
+
+.ai-human-contact-sheet--v2 .ai-whatsapp-input.ai-whatsapp-input--he-placeholder,
+.ai-human-contact-sheet--v2 input.ai-whatsapp-input.ai-whatsapp-input--he-placeholder,
+.ai-human-contact-sheet--v2 .ai-phone-input-group .ai-whatsapp-input.ai-whatsapp-input--he-placeholder {
+  direction: rtl !important;
+  text-align: right !important;
+}
+
+.ai-human-contact-sheet--v2 .ai-whatsapp-input:not(.ai-whatsapp-input--he-placeholder),
+.ai-human-contact-sheet--v2 input.ai-whatsapp-input:not(.ai-whatsapp-input--he-placeholder),
+.ai-human-contact-sheet--v2 .ai-phone-input-group .ai-whatsapp-input:not(.ai-whatsapp-input--he-placeholder) {
+  direction: ltr !important;
+  text-align: left !important;
+}
+
+.ai-human-contact-sheet--v2 .ai-email-contact-input[dir="rtl"],
+.ai-human-contact-sheet--v2 input.ai-email-contact-input[dir="rtl"] {
+  text-align: right;
+}
+
+.ai-human-contact-sheet--v2 .ai-whatsapp-input:focus,
+.ai-human-contact-sheet--v2 .ai-email-contact-input:focus {
+  background: #ffffff;
+  background-color: #ffffff;
+  border: none;
+  box-shadow: inset 0 0 0 1.5px rgba(29, 111, 238, 0.35);
+}
+
+.ai-human-contact-sheet--v2 .agent-card-submit {
+  appearance: none;
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  height: var(--agent-contact-control-height);
+  padding: 0 12px;
+  border: none;
+  border-radius: 9999px;
+  background: #1d6fee;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 550;
+  cursor: pointer;
+  font-family: inherit;
+  box-shadow: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.ai-human-contact-sheet--v2 .agent-card-submit:hover:not(:disabled) {
+  background: #1557c0;
+  box-shadow: none;
+}
+
+.ai-human-contact-sheet--v2 .agent-card-submit:active:not(:disabled) {
+  scale: 0.96;
+}
+
+.ai-human-contact-sheet--v2 .agent-card-submit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.ai-human-contact-sheet--v2 .agent-card-note {
+  margin: 1px 0 0;
+  width: 100%;
+  max-width: none;
+  font-size: 9.5px;
+  color: #b0b7c1;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+  text-align: start;
+}
+
+.ai-whatsapp-input-container {
+  margin-right: 25px;
+  margin-left: 25px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 2px;
+  margin-top: -12px;
+  margin-bottom: 15px;
+  position: relative;
+  overflow: visible;
+  z-index: 2;
+}
+
+.ai-whatsapp-input-container--footer {
+  margin: 0;
+  width: 100%;
+}
+
+.ai-email-contact-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  padding: 4px 10px;
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 11px !important;
+  color: #111827;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease-in-out;
+  outline: none;
+}
+
+.ai-email-contact-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.ai-email-contact-input.valid {
+  border-color: #22c55e;
+}
+
+.ai-email-contact-input.invalid {
+  border-color: #ef4444;
+}
+
+.ai-email-send-btn {
+  height: 28px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 10px;
+  background: #3b82f6;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  font-size: 11px;
+  cursor: pointer;
+  box-shadow: rgba(59, 130, 246, 0.35) 0px 2px 8px;
+  transition: transform 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+  flex: 0 0 auto;
+}
+
+.ai-email-send-btn:hover {
+  background: #2563eb;
+}
+
+.ai-email-send-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.ai-whatsapp-input-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 8px;
+}
+
+.ai-phone-input-group {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  direction: ltr;
+  overflow: visible;
+  height: 28px;
+
+  @media (max-width: 768px) {
+    height: 34px;
+  }
+}
+
+.ai-phone-input-group--prefix-open {
+  z-index: 301;
+}
+
+.ai-phone-prefix-select {
+  position: relative;
+  flex: 0 0 auto;
+  direction: ltr;
+  line-height: 25.6px;
+  font-size: 11px;
+
+  @media (max-width: 768px) {
+    font-size: 16px;
+    line-height: 25.6px;
+  }
+}
+
+.ai-phone-prefix-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 28px;
+  min-width: 50px;
+  padding: 0 2px 0 4px;
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-right: none;
+  border-radius: 8px 0 0 8px;
+  font-size: 11px;
+  color: #111827;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ai-phone-prefix-trigger:hover {
+  border-color: #d1d5db;
+}
+
+.ai-phone-prefix-trigger[aria-expanded="true"] {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+  z-index: 1;
+}
+
+.ai-phone-input-group--valid .ai-phone-prefix-trigger {
+  border-color: #22c55e;
+  box-shadow: none;
+}
+
+.ai-phone-input-group--valid .ai-whatsapp-input,
+.ai-phone-input-group--valid .ai-whatsapp-input:focus {
+  border-color: #22c55e;
+  box-shadow: none;
+}
+
+.ai-phone-input-group--valid {
+  border-radius: 8px;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+}
+
+.ai-phone-input-group--invalid .ai-phone-prefix-trigger {
+  border-color: #ef4444;
+  box-shadow: none;
+}
+
+.ai-phone-input-group--invalid .ai-whatsapp-input {
+  border-color: #ef4444;
+}
+
+.ai-phone-input-group--invalid {
+  border-radius: 8px;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+}
+
+.ai-phone-input-group--invalid .ai-whatsapp-input,
+.ai-phone-input-group--invalid .ai-whatsapp-input:focus {
+  box-shadow: none;
+}
+
+.ai-phone-prefix-flag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  flex: 0 0 14px;
+  font-size: 12px;
+  line-height: 1;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+}
+
+.ai-phone-prefix-trigger .ai-phone-prefix-code {
+  font-size: inherit;
+  color: #374151;
+  white-space: nowrap;
+  line-height: inherit;
+}
+
+.ai-phone-prefix-chevron {
+  opacity: 0.45;
+  flex: 0 0 auto;
+}
+
+.ai-phone-prefix-dropdown {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  width: 100%;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  max-height: 260px;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  direction: ltr;
+  text-align: left;
+  box-sizing: border-box;
+}
+
+.ai-phone-prefix-search-wrap {
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 8px;
+  border-bottom: 1px solid #e5e7eb;
+  overflow: hidden;
+}
+
+.ai-phone-prefix-search {
+  width: 100%;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #111827;
+  outline: none;
+  box-sizing: border-box;
+  background: #ffffff;
+}
+
+.ai-phone-prefix-search::placeholder {
+  color: #9ca3af;
+}
+
+.ai-phone-prefix-search:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.ai-phone-prefix-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.ai-phone-prefix-empty {
+  padding: 12px 10px;
+  font-size: 11px;
+  color: #9ca3af;
+  text-align: center;
+}
+
+.ai-phone-prefix-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  font-size: 11px;
+  color: #111827;
+  cursor: pointer;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.ai-phone-prefix-option:hover,
+.ai-phone-prefix-option.selected {
+  background: #f3f4f6;
+}
+
+.ai-phone-prefix-option .ai-phone-prefix-flag {
+  width: 20px;
+  flex: 0 0 20px;
+}
+
+.ai-phone-prefix-option .ai-phone-prefix-flag-img {
+  width: 16px;
+  height: 12px;
+  flex: 0 0 16px;
+  object-fit: cover;
+  border-radius: 2px;
+}
+
+.ai-phone-prefix-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+.ai-phone-input-group .ai-whatsapp-input {
+  border-radius: 0 8px 8px 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  direction: ltr;
+  text-align: left;
+}
+
+.ai-whatsapp-input {
+  width: 150px;
+  max-width: 100%;
+  height: 28px;
+  padding: 4px 10px;
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  /* border-gray-200 */
+  border-radius: 8px;
+  font-size: 11px !important;
+  /* text-xs */
+  color: #111827;
+  /* line-height: 1; */
+  /* text-gray-900 */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  /* shadow-sm */
+  transition: all 0.2s ease-in-out;
+  outline: none;
+}
+
+.ai-whatsapp-send-btn {
+  height: 28px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 10px;
+  background: #25d366;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  font-size: 11px;
+  cursor: pointer;
+  box-shadow: rgba(37, 211, 102, 0.35) 0px 2px 8px;
+  transition: transform 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+  flex: 0 0 auto;
+  transform: scale(1);
+}
+
+.ai-whatsapp-send-btn:hover {
+  transform: scale(1.04);
+}
+
+.ai-whatsapp-send-btn:active {
+  transform: scale(1);
+}
+
+.ai-whatsapp-send-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.ai-whatsapp-send-icon {
+  flex: 0 0 auto;
+}
+
+.ai-whatsapp-input-field--rtl {
+  direction: ltr;
+  flex-direction: row;
+}
+
+.ai-whatsapp-input-field--rtl > .ai-whatsapp-send-btn,
+.ai-whatsapp-input-field--rtl > .ai-email-send-btn,
+.ai-whatsapp-input-field--rtl > .agent-card-submit {
+  order: -1;
+}
+
+/* Placeholder */
+.ai-whatsapp-input::placeholder {
+  color: #9ca3af;
+  /* placeholder-gray-400 */
+}
+
+/* Focus */
+.ai-whatsapp-input:focus {
+  border-color: #4ade80;
+  /* green-400 */
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+  /* ring-green-500/20 */
+}
+
+.ai-whatsapp-input.invalid:focus {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+}
+
+/* Valid state - green border (ring applied on .ai-phone-input-group--valid) */
+.ai-whatsapp-input.valid {
+  border-color: #22c55e;
+}
+
+.ai-whatsapp-input.valid:focus {
+  border-color: #22c55e;
+}
+
+.ai-human-contact-sheet--v2 .ai-phone-input-group .ai-whatsapp-input,
+.ai-human-contact-sheet--v2 .ai-phone-input-group--valid .ai-whatsapp-input,
+.ai-human-contact-sheet--v2 .ai-phone-input-group--invalid .ai-whatsapp-input,
+.ai-human-contact-sheet--v2 .ai-whatsapp-input.valid,
+.ai-human-contact-sheet--v2 .ai-whatsapp-input.invalid,
+.ai-human-contact-sheet--v2 .ai-email-contact-input.valid,
+.ai-human-contact-sheet--v2 .ai-email-contact-input.invalid,
+.ai-human-contact-sheet--v2 .ai-whatsapp-input,
+.ai-human-contact-sheet--v2 .ai-email-contact-input {
+  background: #f3f1ec;
+  background-color: #f3f1ec;
+  border: none;
+  box-shadow: none;
+}
+
+.ai-human-contact-sheet--v2 .ai-phone-input-group .ai-whatsapp-input:focus,
+.ai-human-contact-sheet--v2 .ai-phone-input-group--valid .ai-whatsapp-input:focus,
+.ai-human-contact-sheet--v2 .ai-phone-input-group--invalid .ai-whatsapp-input:focus,
+.ai-human-contact-sheet--v2 .ai-whatsapp-input.valid:focus,
+.ai-human-contact-sheet--v2 .ai-whatsapp-input.invalid:focus,
+.ai-human-contact-sheet--v2 .ai-email-contact-input.valid:focus,
+.ai-human-contact-sheet--v2 .ai-email-contact-input.invalid:focus,
+.ai-human-contact-sheet--v2 .ai-whatsapp-input:focus,
+.ai-human-contact-sheet--v2 .ai-email-contact-input:focus {
+  background: #ffffff;
+  background-color: #ffffff;
+  border: none;
+  box-shadow: inset 0 0 0 1.5px rgba(29, 111, 238, 0.35);
+}
+
+.ai-whatsapp-input-btn,
+.ai-whatsapp-input-btn--inside {
+  display: none;
+}
+
+.ai-welcome-message {
+  margin: 0 1.5rem 1rem 1.5rem;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  background-color: #eff6ff80;
+  border: 1px solid #dbeafe80;
+  border-radius: 9999px;
+  max-width: 90%;
+
+  p {
+    font-size: 12px;
+    font-weight: 500;
+    color: #4b5563;
+    text-align: center;
+    font-weight: 400;
+  }
+}
+
+.ai-today-message {
+  margin: 0 1.5rem 0.1rem 1.5rem;
+  padding-bottom: 0.5rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  max-width: 90%;
+
+  p {
+    font-size: 10px;
+    font-weight: 700;
+    color: #4b5563;
+    text-align: center;
+  }
+}
+
+.ai-message-timestamp {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  font-size: 8px;
+  margin-top: 5px;
+  color: #9ca3af;
+  text-align: right;
+}
+
+.ai-message-timestamp__client {
+  color: #fff
+}
+
+.ai-sender-icon {
+  height: 0.75rem;
+  width: 0.75rem;
+}
+
+.ai-sender-icon svg {
+  opacity: 0.6;
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.ai-agent-info {
+  display: flex;
+  align-self: flex-end;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+}
+
+.flex {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.flex.gap-2.chat-input-multiline {
+  align-items: flex-end;
+}
+
+.gap-2 {
+  gap: 0.5rem;
+}
+
+.flex-rtl {
+  flex-direction: row-reverse;
+}
+
+.loading-message-bubble {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 8px;
+  margin-bottom: 8px;
+  padding: 0;
+}
+
+.loading-bubble {
+  border: 1px solid rgb(235, 235, 240);
+  box-shadow: rgba(0, 0, 0, 0.03) 0px 1px 2px, rgba(0, 0, 0, 0.05) 0px 1px 4px;
+  border-radius: 1rem;
+  border-bottom-left-radius: calc(0.5rem - 2px);
+  padding: 12px 16px;
+  width: fit-content;
+  margin-left: 8px;
+}
+
+.loading-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0;
+}
+
+.loading-dots .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #6b7280;
+  animation: dot-bounce 1.4s infinite ease-in-out both;
+}
+
+.loading-dots .dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.loading-dots .dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+.loading-dots .dot:nth-child(3) {
+  animation-delay: 0s;
+}
+
+@keyframes dot-bounce {
+  0%, 80%, 100% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+}
+
+/* Chat Closed Message Styles */
+.chat-closed-message-bubble {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 20px 12px;
+  padding: 0;
+}
+
+.chat-end-separator {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  max-width: 300px;
+  margin-bottom: 16px;
+  gap: 12px;
+}
+
+.separator-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, transparent, #e5e7eb, transparent);
+  position: relative;
+}
+
+.separator-line::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(to right, transparent, #d1d5db);
+}
+
+.separator-line::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(to left, transparent, #d1d5db);
+}
+
+.separator-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+  color: #6b7280;
+  flex-shrink: 0;
+  padding: 4px;
+}
+
+.chat-closed-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 20px 24px;
+  max-width: 360px;
+  width: 100%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
+}
+
+.chat-closed-content:hover {
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+
+.chat-closed-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  color: #3b82f6;
+  margin-bottom: 12px;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(0.98);
+  }
+}
+
+.chat-closed-text {
+  text-align: center;
+  width: 100%;
+}
+
+.chat-closed-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  margin: 0 0 8px 0;
+  letter-spacing: 0.3px;
+}
+
+.chat-closed-reason {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 0;
+  line-height: 1.5;
+  font-style: italic;
+  white-space: pre-wrap;
+}
+
+.chat-closed-action-btn {
+  margin-top: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  color: #111827;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.chat-closed-action-btn:hover {
+  background: #f9fafb;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+
+.chat-closed-action-btn:active {
+  transform: translateY(0);
+}
+
+.chat-closed-action-btn:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+.chat-header-rtl {
+  direction: rtl;
+}
+
+.header-content-rtl {
+  direction: rtl;
+}
+
+.items-end {
+  align-items: flex-end;
+}
+
+.items-start {
+  align-items: flex-start;
+}
+
+/* Dark mode support for chat closed message */
+@media (prefers-color-scheme: dark) {
+  .separator-line {
+    background: linear-gradient(to right, transparent, #374151, transparent);
+  }
+
+  .separator-line::before {
+    background: linear-gradient(to right, transparent, #4b5563);
+  }
+
+  .separator-line::after {
+    background: linear-gradient(to left, transparent, #4b5563);
+  }
+
+  .separator-icon {
+    background: linear-gradient(135deg, #374151 0%, #4b5563 100%);
+    color: #9ca3af;
+  }
+
+  .chat-closed-content {
+    background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+    border-color: #374151;
+  }
+
+  .chat-closed-icon {
+    background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+    color: #60a5fa;
+  }
+
+  .chat-closed-title {
+    color: #f3f4f6;
+  }
+
+  .chat-closed-reason {
+    color: #9ca3af;
+  }
+
+  .chat-closed-action-btn {
+    background: #111827;
+    border-color: #374151;
+    color: #f3f4f6;
+  }
+
+  .chat-closed-action-btn:hover {
+    background: #0b1220;
+  }
+}
+
+/* iOS zooms the page if a focused field is under 16px - keep this last so it beats other !important sizes */
+@media (max-width: 768px) {
+  .assis-plugin-root input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+  .assis-plugin-root textarea,
+  .assis-plugin-root select,
+  .chat-container input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+  .chat-container textarea,
+  .assis-home-input,
+  .chat-input,
+  textarea.chat-input,
+  .contact-input,
+  .whatsapp-input,
+  .ai-whatsapp-input,
+  .ai-email-contact-input,
+  .ai-phone-prefix-search,
+  .guest-name-input,
+  .email-input {
+    font-size: 16px !important;
+    -webkit-text-size-adjust: 100% !important;
+  }
+
+  .chat-container.assis-chat-v2 .chat-input,
+  textarea.chat-input {
+    font-size: 16px !important;
+    line-height: 20px !important;
+    min-height: 20px !important;
+    max-height: 88px !important;
+    padding: 0 !important;
+    -webkit-text-size-adjust: 100% !important;
+  }
+
+  /* Accessible contact sheet tap targets on mobile */
+  .ai-human-contact-sheet--v2 {
+    padding: 5px 10px 8px !important;
+    margin: 0 0 8px !important;
+    gap: 6px;
+    border-radius: 14px;
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.05), 0 4px 10px rgba(15, 23, 42, 0.05);
+  }
+
+  .ai-human-contact-sheet--v2 .ai-human-contact-sheet-body,
+  .ai-human-contact-sheet--v2 .ai-whatsapp-input-field,
+  .ai-human-contact-sheet--v2 .ai-phone-input-group {
+    gap: 6px;
+  }
+
+  .ai-human-contact-sheet--v2 .ai-whatsapp-input-field,
+  .ai-human-contact-sheet--v2 .ai-phone-input-group {
+    height: 40px !important;
+  }
+
+  .ai-human-contact-sheet--v2 .ai-phone-prefix-select {
+    font-size: 13px !important;
+    line-height: 1 !important;
+  }
+
+  .ai-human-contact-sheet--v2 .agent-card-minimize {
+    width: 100%;
+    height: 18px;
+    flex-basis: 18px;
+  }
+
+  .ai-human-contact-sheet--v2 .agent-card-actions {
+    gap: 6px;
+  }
+
+  .ai-human-contact-sheet--v2 .agent-pill {
+    height: 38px;
+    padding: 0 11px;
+    font-size: 12px;
+    gap: 6px;
+  }
+
+  .ai-human-contact-sheet--v2 .agent-pill svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .ai-human-contact-sheet--v2.ai-human-contact-sheet--collapsed {
+    min-height: 22px;
+    padding: 2px 8px !important;
+  }
+
+  .ai-human-contact-sheet--v2 .ai-whatsapp-input-field .ai-whatsapp-input,
+  .ai-human-contact-sheet--v2 .ai-whatsapp-input-field--rtl .ai-whatsapp-input,
+  .ai-human-contact-sheet--v2 input.ai-whatsapp-input,
+  .ai-human-contact-sheet--v2 .ai-whatsapp-input,
+  .ai-human-contact-sheet--v2 .ai-whatsapp-input-field .ai-email-contact-input,
+  .ai-human-contact-sheet--v2 .ai-whatsapp-input-field--rtl .ai-email-contact-input,
+  .ai-human-contact-sheet--v2 input.ai-email-contact-input {
+    width: auto !important;
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 40px !important;
+    font-size: 16px !important;
+    line-height: 22px !important;
+    padding: 0 12px;
+    -webkit-text-size-adjust: 100% !important;
+  }
+
+  .ai-human-contact-sheet--v2 .ai-whatsapp-input::placeholder,
+  .ai-human-contact-sheet--v2 .ai-email-contact-input::placeholder,
+  .ai-human-contact-sheet--v2 input.ai-whatsapp-input::placeholder,
+  .ai-human-contact-sheet--v2 input.ai-email-contact-input::placeholder {
+    font-size: 14px !important;
+  }
+
+  .ai-human-contact-sheet--v2 .ai-whatsapp-input-field .ai-phone-prefix-trigger,
+  .ai-human-contact-sheet--v2 .ai-whatsapp-input-field--rtl .ai-phone-prefix-trigger,
+  .ai-human-contact-sheet--v2 button.ai-phone-prefix-trigger,
+  .ai-human-contact-sheet--v2 .ai-phone-prefix-trigger {
+    height: 40px !important;
+    min-width: 78px;
+    max-width: 96px;
+    padding: 0 8px 0 10px !important;
+    font-size: 13px !important;
+    line-height: 1 !important;
+  }
+
+  .ai-human-contact-sheet--v2 .ai-whatsapp-input-field .ai-phone-prefix-trigger .ai-phone-prefix-code,
+  .ai-human-contact-sheet--v2 .ai-whatsapp-input-field--rtl .ai-phone-prefix-trigger .ai-phone-prefix-code,
+  .ai-human-contact-sheet--v2 button.ai-phone-prefix-trigger .ai-phone-prefix-code {
+    font-size: 13px !important;
+  }
+
+  .ai-human-contact-sheet--v2 .ai-whatsapp-input-field .ai-phone-prefix-chevron,
+  .ai-human-contact-sheet--v2 .ai-whatsapp-input-field--rtl .ai-phone-prefix-chevron {
+    width: 11px;
+    height: 11px;
+  }
+
+  .ai-human-contact-sheet--v2 .agent-card-submit {
+    height: 40px !important;
+    min-width: 56px;
+    padding: 0 14px;
+    font-size: 13px !important;
+    line-height: 1;
+  }
+
+  .ai-human-contact-sheet--v2 .agent-card-note {
+    font-size: 10px;
+    line-height: 1.3;
+    margin: 0;
+  }
+}
+
+/* Match the Cursor composer: workbench text is 13px. Inputs stay 16px on phones so iOS does not zoom. */
+.assis-plugin-root {
+  font-size: 13px;
+}
+
+.chat-container.assis-chat-v2 .message-bubble,
+.chat-container.assis-chat-v2 .chat-input,
+.chat-container.assis-chat-v2 .chat-input::placeholder,
+.assis-home-input,
+.assis-home-body,
+.quick-starter-title,
+.quick-starter-sub,
+.quick-starter-intro,
+.quick-starter-intro--html,
+.quick-starter-btn,
+.quick-starter-btn__label,
+.assis-plugin-root .lh-title,
+.assis-plugin-root .lh-desc,
+.assis-plugin-root .lh-price,
+.assis-plugin-root .lh-price-region,
+.assis-plugin-root .lh-add-to-cart {
+  font-size: 13px !important;
+}
+
+@media (max-width: 767px) {
+  .chat-container.assis-chat-v2 .chat-input,
+  .chat-container.assis-chat-v2 .chat-input::placeholder,
+  .assis-home-input,
+  textarea.chat-input {
+    font-size: 16px !important;
+  }
+}
+
+/* Powered launcher is a rounded square, parked on the same corner the scaled heart used. */
+.fixed-heart-btn.plan-powered-by-assis {
+  transform: none;
+  border-radius: 16px;
+  background-color: #ffffff;
+  overflow: visible;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 8px 18px rgba(148, 163, 184, 0.22),
+    0 2px 5px rgba(148, 163, 184, 0.12);
+}
+
+.fixed-heart-btn.plan-powered-by-assis.button-small {
+  width: 46px;
+  height: 46px;
+  min-width: 46px;
+  max-width: 46px;
+  bottom: 44px;
+}
+
+.fixed-heart-btn.plan-powered-by-assis.button-small.button-right {
+  right: 44px;
+  left: auto;
+}
+
+.fixed-heart-btn.plan-powered-by-assis.button-small.button-left {
+  left: 44px;
+  right: auto;
+}
+
+.fixed-heart-btn.plan-powered-by-assis.button-medium {
+  width: 54px;
+  height: 54px;
+  min-width: 54px;
+  max-width: 54px;
+  bottom: 44px;
+}
+
+.fixed-heart-btn.plan-powered-by-assis.button-medium.button-right {
+  right: 44px;
+  left: auto;
+}
+
+.fixed-heart-btn.plan-powered-by-assis.button-medium.button-left {
+  left: 44px;
+  right: auto;
+}
+
+.fixed-heart-btn.plan-powered-by-assis.button-large {
+  width: 62px;
+  height: 62px;
+  min-width: 62px;
+  max-width: 62px;
+  bottom: 40px;
+}
+
+.fixed-heart-btn.plan-powered-by-assis.button-large.button-right {
+  right: 40px;
+  left: auto;
+}
+
+.fixed-heart-btn.plan-powered-by-assis.button-large.button-left {
+  left: 40px;
+  right: auto;
+}
+
+.fixed-heart-btn.plan-powered-by-assis .heart-image {
+  width: 72%;
+  height: 72%;
+  max-width: none;
+  max-height: none;
+  inset: 0;
+  margin: auto;
+  filter: none;
+  transform: none;
+}
+
+.heart-chat-hint {
+  position: absolute;
+  top: -5px;
+  z-index: 3;
+  width: 19px;
+  height: 19px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.22));
+  animation: assis-chat-nudge 5.6s ease-in-out infinite;
+}
+
+.heart-chat-hint__glyph {
+  position: relative;
+  width: 19px;
+  height: 19px;
+  transform: rotate(-18deg);
+  background: #3d8ef5;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='2.8 3.8 18.4 16.4'%3E%3Cpath fill='black' d='M7.2 4.4h9.6a3.8 3.8 0 0 1 3.8 3.8v5a3.8 3.8 0 0 1-3.8 3.8H13.4l-2.3 2.5a.9.9 0 0 1-1.4-.6V17H7.2a3.8 3.8 0 0 1-3.8-3.8v-5a3.8 3.8 0 0 1 3.8-3.8z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='2.8 3.8 18.4 16.4'%3E%3Cpath fill='black' d='M7.2 4.4h9.6a3.8 3.8 0 0 1 3.8 3.8v5a3.8 3.8 0 0 1-3.8 3.8H13.4l-2.3 2.5a.9.9 0 0 1-1.4-.6V17H7.2a3.8 3.8 0 0 1-3.8-3.8v-5a3.8 3.8 0 0 1 3.8-3.8z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+.heart-chat-hint__dots {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  display: flex;
+  gap: 2px;
+  transform: translate(-50%, -50%);
+}
+
+.heart-chat-hint__dots span {
+  width: 2px;
+  height: 2px;
+  border-radius: 999px;
+  background: #ffffff;
+}
+
+.fixed-heart-btn.button-right .heart-chat-hint {
+  left: -5px;
+}
+
+.fixed-heart-btn.button-left .heart-chat-hint {
+  right: -5px;
+  left: auto;
+}
+
+@keyframes assis-chat-nudge {
+  0%, 74%, 100% { transform: translate(0, 0) rotate(0deg); }
+  80% { transform: translate(-2px, -5px) rotate(-8deg); }
+  86% { transform: translate(1px, -1px) rotate(6deg); }
+  92% { transform: translate(0, 0) rotate(0deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heart-chat-hint {
+    animation: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .fixed-heart-btn.plan-powered-by-assis,
+  .fixed-heart-btn.plan-powered-by-assis.button-small,
+  .fixed-heart-btn.plan-powered-by-assis.button-medium,
+  .fixed-heart-btn.plan-powered-by-assis.button-large {
+    width: 46px;
+    height: 46px;
+    min-width: 46px;
+    max-width: 46px;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    overflow: visible;
+  }
+
+  .fixed-heart-btn.plan-powered-by-assis.button-small.button-right,
+  .fixed-heart-btn.plan-powered-by-assis.button-medium.button-right,
+  .fixed-heart-btn.plan-powered-by-assis.button-large.button-right,
+  .fixed-heart-btn.plan-powered-by-assis.button-right {
+    right: max(16px, env(safe-area-inset-right));
+    left: auto;
+  }
+
+  .fixed-heart-btn.plan-powered-by-assis.button-small.button-left,
+  .fixed-heart-btn.plan-powered-by-assis.button-medium.button-left,
+  .fixed-heart-btn.plan-powered-by-assis.button-large.button-left,
+  .fixed-heart-btn.plan-powered-by-assis.button-left {
+    left: max(16px, env(safe-area-inset-left));
+    right: auto;
+  }
+}
+/* } */
+</style>
