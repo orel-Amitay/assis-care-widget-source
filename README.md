@@ -4,6 +4,8 @@ Human-readable Vue 3 source for the storefront chat bundled in the WordPress plu
 
 This repository exists so the minified plugin assets stay reviewable under the WordPress.org Plugin Directory guidelines (Guideline 4 — code must be mostly human readable).
 
+The same source is also shipped inside the plugin zip under `src/`.
+
 ## License
 
 GPLv2 or later (same as the WordPress plugin).

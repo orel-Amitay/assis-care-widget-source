@@ -7,8 +7,8 @@
   <!-- Quick actions (above the heart button) -->
   <transition name="quick-actions" appear>
     <div
-      v-if="pluginMessagesFetched && showQuickActions && !isChatOpen && loginChannels === 'ai'"
-      :class="['quick-actions', 'quick-actions--starter', `quick-${heartPosition}`, `quick-${heartSize}`, `quick-layout-${pluginBubbleLayout}`, heartPosition === 'right' ? 'items-end' : 'items-start', { 'plan-powered-by-assis': usesPoweredOpenButton }]"
+      v-if="pluginMessagesFetched && !isChatOpen && loginChannels === 'ai' && (showQuickActions || cartUpsellFromSite)"
+      :class="['quick-actions', 'quick-actions--starter', `quick-${heartPosition}`, `quick-${heartSize}`, `quick-layout-${pluginBubbleLayout}`, heartPosition === 'right' ? 'items-end' : 'items-start', { 'plan-powered-by-assis': usesPoweredOpenButton, 'quick-actions--idle': !outsideReplyChoicesActive && idleOutsideFollowup && idleOutsideFollowup.length, 'quick-actions--reply-choices': outsideReplyChoicesActive }]"
       @click.stop
     >
       <div
@@ -20,7 +20,7 @@
             class="quick-starter-close"
             type="button"
             :aria-label="language === 'he' ? 'סגירת הצעות' : 'Dismiss suggestions'"
-            @click.stop="dismissQuickActions"
+            @click.stop="dismissQuickActions()"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M18 6 6 18"></path>
@@ -29,7 +29,81 @@
           </button>
         </div>
 
-        <template v-if="shownOutsideBubbles.length">
+        <div v-if="cartUpsellFromSite" class="cart-upsell-bubble">
+          <cart-upsell-fan
+            layout="site"
+            :match-line="cartUpsellMatch"
+            :match-product="cartUpsellProductName"
+            :added-line="cartUpsellSiteAdded"
+            :added-image="cartUpsellImage"
+            :items="cartUpsellVisible"
+            :loading="cartUpsellAwaiting"
+            :dir="language === 'he' ? 'rtl' : 'ltr'"
+            :add-label="language === 'he' ? 'הוספה לסל' : 'Add to bag'"
+            :checkout-label="language === 'he' ? 'השלם רכישה' : 'Complete purchase'"
+            @add="addCartUpsellSuggestion"
+            @open="openCartUpsellFromSite"
+            @checkout="openShopifyCheckout"
+          />
+        </div>
+        <div
+          v-else-if="outsideReplyChoicesActive"
+          ref="outsideReplyRootEl"
+          class="quick-reply-outside"
+          :class="[
+            heartPosition === 'right' ? 'quick-reply-outside--dock-end' : 'quick-reply-outside--dock-start',
+            { 'quick-reply-outside--measuring': outsideReplyChipsMeasuring },
+          ]"
+        >
+          <div class="quick-starter-item quick-starter-item--float">
+            <div
+              ref="outsideReplyQuestionEl"
+              class="quick-starter-intro"
+              :dir="language === 'he' ? 'rtl' : 'ltr'"
+              style="cursor: pointer"
+              @click="onOutsideBubbleClick(outsideReplyQuestion)"
+            >
+              <div class="quick-starter-intro__copy">
+                <p class="quick-starter-title" :dir="language === 'he' ? 'rtl' : 'ltr'">{{ outsideReplyQuestionText }}</p>
+              </div>
+            </div>
+          </div>
+          <div
+            v-if="outsideReplyChoiceChips.length"
+            ref="outsideReplyChipsEl"
+            class="quick-reply-outside__chips"
+            :class="{ 'quick-reply-outside__chips--rtl': language === 'he' || heartPosition === 'right' }"
+            role="group"
+            :aria-label="language === 'he' ? 'בחירת תשובה' : 'Choose a reply'"
+          >
+            <div
+              v-for="(bubble, index) in outsideReplyVisibleChips"
+              :key="`reply-choice-${index}-${bubble.plainText}`"
+              class="quick-starter-item quick-starter-item--follow"
+              :style="{ '--reply-i': index }"
+            >
+              <button
+                class="quick-starter-btn"
+                type="button"
+                :dir="language === 'he' ? 'rtl' : 'ltr'"
+                @click="sendOutsideBubble(bubble)"
+              >
+                <span class="quick-starter-btn__icon" aria-hidden="true">
+                  <outside-bubble-icon name="sparkle" />
+                </span>
+                <span class="quick-starter-btn__label">{{ bubble.plainText }}</span>
+              </button>
+            </div>
+            <button
+              v-if="outsideReplyShowMore"
+              type="button"
+              class="quick-reply-outside__more"
+              :aria-label="language === 'he' ? 'עוד אפשרויות בצ׳אט' : 'More options in chat'"
+              @click.stop="openOutsideReplyChoicesInChat"
+            >+</button>
+          </div>
+        </div>
+        <template v-else-if="shownOutsideBubbles.length">
           <template v-for="(bubble, index) in shownOutsideBubbles" :key="`outside-${index}-${bubble.plainText}`">
             <div
               class="quick-starter-item"
@@ -39,95 +113,98 @@
                 'quick-starter-item--follow': index > 0,
               }"
             >
-            <div
-              v-if="index === 0 && bubble.lineHtml.length >= 2"
+            <!-- First bubble: always intro corners (sharp toward heart); optional icon on 1 or 2 lines. -->
+            <component
+              :is="bubble.clickable ? 'button' : 'div'"
+              v-if="index === 0"
               class="quick-starter-intro"
-              :dir="bubble.titleDir"
-              :style="{ textAlign: bubble.titleDir === 'rtl' ? 'right' : 'left', cursor: 'pointer' }"
-              @click="onOutsideBubbleClick(bubble)"
-            >
-              <div class="quick-starter-intro__copy">
-                <p class="quick-starter-title" :dir="bubble.titleDir" v-html="bubble.lineHtml[0] || bubble.plainText"></p>
-                <p v-if="bubble.lineHtml[1]" class="quick-starter-sub" :dir="bubble.subDir" v-html="bubble.lineHtml[1]"></p>
-              </div>
-            </div>
-            <div
-              v-else-if="bubble.face === 'long' && bubble.isIntroHtml"
-              class="quick-starter-intro quick-starter-intro--html"
+              :class="{
+                'quick-starter-intro--html': bubble.isIntroHtml && bubble.lineHtml.length < 2,
+                'quick-starter-intro--with-icon': !!bubble.icon,
+              }"
+              :type="bubble.clickable ? 'button' : null"
+              :data-quick-prompt-index="bubble.clickable ? bubble.clickableIndex : null"
               :dir="bubble.dir"
-              :style="{ textAlign: bubble.dir === 'rtl' ? 'right' : 'left', cursor: 'pointer' }"
-              @click="onOutsideBubbleClick(bubble)"
+              :style="{
+                cursor: 'pointer',
+                textAlign: bubble.dir === 'rtl' ? 'right' : 'left',
+                ...(bubble.clickable && bubble.chipStyle ? bubble.chipStyle : {}),
+              }"
+              @click="bubble.clickable ? sendOutsideBubble(bubble) : onOutsideBubbleClick(bubble)"
             >
-              <div class="quick-starter-intro__copy" v-html="bubble.text"></div>
-            </div>
-            <div
-              v-else-if="bubble.face === 'long'"
-              class="quick-starter-intro"
-              :dir="bubble.titleDir"
-              :style="{ cursor: 'pointer' }"
-              @click="onOutsideBubbleClick(bubble)"
-            >
-              <div class="quick-starter-intro__copy">
-                <p class="quick-starter-title" :dir="bubble.titleDir">{{ bubble.lines[0] || bubble.plainText }}</p>
-                <p v-if="bubble.lines[1]" class="quick-starter-sub" :dir="bubble.subDir">{{ bubble.lines[1] }}</p>
+              <span v-if="bubble.icon" class="quick-starter-btn__icon" aria-hidden="true">
+                <outside-bubble-icon :name="bubble.icon" />
+              </span>
+              <div
+                v-if="bubble.isIntroHtml && bubble.lineHtml.length < 2"
+                class="quick-starter-intro__copy"
+                v-html="bubble.text"
+              ></div>
+              <div v-else class="quick-starter-intro__copy">
+                <p
+                  v-if="bubble.lineHtml.length"
+                  class="quick-starter-title"
+                  :dir="bubble.titleDir"
+                  v-html="bubble.lineHtml[0] || bubble.plainText"
+                ></p>
+                <p
+                  v-else
+                  class="quick-starter-title"
+                  :dir="bubble.titleDir"
+                >{{ bubble.lines[0] || bubble.plainText }}</p>
+                <p
+                  v-if="bubble.lineHtml[1]"
+                  class="quick-starter-sub"
+                  :dir="bubble.subDir"
+                  v-html="bubble.lineHtml[1]"
+                ></p>
+                <p
+                  v-else-if="bubble.lines[1]"
+                  class="quick-starter-sub"
+                  :dir="bubble.subDir"
+                >{{ bubble.lines[1] }}</p>
               </div>
-            </div>
-            <div
-              v-else-if="bubble.isIntroHtml"
-              class="quick-starter-intro quick-starter-intro--html"
-              :dir="bubble.dir"
-              :style="{ textAlign: bubble.dir === 'rtl' ? 'right' : 'left', cursor: 'pointer' }"
-              @click="onOutsideBubbleClick(bubble)"
-            >
-              <div class="quick-starter-intro__copy" v-html="bubble.text"></div>
-            </div>
+            </component>
             <button
               v-else-if="bubble.clickable"
               class="quick-starter-btn"
+              :class="{ 'quick-starter-btn--no-icon': !bubble.icon }"
               type="button"
               :data-quick-prompt-index="bubble.clickableIndex"
               :dir="bubble.dir"
               :style="bubble.chipStyle"
-            @click="sendOutsideBubble(bubble)"
+              @click="sendOutsideBubble(bubble)"
             >
-              <span class="quick-starter-btn__icon" aria-hidden="true">
+              <span v-if="bubble.icon" class="quick-starter-btn__icon" aria-hidden="true">
                 <outside-bubble-icon :name="bubble.icon" />
               </span>
-              <span class="quick-starter-btn__label">{{ bubble.plainText }}</span>
+              <span class="quick-starter-btn__label" :dir="bubble.textDir || bubble.dir">{{ bubble.plainText }}</span>
             </button>
-            <div
-              v-else-if="index === 0 && bubble.lines.length"
-              class="quick-starter-intro"
-              :dir="bubble.titleDir"
-              style="cursor: pointer"
-              @click="onOutsideBubbleClick(bubble)"
-            >
-              <p class="quick-starter-title" :dir="bubble.titleDir">{{ bubble.lines[0] }}</p>
-              <p v-if="bubble.lines[1]" class="quick-starter-sub" :dir="bubble.subDir">{{ bubble.lines[1] }}</p>
-            </div>
             <div
               v-else-if="bubble.face === 'chip'"
               class="quick-starter-btn quick-starter-btn--static"
+              :class="{ 'quick-starter-btn--no-icon': !bubble.icon }"
               :dir="bubble.dir"
               :style="[bubble.chipStyle, { cursor: 'pointer' }]"
               @click="onOutsideBubbleClick(bubble)"
             >
-              <span class="quick-starter-btn__icon" aria-hidden="true">
+              <span v-if="bubble.icon" class="quick-starter-btn__icon" aria-hidden="true">
                 <outside-bubble-icon :name="bubble.icon" />
               </span>
-              <span class="quick-starter-btn__label">{{ bubble.plainText }}</span>
+              <span class="quick-starter-btn__label" :dir="bubble.textDir || bubble.dir">{{ bubble.plainText }}</span>
             </div>
             <div
               v-else
               class="quick-starter-btn quick-starter-btn--static"
+              :class="{ 'quick-starter-btn--no-icon': !bubble.icon }"
               :dir="bubble.dir"
               :style="[bubble.chipStyle, { cursor: 'pointer' }]"
               @click="onOutsideBubbleClick(bubble)"
             >
-              <span class="quick-starter-btn__icon" aria-hidden="true">
+              <span v-if="bubble.icon" class="quick-starter-btn__icon" aria-hidden="true">
                 <outside-bubble-icon :name="bubble.icon" />
               </span>
-              <span class="quick-starter-btn__label">{{ bubble.plainText }}</span>
+              <span class="quick-starter-btn__label" :dir="bubble.textDir || bubble.dir">{{ bubble.plainText }}</span>
             </div>
             <span
               v-if="bubbleHasTail(index, shownOutsideBubbles.length)"
@@ -140,7 +217,7 @@
         </template>
         <template v-else>
           <div
-            v-if="quickActionIntroTitle"
+            v-if="showFixedQuickActionIntro && quickActionIntroTitle"
             class="quick-starter-intro quick-starter-intro--float"
             :dir="quickActionIntroDir"
             :style="{ textAlign: quickActionIntroDir === 'rtl' ? 'right' : 'left', cursor: 'pointer' }"
@@ -164,8 +241,8 @@
             class="quick-starter-btn"
             type="button"
             :data-quick-prompt-index="index"
-            :dir="prompt.dir"
-            :style="{ textAlign: prompt.dir === 'rtl' ? 'right' : 'left' }"
+            :dir="language === 'he' ? 'rtl' : 'ltr'"
+            :style="{ textAlign: language === 'he' ? 'right' : 'left' }"
             @click="sendOutsideBubble(prompt)"
           >
             <span class="quick-starter-btn__icon" aria-hidden="true">
@@ -179,7 +256,7 @@
                 <path d="M18 14.5 18.7 16.8 19.9 17.5 18.7 18.2 18 20.5 17.3 18.2 16.1 17.5 17.3 16.8z"></path>
               </svg>
             </span>
-            <span class="quick-starter-btn__label">{{ prompt.plainText }}</span>
+            <span class="quick-starter-btn__label" :dir="prompt.textDir || prompt.dir">{{ prompt.plainText }}</span>
           </button>
         </template>
       </div>
@@ -226,16 +303,32 @@
       'no-heartbeat': planSubscription === 'off' || usesPoweredOpenButton
     }]" />
     <span
-      v-if="usesPoweredOpenButton && !isChatOpen && loginChannels === 'ai' && !showQuickActions"
+      v-if="showPluginTypingDots"
+      class="heart-typing-dots"
+      :class="{
+        'heart-typing-dots--active': isWaitingOnAiReply,
+        'heart-typing-dots--idle': !isWaitingOnAiReply,
+      }"
+      aria-hidden="true"
+    >
+      <i></i><i></i><i></i>
+    </span>
+    <span
+      v-else-if="showPluginUnreadBadge"
+      class="heart-unread"
+      aria-hidden="true"
+    >
+      <span class="heart-unread__count">{{ pluginUnreadLabel }}</span>
+    </span>
+    <span
+      v-if="showPluginChatHint"
       class="heart-chat-hint"
       aria-hidden="true"
     >
       <span class="heart-chat-hint__glyph">
-        <span class="heart-chat-hint__dots">
-          <span></span>
-          <span></span>
-          <span></span>
-        </span>
+        <svg viewBox="0 0 111 103" aria-hidden="true">
+          <path fill="#1d6fee" d="M24 2h64a20 20 0 0 1 20 20v38a20 20 0 0 1-20 20H52l-14 20a2.4 2.4 0 0 1-4.2-1.6V80H24A20 20 0 0 1 4 60V22A20 20 0 0 1 24 2z"></path>
+        </svg>
       </span>
     </span>
   </button>
@@ -256,7 +349,8 @@
     aria-hidden="true"
   ></div>
 
-  <!-- Variant dropdown portal: keep outside chat v-if so Teleport isn't torn down mid-patch -->
+  <!-- Variant / card-option dropdown portals: outside chat v-if so Teleport isn't torn down mid-patch.
+       Card options are portaled (not overflow:visible on the carousel) so scrollLeft never resets. -->
   <teleport v-if="resolvedTeleportTarget" :to="resolvedTeleportTarget">
     <div
       v-if="isChatOpen && productVariantMenu.visible"
@@ -276,7 +370,6 @@
         class="lh-option-menu-item"
         role="option"
         :dir="getTextDirection(choice.label)"
-        :style="{ textAlign: getTextDirection(choice.label) === 'rtl' ? 'right' : 'left' }"
         :aria-selected="choice.key === productVariantMenu.selectedKey ? 'true' : 'false'"
         :data-selected="choice.key === productVariantMenu.selectedKey ? 'true' : null"
         :data-unavailable="choice.unavailable ? 'true' : null"
@@ -299,10 +392,56 @@
         </svg>
       </button>
     </div>
+    <div
+      v-if="isChatOpen && productCardOptionMenu.visible"
+      class="lh-option-menu-portal lh-card-option-menu-portal"
+      :style="{
+        top: `${productCardOptionMenu.top}px`,
+        left: `${productCardOptionMenu.left}px`,
+        width: `${productCardOptionMenu.width}px`,
+      }"
+      role="listbox"
+      @click.stop
+    >
+      <button
+        v-for="value in productCardOptionMenu.values"
+        :key="`${productCardOptionMenu.optionIndex}-${value.label}`"
+        type="button"
+        class="lh-option-menu-item"
+        role="option"
+        :dir="getTextDirection(value.label)"
+        :aria-selected="value.label === productCardOptionMenu.selected ? 'true' : 'false'"
+        :data-selected="value.label === productCardOptionMenu.selected ? 'true' : null"
+        :data-unavailable="value.unavailable ? 'true' : null"
+        :disabled="value.unavailable"
+        @click.stop="selectProductCardOptionFromMenu(
+          null,
+          null,
+          productCardOptionMenu.productIndex,
+          productCardOptionMenu.optionIndex,
+          value.label
+        )"
+      >
+        <span>{{ value.label }}</span>
+        <svg
+          v-if="value.label === productCardOptionMenu.selected"
+          class="lh-option-menu-check"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.6"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M4 12.5 9.5 18 20 6.5"></path>
+        </svg>
+      </button>
+    </div>
   </teleport>
 
   <!-- Chat Container - Positioned relative to heart button -->
-  <div v-if="pluginMessagesFetched && isChatOpen" :class="['chat-container', `chat-${heartPosition}`, `chat-container-${heartSize}`, { 'chat-maximized': isMaximized, 'disable-initial-animations': disableInitialAnimations, 'chat-open-animate': shouldAnimateChatOpen, 'assis-home-open': showPoweredByAssisHome, 'assis-chat-v2': isNewAssisDesign, 'assis-chat-he-flip': isNewAssisDesign && language === 'he' }]"
+  <div v-if="pluginMessagesFetched && isChatOpen" :class="['chat-container', `chat-${heartPosition}`, `chat-container-${heartSize}`, { 'chat-maximized': isMaximized, 'disable-initial-animations': disableInitialAnimations, 'chat-open-animate': shouldAnimateChatOpen, 'assis-home-open': showPoweredByAssisHome, 'assis-chat-v2': isNewAssisDesign, 'assis-chat-he-flip': isNewAssisDesign && language === 'he', 'assis-cart-focus': cartFocusOn }]"
     ref="chatContainer">
     <div
       v-if="productDetail"
@@ -342,7 +481,13 @@
             </button>
             <h3
               class="assis-product-detail-title"
+              :class="{ 'assis-product-detail-title--link': Boolean(getProductDisplayHref(productDetail.product)) }"
               :dir="getTextDirection(getProductDisplayTitle(productDetail.product))"
+              :role="getProductDisplayHref(productDetail.product) ? 'link' : undefined"
+              :tabindex="getProductDisplayHref(productDetail.product) ? 0 : undefined"
+              @click="getProductDisplayHref(productDetail.product) && openProductDetailPage()"
+              @keydown.enter.prevent="getProductDisplayHref(productDetail.product) && openProductDetailPage()"
+              @keydown.space.prevent="getProductDisplayHref(productDetail.product) && openProductDetailPage()"
             >{{ getProductDisplayTitle(productDetail.product) }}</h3>
           </div>
           <div
@@ -583,13 +728,23 @@
           </div>
           </div>
           <span
+            v-if="isProductDetailPreOrder()"
+            class="assis-product-detail-preorder"
+            :dir="getTextDirection(language === 'he' ? 'הזמנה מוקדמת' : 'Pre-order')"
+          >{{ language === 'he' ? 'הזמנה מוקדמת' : 'Pre-order' }}</span>
+          <span
             v-if="getProductDetailDiscountLabel()"
             class="assis-product-detail-sale"
+            :class="{ 'assis-product-detail-sale--under-preorder': isProductDetailPreOrder() }"
           >{{ getProductDetailDiscountLabel() }}</span>
           <span
             v-if="getProductDetailClubBadgeText()"
             class="assis-product-detail-club-badge"
-            :class="{ 'assis-product-detail-club-badge--under-sale': Boolean(getProductDetailDiscountLabel()) }"
+            :class="{
+              'assis-product-detail-club-badge--under-sale': Boolean(getProductDetailDiscountLabel()),
+              'assis-product-detail-club-badge--under-preorder': isProductDetailPreOrder() && !getProductDetailDiscountLabel(),
+              'assis-product-detail-club-badge--under-preorder-sale': isProductDetailPreOrder() && Boolean(getProductDetailDiscountLabel()),
+            }"
             :key="`detail-club-${clubBadgeShowEilat ? 'eilat' : 'israel'}`"
             :dir="getTextDirection(getProductDetailClubBadgeText())"
           >{{ getProductDetailClubBadgeText() }}</span>
@@ -751,30 +906,82 @@
         class="assis-demo-chat-promo"
         :class="{ 'assis-demo-chat-promo--whatsapp': activeBannerTone === 'whatsapp' }"
       >
-        <component
-          :is="showActiveWhatsAppBanner ? 'button' : 'div'"
-          class="assis-demo-promo-link"
-          :type="showActiveWhatsAppBanner ? 'button' : null"
-          :data-tone="activeBannerTone"
-          @click="onBannerSurfaceClick"
-        >
-          <span class="assis-demo-promo-icon" aria-hidden="true">
-            <svg v-if="activeBannerTone === 'whatsapp'" viewBox="0 0 24 24" width="11" height="11" fill="currentColor">
-              <path d="M19.05 4.91A9.82 9.82 0 0 0 12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.87 9.87 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.91-7.02zm-7.01 15.24h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24 2.2 0 4.27.86 5.82 2.42a8.18 8.18 0 0 1 2.41 5.83c0 4.55-3.7 8.24-8.24 8.24zm4.52-6.16c-.25-.12-1.47-.72-1.7-.81-.23-.08-.39-.12-.56.12-.17.25-.64.81-.78.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-2-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.02-.38.11-.51.11-.11.25-.29.37-.43.12-.14.17-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.34-.76-1.84-.2-.48-.4-.42-.56-.42h-.48c-.17 0-.43.06-.66.31-.23.25-.87.85-.87 2.07 0 1.22.89 2.4 1.01 2.56.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.67-1.18.21-.58.21-1.07.14-1.18-.07-.1-.25-.17-.5-.29z"/>
-            </svg>
-            <svg v-else viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 4.5 13.2 10 18.5 12 13.2 14 12 19.5 10.8 14 5.5 12 10.8 10z"/>
-            </svg>
-          </span>
-          <p v-if="activeBannerPromoHtml" class="assis-demo-promo-text" v-html="activeBannerPromoHtml"></p>
-          <p v-else class="assis-demo-promo-text">{{ activeBannerPromoText }}</p>
-          <span v-if="activeBannerHasLinks || showActiveWhatsAppBanner" class="assis-demo-promo-arrow" aria-hidden="true">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M7 17 17 7"/>
-              <path d="M7 7h10v10"/>
-            </svg>
-          </span>
-        </component>
+        <!-- Same swap language as Banner settings preview (slightly slower). -->
+        <transition name="assis-banner-swap" mode="out-in">
+          <component
+            :is="showActiveWhatsAppBanner || activeBannerHasLinks ? 'button' : 'div'"
+            :key="activeBannerContentKey"
+            class="assis-demo-promo-link"
+            :class="{ 'is-clickable': showActiveWhatsAppBanner || activeBannerHasLinks }"
+            :type="showActiveWhatsAppBanner || activeBannerHasLinks ? 'button' : null"
+            :data-tone="activeBannerTone"
+            @click="onBannerSurfaceClick"
+          >
+            <span class="assis-demo-promo-icon" aria-hidden="true">
+              <svg v-if="activeBannerTone === 'whatsapp'" viewBox="0 0 24 24" width="11" height="11" fill="currentColor">
+                <path d="M19.05 4.91A9.82 9.82 0 0 0 12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.87 9.87 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.91-7.02zm-7.01 15.24h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24 2.2 0 4.27.86 5.82 2.42a8.18 8.18 0 0 1 2.41 5.83c0 4.55-3.7 8.24-8.24 8.24zm4.52-6.16c-.25-.12-1.47-.72-1.7-.81-.23-.08-.39-.12-.56.12-.17.25-.64.81-.78.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-2-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.02-.38.11-.51.11-.11.25-.29.37-.43.12-.14.17-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.34-.76-1.84-.2-.48-.4-.42-.56-.42h-.48c-.17 0-.43.06-.66.31-.23.25-.87.85-.87 2.07 0 1.22.89 2.4 1.01 2.56.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.67-1.18.21-.58.21-1.07.14-1.18-.07-.1-.25-.17-.5-.29z"/>
+              </svg>
+              <svg v-else viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 4.5 13.2 10 18.5 12 13.2 14 12 19.5 10.8 14 5.5 12 10.8 10z"/>
+              </svg>
+            </span>
+            <p
+              ref="bannerPromoText"
+              class="assis-demo-promo-text"
+              :class="[
+                `assis-demo-promo-text-${activeBannerTextDirection}`,
+                { 'is-marquee': bannerPromoMarquee },
+              ]"
+              :dir="activeBannerTextDirection"
+              :style="bannerPromoMarqueeStyle"
+            >
+              <span
+                v-if="activeBannerPromoHtml"
+                class="assis-demo-promo-text-inner"
+                v-html="activeBannerPromoHtml"
+              ></span>
+              <span v-else class="assis-demo-promo-text-inner">{{ activeBannerPromoText }}</span>
+            </p>
+            <!-- Link → arrow; no link → matching sparkle so copy stays optically centered. -->
+            <span
+              class="assis-demo-promo-end"
+              :class="{
+                'is-arrow': activeBannerHasLinks || showActiveWhatsAppBanner,
+                'is-sparkle': !(activeBannerHasLinks || showActiveWhatsAppBanner) && activeBannerTone !== 'whatsapp',
+              }"
+              aria-hidden="true"
+            >
+              <svg
+                v-if="activeBannerHasLinks || showActiveWhatsAppBanner"
+                class="assis-demo-promo-arrow"
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M7 17 17 7"/>
+                <path d="M7 7h10v10"/>
+              </svg>
+              <svg
+                v-else-if="activeBannerTone !== 'whatsapp'"
+                viewBox="0 0 24 24"
+                width="11"
+                height="11"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.4"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M12 4.5 13.2 10 18.5 12 13.2 14 12 19.5 10.8 14 5.5 12 10.8 10z"/>
+              </svg>
+            </span>
+          </component>
+        </transition>
       </div>
 
       <div class="header-actions">
@@ -783,7 +990,7 @@
           id="assis-furisport-cart-btn"
           class="action-btn assis-furisport-cart-btn"
           type="button"
-          :class="{ 'is-bump': shopifyCartBadgeBump }"
+          :class="{ 'is-bump': shopifyCartBadgeBump, 'is-lure': cartIconNudge }"
           :title="shopifyCartBagLabel"
           :aria-label="shopifyCartBagLabel"
           :aria-expanded="showShopifyCartPanel ? 'true' : 'false'"
@@ -800,6 +1007,7 @@
             :class="{ 'is-bump': shopifyCartBadgeBump }"
             :data-count="String(shopifyCartItemCount || 0)"
           >{{ shopifyCartItemCount ? String(shopifyCartItemCount) : '' }}</span>
+          <span v-if="cartIconNudge" class="cart-lure-rings" aria-hidden="true"></span>
         </button>
         <div ref="headerMenuWrapper" class="header-menu-wrapper">
           <button
@@ -811,10 +1019,17 @@
             aria-haspopup="menu"
             @click.stop.prevent="toggleHeaderMenu"
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="12" cy="5" r="1.6"></circle>
-              <circle cx="12" cy="12" r="1.6"></circle>
-              <circle cx="12" cy="19" r="1.6"></circle>
+            <svg
+              class="menu-btn-icon"
+              viewBox="0 0 24 24"
+              width="12"
+              height="12"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="5" r="1.8"></circle>
+              <circle cx="12" cy="12" r="1.8"></circle>
+              <circle cx="12" cy="19" r="1.8"></circle>
             </svg>
           </button>
 
@@ -1033,8 +1248,25 @@
     <div
       v-if="showPoweredByAssisHome"
       class="assis-home"
+      :class="{ 'is-file-drag': chatFileDragActive }"
       :dir="language === 'he' ? 'rtl' : 'ltr'"
+      @dragenter="onChatFileDragEnter"
+      @dragover="onChatFileDragOver"
+      @dragleave="onChatFileDragLeave"
+      @drop="onChatFileDrop"
     >
+      <div v-if="chatFileDragActive" class="assis-file-drop-overlay" aria-hidden="true">
+        <span>{{ language === 'he' ? 'שחררו כאן תמונה או קובץ' : 'Drop image or file here' }}</span>
+      </div>
+      <!-- Always mounted so paste/drop/clip work even on the continue-conversation home. -->
+      <input
+        ref="homeFileInput"
+        type="file"
+        multiple
+        :accept="fileUploadAccept"
+        @change="handleFileSelect"
+        style="display: none;"
+      />
       <div class="assis-home-main">
         <div
           class="assis-home-copy"
@@ -1054,11 +1286,22 @@
             :style="{ textAlign: getTextDirection(poweredByAssisHomeBody) === 'rtl' ? 'right' : 'left' }"
           >{{ poweredByAssisHomeBody }}</p>
         </div>
-        <div v-if="poweredByAssisHomeProducts.length" class="assis-home-cards">
+        <transition-group
+          v-if="poweredByAssisHomeProducts.length"
+          name="assis-home-card-fan"
+          tag="div"
+          class="assis-home-cards"
+          appear
+          @mouseenter="homeProductRotatePaused = true"
+          @mouseleave="homeProductRotatePaused = false"
+        >
           <article
             v-for="(product, index) in poweredByAssisHomeProducts"
-            :key="`${product.id}-${index}`"
-            :class="['assis-home-card', `assis-home-card--${index === 0 ? 'a' : index === 1 ? 'b' : 'c'}`]"
+            :key="String(product.id || product.handle || product.title)"
+            :class="[
+              'assis-home-card',
+              `assis-home-card--${homeProductFanSlot(index)}`,
+            ]"
           >
             <a
               class="assis-home-card-link"
@@ -1069,13 +1312,13 @@
             >
               <div
                 class="assis-home-card-image"
-                :class="{ 'assis-home-card-image--empty': !product.image || isHomeProductImageErrored(product, index) }"
+                :class="{ 'assis-home-card-image--empty': !product.image || isHomeProductImageErrored(product) }"
               >
                 <img
-                  v-if="product.image && !isHomeProductImageErrored(product, index)"
+                  v-if="product.image && !isHomeProductImageErrored(product)"
                   :src="product.image"
                   :alt="product.title || 'Product'"
-                  @error="markHomeProductImageError(product, index)"
+                  @error="markHomeProductImageError(product)"
                 />
                 <div v-else class="assis-product-image-placeholder" aria-hidden="true">
                   <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
@@ -1119,10 +1362,15 @@
               </svg>
             </button>
           </article>
-        </div>
+        </transition-group>
       </div>
       <div class="assis-home-actions">
-        <div class="assis-home-chips" role="group" :aria-label="language === 'he' ? 'שאלות מוצעות' : 'Suggested questions'">
+        <div
+          v-if="!selectedAttachments.length"
+          class="assis-home-chips"
+          role="group"
+          :aria-label="language === 'he' ? 'שאלות מוצעות' : 'Suggested questions'"
+        >
           <button
             v-for="chip in poweredByAssisHomeChips"
             :key="chip.text"
@@ -1138,8 +1386,68 @@
           </button>
         </div>
       </div>
+      <!-- Attach preview stays on home until send — row of thumbs; fan only after send in chat. -->
+      <div
+        v-if="selectedAttachments.length > 0 || isUploading || fileAttachError"
+        class="assis-attach-preview assis-attach-preview--home"
+        :class="`assis-attach-preview--n${Math.min(selectedAttachments.length || 1, 3)}`"
+        :dir="language === 'he' ? 'rtl' : 'ltr'"
+      >
+        <div class="assis-attach-row">
+          <div
+            v-for="(item, index) in selectedAttachments"
+            :key="item.id"
+            class="assis-attach-item"
+            :class="[
+              item.previewUrl ? 'assis-attach-item--image' : 'assis-attach-item--file',
+              item.uploadStatus ? `is-upload-${item.uploadStatus}` : null,
+            ]"
+          >
+            <button
+              v-if="item.previewUrl"
+              type="button"
+              class="assis-attach-thumb-btn"
+              :aria-label="language === 'he' ? 'פתיחת תמונה' : 'Open image'"
+              @click="openImageModal(item.previewUrl)"
+            >
+              <img class="assis-attach-thumb" :src="item.previewUrl" :alt="item.file.name" />
+            </button>
+            <template v-else>
+              <span class="assis-attach-file-glyph" aria-hidden="true">{{ getFileIcon(getFileTypeFromMime(item.file.type), item.file.type) }}</span>
+              <span class="assis-attach-file-meta">
+                <span class="assis-attach-file-name">{{ item.file.name }}</span>
+                <span class="assis-attach-file-size">{{ formatFileSize(item.file.size) }}</span>
+              </span>
+            </template>
+            <div
+              v-if="item.uploadStatus === 'pending' || item.uploadStatus === 'uploading'"
+              class="assis-attach-loading"
+              :class="{ 'is-active': item.uploadStatus === 'uploading' }"
+              aria-hidden="true"
+            >
+              <svg class="assis-attach-loading-ring" viewBox="0 0 36 36">
+                <circle class="assis-attach-loading-track" cx="18" cy="18" r="14" fill="none" stroke-width="3" />
+                <circle class="assis-attach-loading-arc" cx="18" cy="18" r="14" fill="none" stroke-width="3" />
+              </svg>
+            </div>
+            <button
+              v-if="!isUploading"
+              type="button"
+              class="assis-attach-remove"
+              :class="{ 'assis-attach-remove--inline': !item.previewUrl }"
+              :aria-label="language === 'he' ? 'הסרת קובץ' : 'Remove file'"
+              @click.stop="removeSelectedFile(index)"
+            >
+              <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <p v-if="fileAttachError" class="assis-file-attach-error" role="status">{{ fileAttachError }}</p>
+      </div>
       <button
-        v-if="hasClientChatMessages"
+        v-if="hasClientChatMessages && !selectedAttachments.length"
         type="button"
         class="assis-home-composer assis-home-continue-composer"
         :aria-label="continueConversationLabel"
@@ -1159,7 +1467,7 @@
         v-else
         class="assis-home-composer"
         autocomplete="off"
-        :data-has-text="poweredByAssisHomeDraft.trim() ? 'true' : 'false'"
+        :data-has-text="(poweredByAssisHomeDraft.trim() || selectedAttachments.length) ? 'true' : 'false'"
         @submit.prevent="submitPoweredByAssisHome(poweredByAssisHomeDraft)"
       >
         <button type="button" class="assis-home-clip" :aria-label="language === 'he' ? 'צירוף קובץ' : 'Attach file'" @click="triggerFileSelect">
@@ -1167,14 +1475,6 @@
             <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
           </svg>
         </button>
-        <input
-          ref="homeFileInput"
-          type="file"
-          multiple
-          accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
-          @change="handleFileSelect"
-          style="display: none;"
-        />
         <textarea
           ref="homeChatInput"
           class="assis-home-input"
@@ -1188,8 +1488,15 @@
           :style="{ textAlign: getTextDirection(poweredByAssisHomeDraft) === 'rtl' ? 'right' : 'left' }"
           @keydown.enter="handleHomeEnterKey"
           @input="autoResizeHomeTextarea"
+          @paste="onChatComposerPaste"
         ></textarea>
-        <button type="button" class="assis-home-send" :aria-label="language === 'he' ? 'שליחה' : 'Send'" @click="submitPoweredByAssisHome(poweredByAssisHomeDraft)">
+        <button
+          type="button"
+          class="assis-home-send"
+          :aria-label="language === 'he' ? 'שליחה' : 'Send'"
+          :disabled="!poweredByAssisHomeDraft.trim() && !selectedAttachments.length"
+          @click="submitPoweredByAssisHome(poweredByAssisHomeDraft)"
+        >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M12 19V5"></path>
             <path d="m5 12 7-7 7 7"></path>
@@ -1226,8 +1533,23 @@
       </div>
     </div>
 
-    <!-- Chat Content -->
-    <div v-show="!showPoweredByAssisHome" class="chat-content" :class="{ 'full-conversation': currentStep === 'chat', 'full-conversation-ai': loginChannels === 'ai' }">
+    <!-- Chat Content — v-if (not v-show): after reset, home+chat must never both paint. -->
+    <div
+      v-if="!showPoweredByAssisHome"
+      class="chat-content"
+      :class="{
+        'full-conversation': currentStep === 'chat',
+        'full-conversation-ai': loginChannels === 'ai',
+        'is-file-drag': chatFileDragActive,
+      }"
+      @dragenter="onChatFileDragEnter"
+      @dragover="onChatFileDragOver"
+      @dragleave="onChatFileDragLeave"
+      @drop="onChatFileDrop"
+    >
+      <div v-if="chatFileDragActive" class="assis-file-drop-overlay" aria-hidden="true">
+        <span>{{ language === 'he' ? 'שחררו כאן תמונה או קובץ' : 'Drop image or file here' }}</span>
+      </div>
       <!-- Guest Username Input Section -->
       <div v-if="showGuestInput && currentStep === 'name'" class="guest-input-section">
         <div class="step-content">
@@ -1479,17 +1801,33 @@
           </div>
         </div>
 
-        <div class="chat-messages" ref="chatMessages" @scroll.passive="closeProductVariantMenu">
+        <div
+          class="chat-messages"
+          :class="{ 'assis-reveal-on': isNewAssisDesign }"
+          ref="chatMessages"
+          @scroll.passive="onChatMessagesScroll"
+          @wheel.passive="markChatUserScroll"
+          @touchmove.passive="markChatUserScroll"
+          @pointerdown="markChatUserScroll"
+        >
           <div v-if="loginChannels === 'ai' && false" :class="['ai-welcome-message', { 'slide-up-animation': !wasSessionRestored }]">
             <p>You can ask here, and at any time continue to WhatsApp with a human representative.</p>
           </div>
-          <div v-if="loginChannels === 'ai'" :class="['ai-today-message', { 'slide-up-animation': !wasSessionRestored }]">
+          <div v-if="isNewAssisDesign" class="assis-float-date" :class="{ 'is-on': floatingChatDateOn }">
+            <span>{{ floatingChatDate }}</span>
+          </div>
+          <div v-if="loginChannels === 'ai' && !isNewAssisDesign" :class="['ai-today-message', { 'slide-up-animation': !wasSessionRestored }]">
             <p>{{ language === 'he' ? 'היום' : 'Today'}}</p>
           </div>
           <div
             v-for="(message, index) in chatMessages"
-            :key="message.id || message.datetime"
-            v-show="!(message.isStreaming && !String(message.message || '').trim())"
+            :key="messageTurnKey(message, index)"
+            class="chat-turn"
+            :class="message.sender ? `chat-turn--${String(message.sender).toLowerCase()}` : ''"
+            :style="{ '--assis-seq': String(messageComponentSeq(message)) }"
+            :data-when="message.datetime || ''"
+            :data-anchor-keys="messageAnchorKeys(message).join('|')"
+            v-show="!(message.isStreaming && !String(message.message || '').trim()) && !isImageGroupFollower(index)"
           >
             <div
               :class="[
@@ -1498,6 +1836,7 @@
                 {
                   'message-no-animation': !shouldAnimateMessage(index),
                   'message--contact-submission': isContactSubmissionMessage(message),
+                  'assis-cart-action': message.isCartAction,
                 },
               ]"
             >
@@ -1542,7 +1881,7 @@
                     </div>
                   </template>
                   <template v-else>
-                    <div v-if="message.sender?.toLowerCase() !== 'client'" class="ai-agent-info">
+                    <div v-if="message.sender?.toLowerCase() !== 'client' && messageShowsTopText(message)" class="ai-agent-info">
                       <svg v-if="isNewAssisDesign" class="assis-msg-heart" viewBox="0 0 24 24" fill="#1d6fee" aria-hidden="true">
                         <path d="M12.1 21s-7.2-4.6-9.6-8.7C.7 9.3 1.6 5.6 4.6 4.2c1.9-.9 4.1-.3 5.5 1.3L12 7.4l1.9-1.9c1.4-1.6 3.6-2.2 5.5-1.3 3 1.4 3.9 5.1 2.1 8.1C19.3 16.4 12.1 21 12.1 21z"></path>
                       </svg>
@@ -1658,6 +1997,76 @@
                     </div>
                   </div>
 
+                  <!-- Grouped images (max 3): home-style coverflow carousel -->
+                  <div
+                    v-else-if="shouldRenderMediaCollage(index)"
+                    class="assis-media-collage-wrap"
+                    @touchstart.passive="onCollageSwipeStart"
+                    @touchend="onCollageSwipeEnd($event, index)"
+                  >
+                    <div class="assis-media-collage-carousel">
+                      <button
+                        type="button"
+                        class="assis-media-collage-nav-btn assis-media-collage-nav-btn--side assis-media-collage-nav-btn--prev"
+                        :aria-label="language === 'he' ? 'התמונה הקודמת' : 'Previous image'"
+                        @click="nudgeMediaCollageFocus(index, -1)"
+                      >
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <path d="m15 18-6-6 6-6" />
+                        </svg>
+                      </button>
+                      <div
+                        class="assis-media-collage"
+                        :class="mediaCollageLayoutClass(index)"
+                      >
+                        <div
+                          v-for="(url, imgIndex) in mediaCollageUrls(index)"
+                          :key="`${messageTurnKey(message, index)}-img-${imgIndex}`"
+                          class="assis-media-collage-card"
+                          :class="[
+                            `assis-media-collage-card--${mediaCollageFanSlot(index, imgIndex)}`,
+                            { 'is-focused': getMediaCollageFocus(index) === imgIndex },
+                          ]"
+                        >
+                          <button
+                            type="button"
+                            class="assis-media-collage-open"
+                            :aria-label="language === 'he' ? 'פתיחת תמונה' : 'Open image'"
+                            @click="setMediaCollageFocus(index, imgIndex); openImageModal(url)"
+                          >
+                            <span class="assis-media-collage-frame">
+                              <img :src="url" :alt="language === 'he' ? 'תמונה' : 'Image'" />
+                            </span>
+                          </button>
+                          <div class="download-btn-wrapper assis-media-collage-download" @click.stop.prevent>
+                            <button
+                              type="button"
+                              class="download-btn"
+                              :title="language === 'he' ? 'הורדת תמונה' : 'Download image'"
+                              :aria-label="language === 'he' ? 'הורדת תמונה' : 'Download image'"
+                              @click.stop.prevent="downloadFile(url, mediaFileNameFromUrl(url))"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                <polyline points="7,10 12,15 17,10" />
+                                <line x1="12" y1="15" x2="12" y2="3" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        class="assis-media-collage-nav-btn assis-media-collage-nav-btn--side assis-media-collage-nav-btn--next"
+                        :aria-label="language === 'he' ? 'התמונה הבאה' : 'Next image'"
+                        @click="nudgeMediaCollageFocus(index, 1)"
+                      >
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <path d="m9 18 6-6-6-6" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
                   <!-- Media files display -->
                   <div v-else-if="message.message && isMediaFile(message.message)" class="media-files">
                     <!-- Image display -->
@@ -1665,8 +2074,8 @@
                       <img :src="message.message" :alt="message.message" class="media-image"
                         @click="openImageModal(message.message)" />
                       <div class="download-btn-wrapper" @click.stop.prevent>
-                        <button @click.stop.prevent="downloadFile(message.message, message.message)"
-                          class="download-btn" title="Download image">
+                        <button @click.stop.prevent="downloadFile(message.message, mediaFileNameFromUrl(message.message))"
+                          class="download-btn" :title="language === 'he' ? 'הורדת תמונה' : 'Download image'">
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -1721,8 +2130,8 @@
 
                   </div>
                   <div v-else class="assis-message-with-order">
-                  <div class="message-bubble" :dir="getTextDirection(message.message)"
-                    :style="{ textAlign: getTextDirection(message.message) === 'rtl' ? 'right' : 'left' }">
+                  <div v-if="messageShowsTopText(message)" class="message-bubble" :dir="getTextDirection(messageAboveText(message))"
+                    :style="{ textAlign: getTextDirection(messageAboveText(message)) === 'rtl' ? 'right' : 'left' }">
                     <div
                       v-if="message.isTyping && isMessageTypewriting(message)"
                       class="assis-typewriter"
@@ -1733,19 +2142,19 @@
                     <div
                       v-else-if="message.isStreaming"
                       class="assis-typewriter"
-                      :dir="language === 'he' ? 'rtl' : getTextDirection(message.message)"
-                      :style="{ textAlign: (language === 'he' || getTextDirection(message.message) === 'rtl') ? 'right' : 'left' }"
+                      :dir="language === 'he' ? 'rtl' : getTextDirection(messageStreamVisibleText(message))"
+                      :style="{ textAlign: (language === 'he' || getTextDirection(messageStreamVisibleText(message)) === 'rtl') ? 'right' : 'left' }"
                     >
-                      <template v-if="language === 'he' || getTextDirection(message.message) === 'rtl'">
-                        <span class="assis-gemini-caret" aria-hidden="true"></span><span v-html="renderMessage(message.message, '')"></span>
+                      <template v-if="language === 'he' || getTextDirection(messageStreamVisibleText(message)) === 'rtl'">
+                        <span class="assis-gemini-caret" aria-hidden="true"></span><span v-html="renderMessage(messageStreamVisibleText(message), '')"></span>
                       </template>
                       <template v-else>
-                        <span v-html="renderMessage(message.message, '')"></span><span class="assis-gemini-caret" aria-hidden="true"></span>
+                        <span v-html="renderMessage(messageStreamVisibleText(message), '')"></span><span class="assis-gemini-caret" aria-hidden="true"></span>
                       </template>
                     </div>
                     <div
                       v-else
-                      v-html="renderMessage(message.message, `${message.sender?.toLowerCase() === 'client' ? 'text-white' : ''}`)">
+                      v-html="renderMessage(messageAboveText(message), `${message.sender?.toLowerCase() === 'client' ? 'text-white' : ''}`)">
                     </div>
 
                     <div v-if="loginChannels === 'ai' && !isNewAssisDesign" class="ai-message-timestamp">
@@ -1808,17 +2217,15 @@
 
             <!-- Product Cards -->
             <div
-              v-if="!isMessageTextRevealing(message) && message.products && message.products.length > 0"
+              v-if="(message._productCardsEntered || !isMessageTextRevealing(message)) && showMessageProductCards(message)"
               class="assis-products-container"
-              :class="{ 'assis-products-container--carousel': message.products.length > 1 }"
+              :class="{
+                'assis-products-container--carousel': message.products.length > 1,
+                'assis-product-cards-entered': message._productCardsEntered,
+              }"
               :data-product-carousel-key="getMessageCarouselKey(message)"
-              :dir="getTextDirection(assisProductsSectionLabel)"
+              :dir="language === 'he' ? 'rtl' : 'ltr'"
             >
-              <h4
-                class="assis-lh-section-title"
-                :dir="getTextDirection(assisProductsSectionLabel)"
-                :style="{ textAlign: getTextDirection(assisProductsSectionLabel) === 'rtl' ? 'right' : 'left' }"
-              >{{ assisProductsSectionLabel }}</h4>
               <button
                 v-if="message.products.length > 1 && doesProductCarouselNeedNav(message)"
                 class="assis-products-carousel-arrow assis-products-carousel-arrow--prev"
@@ -1835,7 +2242,7 @@
               <div
                 class="assis-products-viewport"
                 :aria-label="assisProductsSectionLabel"
-                @scroll.passive="syncProductCarouselScroll(message, $event); closeProductVariantMenu(); closeProductCardOptionMenu()"
+                @scroll.passive="onProductCarouselScroll(message, $event)"
                 @scrollend.passive="syncProductCarouselScroll(message, $event)"
               >
                 <div class="assis-products-track">
@@ -2024,45 +2431,10 @@
                                 :aria-label="cardOpt.group.name || (language === 'he' ? 'בחירת אפשרות' : 'Choose option')"
                                 :aria-expanded="cardOpt.open ? 'true' : 'false'"
                                 :dir="getTextDirection(cardOpt.selected)"
-                                @click.stop="toggleProductCardOptionMenu(product, message, index)"
+                                @click.stop="toggleProductCardOptionMenu(product, message, index, $event)"
                               >
                                 <span class="lh-option-select-label">{{ cardOpt.selected }}</span>
                               </button>
-                              <div
-                                v-if="cardOpt.open"
-                                class="lh-card-option-menu"
-                                role="listbox"
-                                @click.stop
-                              >
-                                <button
-                                  v-for="value in cardOpt.group.values"
-                                  :key="`${cardOpt.group.index}-${value.label}`"
-                                  type="button"
-                                  class="lh-option-menu-item"
-                                  role="option"
-                                  :dir="getTextDirection(value.label)"
-                                  :aria-selected="value.label === cardOpt.selected ? 'true' : 'false'"
-                                  :data-selected="value.label === cardOpt.selected ? 'true' : null"
-                                  :data-unavailable="value.unavailable ? 'true' : null"
-                                  :disabled="value.unavailable"
-                                  @click.stop="selectProductCardOptionFromMenu(product, message, index, cardOpt.group.index, value.label)"
-                                >
-                                  <span>{{ value.label }}</span>
-                                  <svg
-                                    v-if="value.label === cardOpt.selected"
-                                    class="lh-option-menu-check"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2.6"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    aria-hidden="true"
-                                  >
-                                    <path d="M4 12.5 9.5 18 20 6.5"></path>
-                                  </svg>
-                                </button>
-                              </div>
                             </div>
                             <div
                               v-else-if="messageHasCardVariants(message)"
@@ -2582,7 +2954,42 @@
               class="assis-checkout-slot"
               :class="{ 'assis-checkout--end': checkoutAlignEnd(message) }"
             >
-            <div class="assis-checkout-card" :class="{ 'is-closing': checkoutChatClosing }">
+            <p
+              v-if="checkoutLeadText(message)"
+              class="cart-upsell-chat-lead"
+              :class="{ 'is-typing': checkoutLeadTyping(message) }"
+              :dir="language === 'he' ? 'rtl' : 'ltr'"
+            >{{ checkoutLeadText(message) }}</p>
+            <div
+              v-if="checkoutCardSettled(message) && isCheckoutMomentSlim(message)"
+              class="assis-checkout-inline assis-checkout-inline--moment"
+              dir="ltr"
+            >
+              <button
+                type="button"
+                class="assis-checkout-inline-main"
+                :class="{ 'has-thumbs': checkoutShownLines(message).some((line) => line.image) }"
+                @click.stop.prevent="openShopifyCheckout"
+              >
+                <span class="assis-checkout-inline-label">{{ shopifyCartCheckoutLabel }}</span>
+                <span v-if="checkoutShownPrice(message)" class="assis-checkout-inline-price">{{ checkoutShownPrice(message) }}</span>
+                <span v-if="checkoutShownLines(message).some((line) => line.image)" class="assis-checkout-inline-thumbs">
+                  <span
+                    v-for="line in checkoutShownLines(message).filter((line) => line.image)"
+                    :key="line.key"
+                    class="assis-checkout-inline-thumb"
+                  >
+                    <img v-if="line.image" :src="line.image" alt="" />
+                  </span>
+                  <span v-if="checkoutShownMoreCount(message)" class="assis-checkout-inline-more">+{{ checkoutShownMoreCount(message) }}</span>
+                </span>
+              </button>
+            </div>
+            <div
+              v-else-if="checkoutCardSettled(message)"
+              class="assis-checkout-card"
+              :class="{ 'is-closing': checkoutChatClosing && !message.checkoutMoment, 'is-revealed': Boolean(message.checkoutMoment) || checkoutRestored || (cartUpsellInChat && isCheckoutChatAnchor(message) && checkoutCardSettled(message)), 'assis-checkout-card--still': checkoutRestored || Boolean(message.checkoutMoment && message.checkoutMoment.quiet), 'assis-checkout-card--arrive': !checkoutRestored && cartUpsellInChat && isCheckoutChatAnchor(message) && !cartUpsellCardsReady, 'assis-checkout-card--quiet': Boolean(message.checkoutMoment && message.checkoutMoment.quiet) }"
+            >
               <div class="assis-checkout-row">
                 <div class="assis-checkout-side">
                   <strong
@@ -2591,7 +2998,7 @@
                   >{{ shopifyCartPanelTitle }}</strong>
                   <div class="assis-checkout-thumbs">
                     <span
-                      v-for="line in shopifyCheckoutPreviewLines"
+                      v-for="line in checkoutShownLines(message)"
                       :key="line.key"
                       class="assis-checkout-thumb"
                     >
@@ -2615,36 +3022,36 @@
                       </button>
                     </span>
                     <button
-                      v-if="shopifyCheckoutMoreCount"
+                      v-if="checkoutShownMoreCount(message)"
                       type="button"
                       class="assis-checkout-more"
                       @click.stop.prevent="showShopifyCartPanel = true"
-                    >+{{ shopifyCheckoutMoreCount }}</button>
+                    >+{{ checkoutShownMoreCount(message) }}</button>
                   </div>
                 </div>
                 <div
                   class="assis-checkout-card-copy"
                   :dir="language === 'he' ? 'rtl' : 'ltr'"
                 >
-                  <span v-if="shopifyCheckoutItemNames" class="assis-checkout-names">
-                    <span class="assis-checkout-names-text">{{ shopifyCheckoutItemNames }}</span>
+                  <span v-if="checkoutShownNames(message)" class="assis-checkout-names">
+                    <span class="assis-checkout-names-text">{{ checkoutShownNames(message) }}</span>
                     <span
-                      v-if="shopifyCheckoutExtraCount"
+                      v-if="checkoutShownExtraCount(message)"
                       class="assis-checkout-names-more"
                       tabindex="0"
-                    >+{{ shopifyCheckoutExtraCount }}</span>
+                    >+{{ checkoutShownExtraCount(message) }}</span>
                     <span
-                      v-if="shopifyCheckoutExtraCount"
+                      v-if="checkoutShownExtraCount(message)"
                       class="assis-checkout-names-tip"
                       role="tooltip"
                     >
                       <span
-                        v-for="(title, extraIndex) in shopifyCheckoutExtraNames"
+                        v-for="(title, extraIndex) in checkoutShownExtraNames(message)"
                         :key="`${title}-${extraIndex}`"
                       >{{ title }}</span>
                     </span>
                   </span>
-                  <span class="assis-checkout-price">{{ shopifyCartFormattedTotal }}</span>
+                  <span class="assis-checkout-price">{{ checkoutShownPrice(message) }}</span>
                   <button
                     type="button"
                     class="assis-go-checkout"
@@ -2658,6 +3065,28 @@
                 </div>
               </div>
             </div>
+            <p
+              v-if="cartOfferQuestion(message)"
+              class="cart-upsell-chat-question"
+              :dir="language === 'he' ? 'rtl' : 'ltr'"
+            >{{ cartOfferQuestion(message) }}</p>
+            <p
+              v-if="!isCheckoutMomentSlim(message) && showCheckoutRecoIntro(message)"
+              class="cart-upsell-chat-intro"
+              :class="{ 'cart-upsell-chat-intro--play': !checkoutRestored && cartUpsellInChat && isCheckoutChatAnchor(message) }"
+              :dir="language === 'he' ? 'rtl' : 'ltr'"
+            >{{ checkoutRecoIntro(message) }}</p>
+            <cart-upsell-fan
+              v-if="!isCheckoutMomentSlim(message) && checkoutRecoItems(message).length && checkoutCardSettled(message)"
+              class="cart-upsell-chat-arrive"
+              :class="{ 'cart-upsell-chat-arrive--play': !checkoutRestored && cartUpsellInChat && isCheckoutChatAnchor(message) }"
+              :items="checkoutRecoItems(message)"
+              :dir="language === 'he' ? 'rtl' : 'ltr'"
+              :add-label="language === 'he' ? 'הוסף לסל' : 'Add to bag'"
+              :best-seller-label="language === 'he' ? 'הנמכרים ביותר' : 'Best sellers'"
+              @add="addCartUpsellSuggestion"
+              @open="openCartUpsellProduct"
+            />
             </div>
             <div
               v-else-if="showCheckoutChatButton(message)"
@@ -2696,6 +3125,73 @@
               </button>
             </div>
             </div>
+            <div
+              v-if="messageQuestionBelow(message)"
+              class="message-content-container assis-message-question"
+              :dir="questionRowDir(message)"
+            >
+              <div v-if="!messageLeadText(message)" class="ai-agent-info">
+                <svg v-if="isNewAssisDesign" class="assis-msg-heart" viewBox="0 0 24 24" fill="#1d6fee" aria-hidden="true">
+                  <path d="M12.1 21s-7.2-4.6-9.6-8.7C.7 9.3 1.6 5.6 4.6 4.2c1.9-.9 4.1-.3 5.5 1.3L12 7.4l1.9-1.9c1.4-1.6 3.6-2.2 5.5-1.3 3 1.4 3.9 5.1 2.1 8.1C19.3 16.4 12.1 21 12.1 21z"></path>
+                </svg>
+              </div>
+              <div class="assis-message-question-main">
+                <div
+                  class="message-bubble"
+                  :dir="questionRowDir(message)"
+                  :style="{ textAlign: questionRowDir(message) === 'rtl' ? 'right' : 'left' }"
+                >
+                  <div v-html="renderMessage(messageQuestionText(message), '')"></div>
+                </div>
+                <div
+                  v-if="showFollowUpReplies(message)"
+                  class="assis-follow-replies"
+                  :class="language === 'he' ? 'assis-follow-replies--he' : 'assis-follow-replies--en'"
+                  role="group"
+                  :aria-label="language === 'he' ? 'המשכי שיחה' : 'Follow-up replies'"
+                  :dir="language === 'he' ? 'rtl' : 'ltr'"
+                >
+                  <button
+                    v-for="(reply, replyIndex) in followUpReplies(message)"
+                    :key="`${message.id || message.datetime}-reply-${replyIndex}`"
+                    type="button"
+                    class="assis-follow-reply"
+                    :class="{ 'is-selected': message.selectedSuggestedReply === reply }"
+                    :style="{ '--reply-i': replyIndex }"
+                    :disabled="!canClickFollowUp(message)"
+                    :aria-pressed="message.selectedSuggestedReply === reply ? 'true' : 'false'"
+                    :dir="insideChipDir(reply)"
+                    @click="sendFollowUpReply(message, reply)"
+                  >{{ reply }}</button>
+                </div>
+              </div>
+            </div>
+            <div
+              v-else-if="showFollowUpReplies(message)"
+              class="assis-follow-replies"
+              :class="language === 'he' ? 'assis-follow-replies--he' : 'assis-follow-replies--en'"
+              role="group"
+              :aria-label="language === 'he' ? 'המשכי שיחה' : 'Follow-up replies'"
+              :dir="language === 'he' ? 'rtl' : 'ltr'"
+            >
+              <button
+                v-for="(reply, replyIndex) in followUpReplies(message)"
+                :key="`${message.id || message.datetime}-reply-plain-${replyIndex}`"
+                type="button"
+                class="assis-follow-reply"
+                :class="{ 'is-selected': message.selectedSuggestedReply === reply }"
+                :style="{ '--reply-i': replyIndex }"
+                :disabled="!canClickFollowUp(message)"
+                :aria-pressed="message.selectedSuggestedReply === reply ? 'true' : 'false'"
+                :dir="insideChipDir(reply)"
+                @click="sendFollowUpReply(message, reply)"
+              >{{ reply }}</button>
+            </div>
+            <p
+              v-if="isNewAssisDesign && loginChannels === 'ai' && shouldShowMessageWhen(message, index)"
+              class="assis-message-when"
+              :style="followUpReplies(message).length ? { '--reply-n': String(followUpReplies(message).length) } : undefined"
+            >{{ formatMessageClock(message.datetime) }}</p>
           </div>
 
           <div
@@ -2848,25 +3344,6 @@
           </div>
         </div>
 
-        <!-- File upload progress -->
-        <div v-if="isUploading" class="upload-progress">
-          <div class="progress-bar">
-            <div class="progress-fill" :style="{ width: uploadProgress + '%' }"></div>
-          </div>
-          <span class="progress-text">Uploading... {{ uploadProgress }}%</span>
-        </div>
-
-        <!-- Selected files preview -->
-        <div v-if="selectedFiles.length > 0" class="selected-files">
-          <div v-for="(file, index) in selectedFiles" :key="index" class="selected-file">
-            <div class="file-preview">
-              <span class="file-icon">{{ getFileIcon(getFileTypeFromMime(file.type), file.type) }}</span>
-              <span class="file-name">{{ file.name }}</span>
-            </div>
-            <button @click="removeSelectedFile(index)" class="remove-file-btn">×</button>
-          </div>
-        </div>
-
         <!-- Login Form (shown when no email/phone and no messages, or when showSignInForm is true) -->
         <div v-if="showSignFormIfNoMessages" class="chat-login-form">
           <div class="login-form-container">
@@ -2926,6 +3403,18 @@
           class="chat-input-area"
           :class="{ 'chat-input-area--with-contact-sheet': showAiContactSheet && !isNewAssisDesign }"
         >
+          <button
+            v-if="cartUpsellInChat && cartUpsellMoreReady && cartUpsellVisible.length && !cartUpsellMoreOpened"
+            type="button"
+            class="cart-upsell-more"
+            @click.stop.prevent="scrollToCartUpsell"
+          >
+            <span class="cart-upsell-more-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span>{{ language === 'he' ? 'קרא עוד' : 'Read more' }}</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M6 9l6 6 6-6"></path>
+            </svg>
+          </button>
           <div
             v-if="orderDetailsPopupOpen && orderPopupMessage"
             ref="orderDetailsPopup"
@@ -3127,8 +3616,10 @@
               class="agent-card-reopen"
               @click="openAiContactPicker"
             >
-              <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" aria-hidden="true"><path d="M19.05 4.91A9.82 9.82 0 0 0 12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.87 9.87 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.91-7.02zm-7.01 15.24h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24 2.2 0 4.27.86 5.82 2.42a8.18 8.18 0 0 1 2.41 5.83c0 4.55-3.7 8.24-8.24 8.24zm4.52-6.16c-.25-.12-1.47-.72-1.7-.81-.23-.08-.39-.12-.56.12-.17.25-.64.81-.78.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-2-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.02-.38.11-.51.11-.11.25-.29.37-.43.12-.14.17-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.34-.76-1.84-.2-.48-.4-.42-.56-.42h-.48c-.17 0-.43.06-.66.31-.23.25-.87.85-.87 2.07 0 1.22.89 2.4 1.01 2.56.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.67-1.18.21-.58.21-1.07.14-1.18-.07-.1-.25-.17-.5-.29z"/></svg>
-              <span>{{ agentCardReopenLabel }}</span>
+              <span class="assis-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.05 4.91A9.82 9.82 0 0 0 12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.87 9.87 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.91-7.02zm-7.01 15.24h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24 2.2 0 4.27.86 5.82 2.42a8.18 8.18 0 0 1 2.41 5.83c0 4.55-3.7 8.24-8.24 8.24zm4.52-6.16c-.25-.12-1.47-.72-1.7-.81-.23-.08-.39-.12-.56.12-.17.25-.64.81-.78.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-2-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.02-.38.11-.51.11-.11.25-.29.37-.43.12-.14.17-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.34-.76-1.84-.2-.48-.4-.42-.56-.42h-.48c-.17 0-.43.06-.66.31-.23.25-.87.85-.87 2.07 0 1.22.89 2.4 1.01 2.56.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.67-1.18.21-.58.21-1.07.14-1.18-.07-.1-.25-.17-.5-.29z"/></svg>
+              </span>
+              <span class="assis-chip-label">{{ agentCardReopenLabel }}</span>
             </button>
             <button
               v-for="chip in visibleAssisConversationChips"
@@ -3397,6 +3888,71 @@
 
 
 
+          <!-- Attach preview before send — row of thumbs; fan only on sent collage in chat. -->
+          <div
+            v-if="selectedAttachments.length > 0 || isUploading || fileAttachError"
+            class="assis-attach-preview"
+            :class="`assis-attach-preview--n${Math.min(selectedAttachments.length || 1, 3)}`"
+            :dir="language === 'he' ? 'rtl' : 'ltr'"
+          >
+            <div class="assis-attach-row">
+              <div
+                v-for="(item, index) in selectedAttachments"
+                :key="item.id"
+                class="assis-attach-item"
+                :class="[
+                  item.previewUrl ? 'assis-attach-item--image' : 'assis-attach-item--file',
+                  item.uploadStatus ? `is-upload-${item.uploadStatus}` : null,
+                ]"
+              >
+                <button
+                  v-if="item.previewUrl"
+                  type="button"
+                  class="assis-attach-thumb-btn"
+                  :aria-label="language === 'he' ? 'פתיחת תמונה' : 'Open image'"
+                  @click="openImageModal(item.previewUrl)"
+                >
+                  <img
+                    class="assis-attach-thumb"
+                    :src="item.previewUrl"
+                    :alt="item.file.name"
+                  />
+                </button>
+                <template v-else>
+                  <span class="assis-attach-file-glyph" aria-hidden="true">{{ getFileIcon(getFileTypeFromMime(item.file.type), item.file.type) }}</span>
+                  <span class="assis-attach-file-meta">
+                    <span class="assis-attach-file-name">{{ item.file.name }}</span>
+                    <span class="assis-attach-file-size">{{ formatFileSize(item.file.size) }}</span>
+                  </span>
+                </template>
+                <div
+                  v-if="item.uploadStatus === 'pending' || item.uploadStatus === 'uploading'"
+                  class="assis-attach-loading"
+                  :class="{ 'is-active': item.uploadStatus === 'uploading' }"
+                  aria-hidden="true"
+                >
+                  <svg class="assis-attach-loading-ring" viewBox="0 0 36 36">
+                    <circle class="assis-attach-loading-track" cx="18" cy="18" r="14" fill="none" stroke-width="3" />
+                    <circle class="assis-attach-loading-arc" cx="18" cy="18" r="14" fill="none" stroke-width="3" />
+                  </svg>
+                </div>
+                <button
+                  v-if="!isUploading"
+                  type="button"
+                  class="assis-attach-remove"
+                  :class="{ 'assis-attach-remove--inline': !item.previewUrl }"
+                  :aria-label="language === 'he' ? 'הסרת קובץ' : 'Remove file'"
+                  @click.stop="removeSelectedFile(index)"
+                >
+                  <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true">
+                    <path d="M18 6L6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <p v-if="fileAttachError" class="assis-file-attach-error" role="status">{{ fileAttachError }}</p>
+          </div>
+
           <div
             class="chat-input-row"
             :class="{ 'chat-input-row--with-contact-sheet': showAiContactSheet && !isNewAssisDesign }"
@@ -3449,24 +4005,26 @@
               </teleport>
 
               <input ref="fileInput" type="file" multiple
-                accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv" @change="handleFileSelect"
+                :accept="fileUploadAccept" @change="handleFileSelect"
                 style="display: none;" />
               <textarea ref="chatInput" v-model="newMessage" :placeholder="isNewAssisDesign ? (language === 'he' ? 'כתבו הודעה...' : 'Ask anything...') : (language === 'he' ? 'כתבו כאן הודעה…' : 'Write a message here...')" class="chat-input"
                 :disabled="(!guestEmail && !guestPhone && chatMessages.length > 0 && loginChannels !== 'ai') || isChatClosedAutomatically || planSubscription === 'off'"
                 enterkeyhint="enter"
                 @keydown.enter="handleEnterKey" @input="handleTextInput('newMessage')"
+                @paste="onChatComposerPaste"
                 :dir="getTextDirection(newMessage)"
                 :style="{ textAlign: getTextDirection(newMessage) === 'rtl' ? 'right' : 'left' }" rows="1"></textarea>
-              <button @click="triggerFileSelect" class="attach-btn" title="Attach files" :disabled="isChatClosedAutomatically">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                  class="lucide lucide-plus w-5 h-5">
-                  <path d="M5 12h14"></path>
-                  <path d="M12 5v14"></path>
+              <button @click="triggerFileSelect" class="attach-btn" :title="language === 'he' ? 'צירוף תמונה או קובץ' : 'Attach image or file'" :disabled="isChatClosedAutomatically">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"
+                  aria-hidden="true">
+                  <rect x="3" y="3" width="18" height="18" rx="2.5"></rect>
+                  <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                  <path d="m21 15-5-5L5 21"></path>
                 </svg>
               </button>
             </div>
-            <button @click="sendMessage" class="send-btn" :disabled="(!newMessage.trim() && selectedFiles.length === 0) || isChatClosedAutomatically || planSubscription === 'off'">
+            <button @click="sendMessage" class="send-btn" :disabled="(!newMessage.trim() && selectedAttachments.length === 0) || isChatClosedAutomatically || planSubscription === 'off'">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
               </svg>
@@ -3750,6 +4308,8 @@ import shopifyCartMixin from './shopifyCart.js';
 import woocommerceCartMixin from './woocommerceCart.js';
 import pluginEventsMixin from './pluginEvents.js';
 import proactiveBubblesMixin from './proactiveBubbles.js';
+import cartUpsellMixin from './cartUpsell.js';
+import CartUpsellFan from './CartUpsellFan.vue';
 import EmojiPicker from 'vue3-emoji-picker';
 import 'vue3-emoji-picker/css';
 import AssisHeartLogo from './AssisHeartLogo.vue';
@@ -4040,12 +4600,13 @@ function getContextualThinkingPhrases(messageText, language) {
 
 export default {
   name: 'App',
-  mixins: [shopifyCartMixin, woocommerceCartMixin, pluginEventsMixin, proactiveBubblesMixin],
+  mixins: [shopifyCartMixin, woocommerceCartMixin, pluginEventsMixin, proactiveBubblesMixin, cartUpsellMixin],
   components: {
     EmojiPicker,
     AssisHeartLogo,
     OutsideBubbleIcon,
     OrderVerificationCard,
+    CartUpsellFan,
   },
   props: {
     teleportTarget: {
@@ -4183,6 +4744,8 @@ export default {
       defaultErrorMessage: DEFAULT_ERROR_MESSAGE_HE,
       isChatOpen: false,
       showQuickActions: true,
+      // After X on outside bubbles — show the chat glyph on the plugin again.
+      outsideBubblesDismissed: false,
       showHeaderMenu: false,
       pendingQuickActionMessage: null,
       isFlushingQuickAction: false,
@@ -4209,6 +4772,19 @@ export default {
       isUserInteracting: false, // New flag to track user interaction
       userAcknowledgment: false, // New data property for acknowledgment
       chatMessages: [], // New data property for chat messages
+      idleChatNudged: false,
+      siteEntryNudged: false,
+      idleCartNudged: false,
+      idleChatPending: false,
+      idleOutsideFollowup: null,
+      // null = not measured yet (must NOT fall back to all chips — that flashes 3 then 1).
+      outsideReplyVisibleChipCount: null,
+      outsideReplyShowMore: false,
+      outsideReplyChipsMeasuring: false,
+      pluginUnreadCount: 0,
+      cartIconNudge: false,
+      floatingChatDate: '',
+      floatingChatDateOn: false,
       newMessage: '', // New data property for new message input
       chatInputMultiline: false,
       isLoading: false, // New data property for loading state
@@ -4230,7 +4806,12 @@ export default {
       // File upload related
       isUploading: false,
       uploadProgress: 0,
-      selectedFiles: [],
+      selectedAttachments: [], // { id, file, previewUrl }
+      _collageSwipeX: null,
+      chatFileDragDepth: 0,
+      fileAttachError: '',
+      _fileAttachErrorTimer: null,
+      _selectedAttachmentSeq: 0,
       supabaseClient: null, // Will be initialized when needed
       showImageModal: false,
       modalImageUrl: '',
@@ -4245,6 +4826,7 @@ export default {
       businessWhatsAppNumber: null, // WhatsApp number from backend
       businessEmail: null, // Business email from backend
       businessNameFromApi: null, // Business name from /api/shopify/plugin-plan-subscription
+      pluginStorefrontUrl: '', // Real storefront origin from plugin-messages (local harness → cart page)
       // From /api/whatsapp/phone when provided; otherwise fall back to communicationChannels prop
       widgetCommunicationChannels: null,
       isWhatsAppNumberFetched: false, // Track if WhatsApp number has been fetched
@@ -4264,6 +4846,18 @@ export default {
       productSelectedOptions: {}, // per-message/product option selections
       productCardPickedVariants: {},
       productCardOptionMenuKey: '',
+      productCardOptionMenu: {
+        visible: false,
+        key: '',
+        top: 0,
+        left: 0,
+        width: 0,
+        selected: '',
+        values: [],
+        optionIndex: 0,
+        messageKey: '',
+        productIndex: 0,
+      },
       productVariantMenu: {
         visible: false,
         key: '',
@@ -4335,8 +4929,15 @@ export default {
       pluginEilatPricing: { enabled: false, mode: 'exclude_israel_vat', rate: 18 },
       proactiveTriggers: null,
       pluginBubbleLayout: 'above',
+      // from /plugin-messages; default on — suggested answers next to the closed chat button
+      pluginOutsideReplyChoices: true,
       pluginOutsideBubbles: null, // from /plugin-messages; [{text, clickable, textToSendOnClick?}]
       pluginOutsideBubblesByLang: { he: [], en: [] }, // from /plugin-messages; { he: [], en: [] } or legacy array
+      // from /plugin-messages; business-edited home chips { he: [], en: [] }
+      pluginHomeChipsByLang: { he: [], en: [] },
+      // Home chips freeze once per language for the session (do not follow rotating automatic bubbles).
+      homeScreenChipsFrozen: null,
+      homeScreenChipsFrozenLang: '',
       // from /plugin-messages; [{label:{he,en}, icon, link}] - link "assis://default-whatsapp" = built-in WA switch
       pluginSpecificMenu: [{ label: '', icon: 'whatsapp', link: 'assis://default-whatsapp' }],
       pluginBottomOffsetMobileRequested: 0, // host mobile setting: + up, - down (px)
@@ -4356,13 +4957,38 @@ export default {
       bannerContent: null, // Store banner content from backend
       bannerContentIndex: 0,
       bannerContentRotationTimer: null,
+      bannerPromoMarquee: false,
+      bannerPromoMarqueePx: 0,
+      _bannerPromoMarqueeTimer: null,
       clubBadgeShowEilat: false,
       clubBadgeRotationTimer: null,
+      homeProductRotateIndex: 0,
+      homeProductRotateTimer: null,
+      homeProductRotatePaused: false,
+      homeProductAdvanceLock: false,
+      homeProductAdvanceTimer: null,
+      followUpRevealReady: {},
+      questionBelowReady: {},
+      _followUpRevealToken: {},
     }
   },
   computed: {
     direction() {
       return this.language === 'he' ? 'rtl' : 'ltr';
+    },
+    canAttachChatFiles() {
+      return !this.isChatClosedAutomatically && this.planSubscription !== 'off';
+    },
+    fileUploadAccept() {
+      return FileUploadService.FILE_ACCEPT
+        || 'image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.mp3,.wav,.m4a,.aac,.ogg,.flac,.heic,.heif';
+    },
+    chatFileDragActive() {
+      return this.chatFileDragDepth > 0;
+    },
+    selectedFiles() {
+      // Back-compat for leftover readers — prefer selectedAttachments.
+      return (this.selectedAttachments || []).map((item) => item.file).filter(Boolean);
     },
     // Prefer an explicit host (e.g. shadow teleports), then the in-widget root.
     // Never use the Vue mount root, and never pass a reactive DOM proxy to Teleport
@@ -4451,8 +5077,86 @@ export default {
         ? 'אפשר לשאול על מוצרים, משלוחים, החזרות או כל דבר אחר - אני כאן לעזור.'
         : "Ask about products, shipping, returns, or anything else - I'm here to help.";
     },
+    outsideReplyChoicesActive() {
+      // Question + at least one reply chip — never dump a lone welcome wall of text.
+      return Array.isArray(this.idleOutsideFollowup) && this.idleOutsideFollowup.length > 1;
+    },
+    // Outside bubbles still up (not dismissed with X) — hide the plugin chat/unread icon.
+    outsidePluginBubblesVisible() {
+      if (this.isChatOpen || this.loginChannels !== 'ai' || !this.pluginMessagesFetched) return false;
+      if (this.cartUpsellFromSite) return true;
+      if (!this.showQuickActions) return false;
+      if (this.outsideReplyChoicesActive) return true;
+      return Array.isArray(this.shownOutsideBubbles) && this.shownOutsideBubbles.length > 0;
+    },
+    pluginUnread() {
+      return this.pluginUnreadCount > 0;
+    },
+    pluginUnreadLabel() {
+      const n = Number(this.pluginUnreadCount) || 0;
+      if (n <= 0) return '';
+      return n > 9 ? '9+' : String(n);
+    },
+    // Same 3-dot chrome while bubbles are up and after X. No chat glyph.
+    // Waiting on AI → wave; otherwise soft idle bounce (bubbles open or dismissed).
+    showPluginTypingDots() {
+      if (this.isChatOpen || this.loginChannels !== 'ai') return false;
+      if (this.pluginUnreadCount > 0) return false;
+      if (this.isWaitingOnAiReply) return true;
+      if (this.outsidePluginBubblesVisible) return true;
+      return this.outsideBubblesDismissed;
+    },
+    // Small blue count on the heart — unread Assis replies while chat is closed.
+    showPluginUnreadBadge() {
+      if (this.isChatOpen || this.loginChannels !== 'ai') return false;
+      if (this.isWaitingOnAiReply) return false;
+      return this.pluginUnreadCount > 0;
+    },
+    showPluginChatHint() {
+      if (this.isChatOpen || this.loginChannels !== 'ai') return false;
+      if (this.isWaitingOnAiReply) return false;
+      if (this.showPluginTypingDots) return false;
+      if (this.outsidePluginBubblesVisible) return false;
+      if (this.pluginUnreadCount > 0) return false;
+      // After X: static dots instead of the chat glyph.
+      if (this.outsideBubblesDismissed) return false;
+      return this.usesPoweredOpenButton;
+    },
+    outsideReplyQuestion() {
+      if (!this.outsideReplyChoicesActive) return null;
+      return this.orderedPluginOutsideBubbles[0] || null;
+    },
+    outsideReplyQuestionText() {
+      const bubble = this.outsideReplyQuestion;
+      if (!bubble) return '';
+      if (Array.isArray(bubble.lines) && bubble.lines.length) {
+        return String(bubble.lines[bubble.lines.length - 1] || '').trim() || bubble.plainText || '';
+      }
+      return bubble.plainText || '';
+    },
+    outsideReplyChoiceChips() {
+      if (!this.outsideReplyChoicesActive) return [];
+      return this.orderedPluginOutsideBubbles.slice(1).filter((bubble) => bubble.clickable);
+    },
+    outsideReplyVisibleChips() {
+      const chips = this.outsideReplyChoiceChips;
+      if (!chips.length) return [];
+      // While measuring, paint all chips hidden so we can read widths — never use `0 || length`.
+      if (this.outsideReplyChipsMeasuring) return chips;
+      if (this.outsideReplyVisibleChipCount == null) return [];
+      const count = Math.max(0, Math.min(this.outsideReplyVisibleChipCount, chips.length));
+      return chips.slice(0, count);
+    },
     shownOutsideBubbles() {
       const list = this.orderedPluginOutsideBubbles;
+      if (this.outsideReplyChoicesActive) return [];
+      if (Array.isArray(this.idleOutsideFollowup) && this.idleOutsideFollowup.length) {
+        return list.slice(0, 4).map((bubble, index) => (
+          index === 0
+            ? { ...bubble, face: 'long', clickable: false }
+            : { ...bubble, face: 'chip', clickable: true }
+        ));
+      }
       const layout = this.pluginBubbleLayout;
       if (layout === 'side_one' || layout === 'above_one') return list.slice(0, 1);
       if (layout === 'side_two' || layout === 'above_two') return list.slice(0, 2);
@@ -4468,11 +5172,34 @@ export default {
     pluginOutsideBubblesClickable() {
       return this.orderedPluginOutsideBubbles.filter((bubble) => bubble.clickable);
     },
+    /** Master switch for Automatic / AI outside bubbles (`plugin_proactive_triggers._enabled`). */
+    pluginAiBubblesEnabled() {
+      const map = this.proactiveTriggers;
+      if (!map || typeof map !== 'object') return true;
+      return map._enabled !== false;
+    },
+    /** Hardcoded fallback intro only when AI bubbles can still own the outside slot. */
+    showFixedQuickActionIntro() {
+      return this.pluginAiBubblesEnabled;
+    },
     orderedPluginOutsideBubbles() {
       const byLang = this.pluginOutsideBubblesByLang || { he: [], en: [] };
       const lang = this.language === 'he' ? 'he' : 'en';
       const configured = Array.isArray(byLang[lang]) ? byLang[lang] : [];
-      const list = Array.isArray(this.proactiveOutsideBubbles) ? this.proactiveOutsideBubbles : configured;
+      let list;
+      if (Array.isArray(this.idleOutsideFollowup) && this.idleOutsideFollowup.length) {
+        list = this.idleOutsideFollowup;
+      } else if (
+        this.pluginAiBubblesEnabled
+        && Array.isArray(this.proactiveOutsideBubbles)
+        && this.proactiveOutsideBubbles.length
+      ) {
+        list = this.proactiveOutsideBubbles;
+      } else {
+        // Care settings / Automatic off: keep full configured order (incl. bubble 1).
+        // Do not strip the teaser or require clickable chips — that hid all bubbles when AI was off.
+        list = configured;
+      }
       let clickableIndex = 0;
       return list
         .filter((bubble) => bubble && typeof bubble === 'object' && !!String(bubble.text || '').trim())
@@ -4483,17 +5210,27 @@ export default {
             || bubble.clickable === 'true'
             || bubble.clickable === 1
             || bubble.clickable === '1';
-          const textToSend = String(bubble.textToSendOnClick || plainText).trim() || plainText;
+          const clicked = String(bubble.textToSendOnClick || '').trim();
+          const textToSend = (clicked ? this.stripQuickActionHtml(clicked) : plainText) || plainText;
           // Intro card only for multi-block greetings. A single styled line stays a chip.
           const blockCount = (text.match(/<(?:p|div)(?:\s|>)/gi) || []).length;
           const textStyles = this.extractQuickActionChipStyles(text);
-          const lines = Array.isArray(bubble.lines)
+          const rawLines = Array.isArray(bubble.lines)
             ? bubble.lines.map((line) => String(line || '').trim()).filter(Boolean).slice(0, 2)
             : [];
+          const lines = rawLines.map((line) => this.stripQuickActionHtml(line)).filter(Boolean);
+          // Prefer styled HTML from `text`. Saved `lines` are plain and would drop size/color.
           const lineHtml = index === 0
-            ? (lines.length >= 2 ? lines : this.introLineHtml(text))
+            ? (() => {
+              const fromHtml = this.introLineHtml(text);
+              if (fromHtml.length >= 2) return fromHtml;
+              if (rawLines.length >= 2) return rawLines;
+              return fromHtml.length ? fromHtml : rawLines;
+            })()
             : [];
-          // Direction from bubble copy, not plugin language - English "?" stays on the right in a Hebrew plugin.
+          // Chip chrome / icon side follow plugin language. Intro line dirs stay
+          // content-based so English "?" still sits correctly inside Hebrew copy.
+          const layoutDir = this.language === 'he' ? 'rtl' : 'ltr';
           const titlePlain = lines[0]
             || (lineHtml[0] ? this.stripQuickActionHtml(lineHtml[0]) : '')
             || plainText;
@@ -4501,7 +5238,7 @@ export default {
             || (lineHtml[1] ? this.stripQuickActionHtml(lineHtml[1]) : '');
           const titleDir = this.getTextDirection(titlePlain);
           const subDir = subPlain ? this.getTextDirection(subPlain) : titleDir;
-          const dir = this.getTextDirection(plainText || titlePlain);
+          const textDir = this.getTextDirection(plainText || titlePlain);
           const item = {
             text,
             plainText,
@@ -4510,17 +5247,20 @@ export default {
             lines,
             lineHtml,
             isIntroHtml: index === 0 && blockCount >= 2,
-            dir,
+            dir: layoutDir,
+            textDir,
             titleDir,
             subDir,
             chipStyle: {
-              textAlign: dir === 'rtl' ? 'right' : 'left',
+              textAlign: layoutDir === 'rtl' ? 'right' : 'left',
               ...(textStyles.fontSize ? { fontSize: textStyles.fontSize } : {}),
               ...(textStyles.color ? { color: textStyles.color } : {}),
               ...(textStyles.fontWeight ? { fontWeight: textStyles.fontWeight } : {}),
             },
             clickableIndex: clickable ? clickableIndex : -1,
-            icon: this.bubbleIcon(bubble.icon, plainText, clickable ? clickableIndex : 0),
+            icon: this.bubbleIcon(bubble.icon, plainText, clickable ? clickableIndex : 0, {
+              allowDefault: index !== 0,
+            }),
           };
           if (clickable) clickableIndex += 1;
           return item;
@@ -4538,12 +5278,14 @@ export default {
       return this.getTextDirection(`${this.quickActionIntroTitle} ${this.quickActionIntroSub}`);
     },
     quickActionPrompts() {
+      const layoutDir = this.language === 'he' ? 'rtl' : 'ltr';
       if (this.pluginOutsideBubblesClickable.length) {
         return this.pluginOutsideBubblesClickable.map((bubble) => ({
           text: bubble.text,
           plainText: bubble.plainText,
           textToSend: bubble.textToSend,
-          dir: bubble.dir,
+          dir: layoutDir,
+          textDir: bubble.textDir || this.getTextDirection(bubble.plainText || bubble.text || ''),
         }));
       }
       const discountPrompt = this.language === 'he' ? 'יש הנחה מהצ׳אט?' : 'Any discount from chat?';
@@ -4551,7 +5293,8 @@ export default {
         text: discountPrompt,
         plainText: discountPrompt,
         textToSend: discountPrompt,
-        dir: this.getTextDirection(discountPrompt),
+        dir: layoutDir,
+        textDir: this.getTextDirection(discountPrompt),
       }];
     },
     assisFooterMistakesLabel() {
@@ -4584,36 +5327,96 @@ export default {
     pageBubbleQuestions() {
       const seen = new Set();
       const questions = [];
-      this.shownOutsideBubbles.forEach((bubble) => {
+      // Skip index 0 - the default main outside teaser must not become an inside chip.
+      this.orderedPluginOutsideBubbles.forEach((bubble, index) => {
+        if (index === 0) return;
         if (!bubble || !bubble.clickable || bubble.face === 'long' || bubble.isIntroHtml) return;
         const text = String(bubble.plainText || '').trim();
         if (!text || seen.has(text)) return;
         seen.add(text);
+        const layoutDir = this.language === 'he' ? 'rtl' : 'ltr';
         questions.push({
           text,
           textToSend: bubble.textToSend || text,
           icon: bubble.icon,
-          chipStyle: bubble.chipStyle,
-          dir: bubble.dir,
+          chipStyle: {
+            ...(bubble.chipStyle || {}),
+            textAlign: layoutDir === 'rtl' ? 'right' : 'left',
+          },
+          dir: layoutDir,
+          textDir: bubble.textDir || this.getTextDirection(text),
         });
       });
       return questions.slice(0, 3);
     },
-    poweredByAssisHomeChips() {
-      const dynamic = this.pageBubbleQuestions;
-      if (dynamic.length) return dynamic;
-      const fallback = (this.language === 'he'
+    configuredOutsideQuestions() {
+      const byLang = this.pluginOutsideBubblesByLang || { he: [], en: [] };
+      const lang = this.language === 'he' ? 'he' : 'en';
+      const configured = Array.isArray(byLang[lang]) ? byLang[lang] : [];
+      const seen = new Set();
+      const questions = [];
+      configured.forEach((bubble, index) => {
+        // Index 0 is the default main outside teaser - keep it outside the open plugin only.
+        if (index === 0) return;
+        if (!bubble || typeof bubble !== 'object') return;
+        const clickable = bubble.clickable === true
+          || bubble.clickable === 'true'
+          || bubble.clickable === 1
+          || bubble.clickable === '1';
+        if (!clickable) return;
+        const plainText = this.stripQuickActionHtml(String(bubble.text || '').trim());
+        if (!plainText || seen.has(plainText)) return;
+        seen.add(plainText);
+        const clicked = String(bubble.textToSendOnClick || '').trim();
+        const textToSend = (clicked ? this.stripQuickActionHtml(clicked) : plainText) || plainText;
+        const dir = this.language === 'he' ? 'rtl' : 'ltr';
+        questions.push({
+          text: plainText,
+          textToSend,
+          icon: this.bubbleIcon(bubble.icon, plainText, questions.length),
+          chipStyle: { textAlign: dir === 'rtl' ? 'right' : 'left' },
+          dir,
+        });
+      });
+      return questions.slice(0, 3);
+    },
+    homeScreenFallbackChips() {
+      const defaults = this.language === 'he'
         ? [
-            'מה אפשרויות המשלוח?',
-            'מה מדיניות ההחזרות?',
-            'אפשר המלצה שמתאימה לי?',
+            { text: 'מה אפשרויות המשלוח?', icon: 'truck' },
+            { text: 'מה מדיניות ההחזרות?', icon: 'sparkle' },
+            { text: 'אפשר המלצה שמתאימה לי?', icon: 'key' },
           ]
         : [
-            'Shipping options?',
-            'Return policy?',
-            'Recommend something?',
-          ]).map((text, index) => ({ text, icon: this.starterChipIcon(text, index) }));
-      return fallback;
+            { text: 'Shipping options?', icon: 'truck' },
+            { text: 'Return policy?', icon: 'sparkle' },
+            { text: 'Recommend something?', icon: 'key' },
+          ];
+      return defaults.map((item, index) => ({
+        text: item.text,
+        textToSend: item.text,
+        icon: item.icon || this.starterChipIcon(item.text, index),
+        dir: this.language === 'he' ? 'rtl' : 'ltr',
+        chipStyle: { textAlign: this.language === 'he' ? 'right' : 'left' },
+      }));
+    },
+    configuredHomeChips() {
+      const byLang = this.pluginHomeChipsByLang || { he: [], en: [] };
+      const lang = this.language === 'he' ? 'he' : 'en';
+      return this.normalizeHomeScreenChips(byLang[lang] || []);
+    },
+    poweredByAssisHomeChips() {
+      const lang = this.language === 'he' ? 'he' : 'en';
+      if (
+        this.homeScreenChipsFrozenLang === lang
+        && Array.isArray(this.homeScreenChipsFrozen)
+        && this.homeScreenChipsFrozen.length
+      ) {
+        return this.homeScreenChipsFrozen;
+      }
+      const configured = this.configuredHomeChips;
+      if (configured.length) return configured;
+      return this.homeScreenFallbackChips;
     },
     assisConversationChips() {
       const moreText = this.language === 'he' ? 'ספרי לי עוד' : 'Tell me more';
@@ -4676,9 +5479,26 @@ export default {
       if (this.hasSavedVerifiedOrders) return true;
       return false;
     },
+    isWaitingOnAiReply() {
+      if (this.loadingIndicator) return true;
+      const messages = this.chatMessages || [];
+      for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const message = messages[i];
+        if (!message || message.isContactSubmission || message.isCartAction) continue;
+        const sender = String(message.sender || '').toLowerCase();
+        if (sender === 'client') return true;
+        if (message.isStreaming || message.streamPendingCommit || message.isTyping) return true;
+        return false;
+      }
+      return false;
+    },
     visibleAssisConversationChips() {
+      if (this.selectedAttachments.length) return [];
+      if (this.hasClientChatMessages) return [];
       if (this.shouldHideSuggestChipsForProducts) return [];
       if (this.shouldHideSuggestChipsForOrders) return [];
+      if (this.isWaitingOnAiReply) return [];
+      if (this.hasFollowUpRepliesOnLatestAi()) return [];
       return this.assisConversationChips;
     },
     showAssisSuggestChipsRow() {
@@ -4689,7 +5509,7 @@ export default {
     assisSuggestChipsRtl() {
       return this.language === 'he';
     },
-    poweredByAssisHomeProducts() {
+    poweredByAssisHomeProductsAll() {
       const pickImage = (product) => {
         if (!product || typeof product !== 'object') return '';
         const candidates = [
@@ -4736,7 +5556,18 @@ export default {
           variants: product.variants,
           isOutOfStock: product.isOutOfStock,
         };
-      }).filter(Boolean).slice(0, 3);
+      }).filter(Boolean);
+    },
+    homeProductFanSlots() {
+      return this.isMaximized ? 3 : 2;
+    },
+    poweredByAssisHomeProducts() {
+      const all = this.poweredByAssisHomeProductsAll;
+      const slots = this.homeProductFanSlots;
+      if (!all.length) return [];
+      if (all.length <= slots) return all;
+      const start = ((this.homeProductRotateIndex % all.length) + all.length) % all.length;
+      return Array.from({ length: slots }, (_, i) => all[(start + i) % all.length]);
     },
     countryPhonePrefixes() {
       return COUNTRY_PHONE_PREFIXES;
@@ -4955,8 +5786,17 @@ export default {
     activeBannerTextDirection() {
       const text = this.showActiveWhatsAppBanner
         ? this.whatsappBannerLabel
-        : this.activeBannerContent;
+        : this.activeBannerPromoText;
       return this.getTextDirection(text);
+    },
+    bannerPromoMarqueeStyle() {
+      if (!this.bannerPromoMarquee || !this.bannerPromoMarqueePx) return null;
+      const dir = this.activeBannerTextDirection === 'rtl' ? 1 : -1;
+      const seconds = Math.max(6, Math.min(16, this.bannerPromoMarqueePx / 16));
+      return {
+        '--assis-promo-shift': `${dir * this.bannerPromoMarqueePx}px`,
+        '--assis-promo-marquee-duration': `${seconds}s`,
+      };
     },
     whatsappSendLabel() {
       return this.language === 'he' ? 'שלח' : 'Send';
@@ -5256,6 +6096,11 @@ export default {
       return email;
     },
     thinkingPhrases() {
+      if (this.idleChatPending) {
+        return this.language === 'he'
+          ? ['נראה שלא כתבת לי', 'אשמח לעזור לך', 'אני כאן אם תרצי להמשיך']
+          : ['Looks like you paused', 'Happy to help', 'I am here if you want to continue'];
+      }
       const typed = String(this.newMessage || '').trim();
       const source = (this.loadingIndicator && typed) ? typed : this.lastClientMessageText;
       return getContextualThinkingPhrases(source, this.language);
@@ -5282,8 +6127,20 @@ export default {
     },
   },
   watch: {
-    isChatOpen() {
-      this.scheduleFitPluginBottomOffset();
+    language() {
+      this.restoreOrFreezeHomeScreenChips();
+    },
+    pluginOutsideBubblesByLang: {
+      deep: true,
+      handler() {
+        this.restoreOrFreezeHomeScreenChips();
+      },
+    },
+    pageBubbleQuestions() {
+      this.restoreOrFreezeHomeScreenChips();
+    },
+    outsideReplyChoiceChips() {
+      this.$nextTick(() => this.syncOutsideReplyChipsFit());
     },
     // Watch for changes in chat messages to update text directions
     chatMessages: {
@@ -5291,7 +6148,8 @@ export default {
         this.notePluginCatalog(messages);
         this.scheduleProductRatings();
         this.keepCheckoutChatAnchor(messages);
-        if (this.typewriterMessage) return;
+        // Skip while letter-by-letter reveal is active — deep watch fires every char.
+        if (this.typewriterMessage || this.streamingMessage) return;
         this.$nextTick(() => {
           this.updateMessageDirections();
           this.scheduleProductCarouselOverflowSync();
@@ -5327,16 +6185,22 @@ export default {
     },
     showGoToCheckout(shown) {
       if (shown) this.pinCheckoutChatAnchor();
-      else this.checkoutChatAnchorId = '';
+      else if (!this.cartUpsellInChat) this.checkoutChatAnchorId = '';
     },
     shopifyCartItemCount(count, previous) {
       if (!count) {
-        this.checkoutChatAnchorId = '';
+        if (!this.cartUpsellInChat) this.checkoutChatAnchorId = '';
+        this.clearCartIconNudge();
         return;
       }
       if (previous != null && count > previous && this.showGoToCheckout) {
         this.pinCheckoutChatAnchor();
       }
+      this.armCartIconNudge();
+    },
+    showShopifyCartPanel(open) {
+      if (open) this.clearCartIconNudge();
+      else this.armCartIconNudge();
     },
     showOrdersDock(hasOrders, hadOrders) {
       if (hasOrders && !hadOrders) {
@@ -5383,6 +6247,29 @@ export default {
       this.flushPendingQuickAction();
     },
     isChatOpen(newVal) {
+      this.scheduleFitPluginBottomOffset();
+      this.syncHomeFilePasteListener(Boolean(newVal && this.showPoweredByAssisHome));
+      if (newVal) {
+        this.clearPluginUnread();
+        this.outsideBubblesDismissed = false;
+        this.clearOutsideReplyChoices();
+        this._idleOutside = false;
+        this.armIdleChatNudge();
+        this.armCartIconNudge();
+        this.$nextTick(() => {
+          this.bindChatReveal();
+          this.resumeInFlightAiReveal();
+          this.requestMissedChatMessages();
+        });
+      } else {
+        // Keep stream/typewriter running while closed — only hide the panel.
+        this.checkpointStreamProgress();
+        this.queuePumpStreamReveal();
+        this.cartFocusOn = false;
+        this.armIdleChatNudge();
+        this.clearCartIconNudge();
+        this.$nextTick(() => this.armOutsideReplyChoicesFromChat());
+      }
       // Lock / unlock body scroll on mobile so the parent page never shows
       // behind the widget when the keyboard opens on iOS Safari.
       if (newVal) {
@@ -5397,18 +6284,70 @@ export default {
         this.clearMobileSheetLayout();
         this.endChatWindowDrag();
         this.stopClubBadgeRotation();
+        this.stopHomeProductRotation();
       }
 
       if (!newVal) return;
       this.scheduleRestoreChatScrollPosition();
-      this.$nextTick(() => this.scheduleProductCarouselOverflowSync());
+      this.$nextTick(() => {
+        this.scheduleProductCarouselOverflowSync();
+        this.syncBannerPromoMarquee();
+      });
+      this.syncHomeProductRotation();
     },
     isMaximized() {
       if (this.isChatOpen) this.$nextTick(() => this.handleViewportResize());
-      this.$nextTick(() => this.scheduleDiscountCarouselOverflowSync());
+      this.$nextTick(() => {
+        this.scheduleDiscountCarouselOverflowSync();
+        this.syncBannerPromoMarquee();
+        this.syncHomeProductRotation();
+      });
     },
-    showPoweredByAssisHome() {
+    showPoweredByAssisHome(open) {
       if (this.isChatOpen) this.$nextTick(() => this.handleViewportResize());
+      this.armIdleChatNudge();
+      this.syncHomeFilePasteListener(Boolean(open && this.isChatOpen));
+      if (open) this.syncHomeProductRotation();
+      else this.stopHomeProductRotation();
+      if (!open) this.$nextTick(() => this.syncBannerPromoMarquee());
+    },
+    highlightedProducts() {
+      this.homeProductRotateIndex = 0;
+      this.$nextTick(() => this.syncHomeProductRotation());
+    },
+    activeBannerContentKey() {
+      // out-in swap (~280ms) — measure after the new pill is in the DOM.
+      if (this._bannerPromoMarqueeTimer) {
+        clearTimeout(this._bannerPromoMarqueeTimer);
+        this._bannerPromoMarqueeTimer = null;
+      }
+      this.$nextTick(() => {
+        this.syncBannerPromoMarquee();
+        this._bannerPromoMarqueeTimer = window.setTimeout(() => {
+          this._bannerPromoMarqueeTimer = null;
+          this.syncBannerPromoMarquee();
+        }, 320);
+      });
+    },
+    newMessage() {
+      this.armIdleChatNudge();
+    },
+    isWaitingOnAiReply(waiting) {
+      if (!waiting) {
+        this.armIdleChatNudge();
+        this.armSiteEntryNudge();
+      } else {
+        this.clearSiteEntryNudge();
+      }
+    },
+    proactiveTriggers() {
+      // Restart only when admin timing / enable flags change.
+      this.armSiteEntryNudge({ forceRestart: true });
+      this.armIdleChatNudge();
+      if (typeof this.armProactiveDwell === 'function') {
+        this._proactiveDwellReady = false;
+        this.armProactiveDwell();
+      }
     },
     showGuestInput(newVal) {
       if (!newVal) return;
@@ -5613,6 +6552,15 @@ export default {
       if (!this.wasSessionRestored) return true;
       return index >= this.restoredMessagesCount;
     },
+    messageTurnKey(message, index) {
+      if (!message || typeof message !== 'object') return `m-${index}`;
+      if (!this._messageTurnKeys) this._messageTurnKeys = new WeakMap();
+      const known = this._messageTurnKeys.get(message);
+      if (known) return known;
+      const key = `m-${this._messageTurnSerial = (this._messageTurnSerial || 0) + 1}`;
+      this._messageTurnKeys.set(message, key);
+      return key;
+    },
 
     getMessageCarouselKey(message) {
       if (message?.id != null && message.id !== '') return String(message.id);
@@ -5637,16 +6585,61 @@ export default {
       };
     },
 
-    isHomeProductImageErrored(product, productIndex) {
-      return Boolean(this.productImageErrors?.[`home::${product?.id}::${productIndex}`]);
+    isHomeProductImageErrored(product) {
+      return Boolean(this.productImageErrors?.[`home::${product?.id}`]);
     },
 
-    markHomeProductImageError(product, productIndex) {
-      const key = `home::${product?.id}::${productIndex}`;
+    markHomeProductImageError(product) {
+      const key = `home::${product?.id}`;
       this.productImageErrors = {
         ...(this.productImageErrors || {}),
         [key]: true,
       };
+    },
+
+    /** Compact: 0=top/front a, 1=bottom b. Maximized: 0=front b, 1=left a, 2=right/bottom c. */
+    homeProductFanSlot(index) {
+      if (this.isMaximized) {
+        if (index === 0) return 'b';
+        if (index === 1) return 'a';
+        return 'c';
+      }
+      return index === 0 ? 'a' : index === 1 ? 'b' : 'c';
+    },
+
+    advanceHomeProductFan() {
+      if (this.homeProductRotatePaused || this.homeProductAdvanceLock) return;
+      this.homeProductAdvanceLock = true;
+      this.homeProductRotateIndex += 1;
+      clearTimeout(this.homeProductAdvanceTimer);
+      // Lock only through the soft crossfade so the next tick cannot stack mid-transition.
+      this.homeProductAdvanceTimer = setTimeout(() => {
+        this.homeProductAdvanceLock = false;
+        this.homeProductAdvanceTimer = null;
+      }, 720);
+    },
+
+    syncHomeProductRotation() {
+      this.stopHomeProductRotation();
+      this.homeProductRotatePaused = false;
+      if (!this.isChatOpen || !this.showPoweredByAssisHome) return;
+      if (this.poweredByAssisHomeProductsAll.length <= this.homeProductFanSlots) return;
+      // Advance by 1: bottom card moves toward front/top; one new product enters at the back.
+      this.homeProductRotateTimer = setInterval(() => {
+        this.advanceHomeProductFan();
+      }, 6200);
+    },
+
+    stopHomeProductRotation() {
+      if (this.homeProductRotateTimer) {
+        clearInterval(this.homeProductRotateTimer);
+        this.homeProductRotateTimer = null;
+      }
+      if (this.homeProductAdvanceTimer) {
+        clearTimeout(this.homeProductAdvanceTimer);
+        this.homeProductAdvanceTimer = null;
+      }
+      this.homeProductAdvanceLock = false;
     },
 
     unwrapProduct(product) {
@@ -5663,7 +6656,8 @@ export default {
 
     getProductDisplayTitle(product) {
       const item = this.unwrapProduct(product);
-      return item.title || item.name || item.product_title || item.productTitle || 'Product';
+      const title = item.title || item.name || item.product_title || item.productTitle || 'Product';
+      return this.decodeBannerHtmlEntities(title).trim() || 'Product';
     },
 
     normalizeProductMentionText(text) {
@@ -6048,6 +7042,92 @@ export default {
         || html.match(/data-raters=["'](\d+)["']/);
       return this.ratingFromNumbers(value?.[1], count?.[1]);
     },
+    checkoutView(message) {
+      if (message?.checkoutMoment) return message.checkoutMoment;
+      if (this.cartUpsellInChat && this.isCheckoutChatAnchor(message) && this.checkoutChatSnapshot) {
+        return this.checkoutChatSnapshot;
+      }
+      return null;
+    },
+    checkoutShownLines(message) {
+      const view = this.checkoutView(message);
+      if (view) return view.lines || [];
+      return this.shopifyCheckoutPreviewLines;
+    },
+    checkoutShownMoreCount(message) {
+      const view = this.checkoutView(message);
+      if (view) return view.moreCount || 0;
+      return this.shopifyCheckoutMoreCount;
+    },
+    checkoutShownNames(message) {
+      const view = this.checkoutView(message);
+      if (view) return view.names || '';
+      return this.shopifyCheckoutItemNames;
+    },
+    checkoutShownExtraCount(message) {
+      const view = this.checkoutView(message);
+      if (view) return view.extraCount || 0;
+      return this.shopifyCheckoutExtraCount;
+    },
+    checkoutShownExtraNames(message) {
+      const view = this.checkoutView(message);
+      if (view) return view.extraNames || [];
+      return this.shopifyCheckoutExtraNames;
+    },
+    checkoutShownPrice(message) {
+      const view = this.checkoutView(message);
+      if (view) return view.price || '';
+      return this.shopifyCartFormattedTotal;
+    },
+    checkoutLeadText(message) {
+      if (this.cartUpsellInChat && this.isCheckoutChatAnchor(message) && (this.cartUpsellHold || this.cartUpsellTyping)) {
+        return this.cartUpsellTyped;
+      }
+      const lead = message?.checkoutMoment?.lead;
+      if (lead === '') return '';
+      return lead || '';
+    },
+    checkoutLeadTyping(message) {
+      return Boolean(this.cartUpsellInChat && this.isCheckoutChatAnchor(message) && this.cartUpsellTyping);
+    },
+    checkoutCardSettled(message) {
+      if (message?.checkoutMoment) return true;
+      if (!(this.cartUpsellInChat && this.isCheckoutChatAnchor(message))) return false;
+      return !this.cartUpsellHold && !this.cartUpsellTyping;
+    },
+    isCheckoutMomentSlim(message) {
+      return Boolean(message?.checkoutMoment?.slim);
+    },
+    cartOfferQuestion(message) {
+      // Under הסל שלך / slim checkout whenever the bag is settled.
+      if (!this.isCartOfferTurn(message) || !this.checkoutCardSettled(message)) return '';
+      if (message?.checkoutMoment?.quiet) return '';
+      // Only when the bubble is already lead-only — otherwise the same question shows twice.
+      if (this.cartOfferLeadOnlyText(message) == null) return '';
+      return String(this.splitLastQuestion(message?.message || '').question || '').trim();
+    },
+    showCheckoutRecoIntro() {
+      // Fixed / AI reco intros ("הולך יפה עם…") are off — fan sits under the bag with no lead-in.
+      return false;
+    },
+    checkoutRecoIntro() {
+      return '';
+    },
+    checkoutRecoItems(message) {
+      if (message?.checkoutMoment) {
+        const list = Array.isArray(message.checkoutMoment.suggestions) ? message.checkoutMoment.suggestions : [];
+        return list.slice(0, 3).map((item) => ({
+          ...item,
+          priceLabel: item.priceLabel || this.cartUpsellPrice(item),
+          compareLabel: item.compareLabel || (item.compareCents ? this.cartUpsellPrice({ priceCents: item.compareCents }) : ''),
+          discountLabel: item.discountLabel || this.cartUpsellDiscountLabel(item),
+        }));
+      }
+      if (this.cartUpsellInChat && this.isCheckoutChatAnchor(message)) {
+        return this.cartUpsellCardsReady ? this.cartUpsellVisible : [];
+      }
+      return [];
+    },
     checkoutAlignEnd() {
       // Always on the assistant / store side - not the shopper bubble.
       // Hebrew he-flip: assistant is right (flex-end). English: assistant is left (flex-start).
@@ -6066,6 +7146,7 @@ export default {
     },
     keepCheckoutChatAnchor(messages) {
       if (!this.isStoreCart || !this.showGoToCheckout || !this.shopifyCartItemCount) {
+        if (this.cartUpsellInChat) return;
         this.checkoutChatAnchorId = '';
         this.checkoutChatForcedOpen = false;
         this.finishCheckoutChatClose();
@@ -6085,6 +7166,7 @@ export default {
         && lastKey
         && lastKey !== previousKey
         && String(last?.sender || '').toLowerCase() === 'client'
+        && !last?.isCartAction
       ) {
         const cardWasOpen = this.checkoutChatForcedOpen || previousKey === this.checkoutChatAnchorId;
         this.checkoutChatForcedOpen = false;
@@ -6125,10 +7207,14 @@ export default {
       return this.messageAnchorKeys(message).includes(this.checkoutChatAnchorId);
     },
     showCheckoutChatCard(message) {
-      if (!this.checkoutChatReady() || !this.isCheckoutChatAnchor(message)) return false;
+      if (message?.checkoutMoment) return true;
+      if (!this.isCheckoutChatAnchor(message)) return false;
+      if (this.cartUpsellInChat) return true;
+      if (!this.checkoutChatReady()) return false;
       return !this.checkoutHasFollowUp() || this.checkoutChatForcedOpen || this.checkoutChatClosing;
     },
     showCheckoutChatButton(message) {
+      if (message?.checkoutMoment) return false;
       if (!this.checkoutChatReady() || !this.isCheckoutChatAnchor(message)) return false;
       return this.checkoutHasFollowUp() && !this.checkoutChatForcedOpen && !this.checkoutChatClosing;
     },
@@ -6335,8 +7421,10 @@ export default {
     isProductFullySoldOut(product) {
       const item = this.unwrapProduct(product);
       if (this.isProductFlagEnabled(item.isOutOfStock)) return true;
+      // Pre-order is sellable even when tracked inventory is 0.
+      if (this.isProductFlagEnabled(item.isPreOrder)) return false;
       const variants = this.getProductVariants(product);
-      if (variants.length && variants.every((variant) => !this.isVariantAvailable(variant))) return true;
+      if (variants.length && variants.every((variant) => !this.isVariantAvailable(variant, product))) return true;
       return false;
     },
 
@@ -6356,7 +7444,9 @@ export default {
     },
 
     getVariantLabel(variant) {
-      return String(variant?.title || variant?.name || variant?.label || '').trim();
+      return this.decodeBannerHtmlEntities(
+        variant?.title || variant?.name || variant?.label || '',
+      ).trim();
     },
 
     variantStockKey(variantOrTitle) {
@@ -6373,12 +7463,21 @@ export default {
       return parts.join('|');
     },
 
-    isVariantAvailable(variant) {
+    isVariantOrProductPreOrder(variant, product = null) {
+      if (this.isProductFlagEnabled(variant?.isPreOrder)) return true;
+      if (!product) return false;
+      return this.isProductFlagEnabled(this.unwrapProduct(product)?.isPreOrder);
+    },
+
+    isVariantAvailable(variant, product = null) {
       if (!variant) return false;
-      if (variant.available === false || variant.availableForSale === false) return false;
       if (this.isProductFlagEnabled(variant.isOutOfStock)) return false;
       const stockStatus = String(variant.stockStatus || variant.stock_status || '').toLowerCase();
+      const preOrder = this.isVariantOrProductPreOrder(variant, product);
+      // Pre-order stays buyable even with 0 stock / availableForSale false from catalog sync.
+      if (preOrder) return true;
       if (stockStatus === 'outofstock') return false;
+      if (variant.available === false || variant.availableForSale === false) return false;
       const tracked = variant.isTracked ?? variant.inventoryItem?.tracked ?? variant.tracked ?? variant.inventory_tracked;
       if (tracked === true || tracked === 'true' || tracked === 1 || tracked === '1') {
         const quantity = variant.inventoryQuantity ?? variant.inventory_quantity;
@@ -6394,7 +7493,7 @@ export default {
         return {
           key: this.getVariantKey(variant, idx),
           label,
-          unavailable: !this.isVariantAvailable(variant),
+          unavailable: !this.isVariantAvailable(variant, product),
           variant,
         };
       }).filter((entry) => entry.label);
@@ -6437,30 +7536,112 @@ export default {
       return this.productCardOptionMenuKey === this.getProductCardOptionMenuKey(message, index);
     },
 
-    closeProductCardOptionMenu() {
-      if (!this.productCardOptionMenuKey) return;
-      this.productCardOptionMenuKey = '';
+    onProductCarouselScroll(message, event) {
+      this.syncProductCarouselScroll(message, event);
+      this.closeProductVariantMenu();
+      this.closeProductCardOptionMenu();
     },
 
-    toggleProductCardOptionMenu(product, message, index) {
+    closeProductCardOptionMenu() {
+      if (!this.productCardOptionMenuKey && !this.productCardOptionMenu?.visible) return;
+      this.productCardOptionMenuKey = '';
+      this.productCardOptionMenu = {
+        visible: false,
+        key: '',
+        top: 0,
+        left: 0,
+        width: 0,
+        selected: '',
+        values: [],
+        optionIndex: 0,
+        messageKey: '',
+        productIndex: 0,
+      };
+    },
+
+    measureOptionMenuPlacement(trigger, labels, {
+      minWidth = 120,
+      estimatedRow = 28,
+      maxHeight = 168,
+      preferAbove = false,
+    } = {}) {
+      const rect = trigger.getBoundingClientRect();
+      const viewportPadding = 8;
+      // Keep the menu the same width as the trigger - do not grow to the longest label.
+      const menuWidth = Math.max(minWidth, Math.round(rect.width));
+      const estimatedHeight = Math.min(maxHeight, (labels?.length || 1) * estimatedRow + 8);
+      let top = preferAbove ? (rect.top - estimatedHeight - 6) : (rect.bottom + 6);
+      let left = rect.left;
+      if (preferAbove && top < viewportPadding) {
+        top = Math.min(window.innerHeight - estimatedHeight - viewportPadding, rect.bottom + 6);
+      } else if (!preferAbove && top + estimatedHeight > window.innerHeight - viewportPadding) {
+        top = Math.max(viewportPadding, rect.top - estimatedHeight - 6);
+      }
+      if (left + menuWidth > window.innerWidth - viewportPadding) {
+        left = Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding);
+      }
+      if (left < viewportPadding) left = viewportPadding;
+      return { top, left, width: menuWidth };
+    },
+
+    toggleProductCardOptionMenu(product, message, index, event) {
       const group = this.getProductCardOptionGroup(product, message, index);
       if (!group?.values?.length) return;
       const key = this.getProductCardOptionMenuKey(message, index);
       if (this.productCardOptionMenuKey === key) {
-        this.productCardOptionMenuKey = '';
+        this.closeProductCardOptionMenu();
         return;
       }
+      const trigger = event?.currentTarget;
+      if (!trigger) return;
+      // Open above the trigger (same as the old in-card menu) so it sits over the card body.
+      const place = this.measureOptionMenuPlacement(
+        trigger,
+        group.values.map((value) => value.label),
+        { minWidth: 120, estimatedRow: 26, maxHeight: 156, preferAbove: true },
+      );
+
       this.closeProductVariantMenu();
+      this._ignoreProductCardOptionMenuOutsideClick = true;
       this.productCardOptionMenuKey = key;
+      this.productCardOptionMenu = {
+        visible: true,
+        key,
+        top: place.top,
+        left: place.left,
+        width: place.width,
+        selected: this.getProductCardSelectedOptionLabel(product, message, index),
+        values: group.values.slice(),
+        optionIndex: group.index,
+        messageKey: this.getMessageCarouselKey(message),
+        productIndex: index,
+      };
+      this.$nextTick(() => {
+        requestAnimationFrame(() => {
+          this._ignoreProductCardOptionMenuOutsideClick = false;
+        });
+      });
     },
 
     selectProductCardOptionFromMenu(product, message, index, optionIndex, label) {
       const clean = String(label || '').trim();
       if (!clean) return;
-      this.selectProductCardOption(product, message, index, optionIndex, clean);
-      this.productCardOptionMenuKey = '';
+      const menu = this.productCardOptionMenu;
+      const resolvedMessage = message || (this.chatMessages || []).find(
+        (item) => this.getMessageCarouselKey(item) === menu?.messageKey
+      );
+      const resolvedIndex = Number.isFinite(index) ? index : (menu?.productIndex ?? 0);
+      const resolvedProduct = product
+        || (Array.isArray(resolvedMessage?.products) ? resolvedMessage.products[resolvedIndex] : null);
+      const resolvedOptionIndex = Number.isFinite(optionIndex) ? optionIndex : (menu?.optionIndex ?? 0);
+      if (!resolvedProduct || !resolvedMessage) {
+        this.closeProductCardOptionMenu();
+        return;
+      }
+      this.selectProductCardOption(resolvedProduct, resolvedMessage, resolvedIndex, resolvedOptionIndex, clean);
+      this.closeProductCardOptionMenu();
       this.trackPluginEvent('variant_selected', {
-        ...this.pluginProductProps(product),
+        ...this.pluginProductProps(resolvedProduct),
         variant: this.clipPluginEventText(clean, 80),
       });
     },
@@ -6514,14 +7695,15 @@ export default {
     },
 
     getVariantOptionValues(variant) {
+      const decode = (value) => this.decodeBannerHtmlEntities(value).trim();
       const direct = [variant?.option1, variant?.option2, variant?.option3]
-        .map((value) => String(value || '').trim())
+        .map((value) => decode(value))
         .filter((value) => value && value.toLowerCase() !== 'default title');
       if (direct.length) return direct;
       const title = this.getVariantLabel(variant);
       if (!title || title.toLowerCase() === 'default title') return [];
       if (!title.includes('/')) return [title];
-      return title.split(/\s*\/\s*/).map((part) => part.trim()).filter(Boolean);
+      return title.split(/\s*\/\s*/).map((part) => decode(part)).filter(Boolean);
     },
 
     isSizeOptionName(name) {
@@ -6529,7 +7711,32 @@ export default {
     },
 
     isSizeOptionValue(value) {
-      return /^(xxs|xs|s|m|l|xl|xxl|xxxl|2xl|3xl|4xl|5xl|6xl|\d{1,2}(?:\.\d)?)$/i.test(String(value || '').trim());
+      const text = String(value || '').trim();
+      if (!text) return false;
+      if (/^(xxs|xs|s|m|l|xl|xxl|xxxl|2xl|3xl|4xl|5xl|6xl|\d{1,2}(?:\.\d)?)$/i.test(text)) return true;
+      // Mattress / furniture dimensions e.g. 200x90 cm, 160×200
+      return /\d+\s*[x×]\s*\d+/i.test(text);
+    },
+
+    isGenericOptionName(name) {
+      return /^(title|option|options|variant|אפשרות|כותרת|ברירת מחדל|default title)$/i.test(
+        String(name || '').trim()
+      );
+    },
+
+    readProductOptionNameList(product) {
+      const item = this.unwrapProduct(product);
+      const fromOptionNames = Array.isArray(item?.optionNames)
+        ? item.optionNames.map((name) => String(name || '').trim()).filter(Boolean)
+        : [];
+      if (fromOptionNames.length) return fromOptionNames;
+      // Shopify/Woo catalog often stores [{ name, values }] as `options`, not `optionNames`.
+      if (!Array.isArray(item?.options)) return [];
+      return item.options.map((entry) => (
+        typeof entry === 'string'
+          ? entry.trim()
+          : String(entry?.name || entry?.label || '').trim()
+      )).filter(Boolean);
     },
 
     inferOptionNames(variants) {
@@ -6549,22 +7756,22 @@ export default {
     },
 
     getProductOptionNames(product) {
-      const item = this.unwrapProduct(product);
       const variants = this.getProductVariants(product);
       const width = Math.max(0, ...variants.map((variant) => this.getVariantOptionValues(variant).length));
       if (!width) return [];
-      const stored = Array.isArray(item.optionNames)
-        ? item.optionNames.map((name) => String(name || '').trim()).filter(Boolean)
-        : [];
-      if (stored.length >= width) return stored.slice(0, width);
+      const stored = this.readProductOptionNameList(product);
       const inferred = this.inferOptionNames(variants);
-      return Array.from({ length: width }, (_, index) => stored[index] || inferred[index]);
+      return Array.from({ length: width }, (_, index) => {
+        const name = stored[index] || '';
+        if (name && !this.isGenericOptionName(name)) return name;
+        return inferred[index] || name;
+      });
     },
 
     isOptionValueAvailable(product, optionIndex, label) {
       return this.getProductVariants(product).some((variant) => {
         const values = this.getVariantOptionValues(variant);
-        return values[optionIndex] === label && this.isVariantAvailable(variant);
+        return values[optionIndex] === label && this.isVariantAvailable(variant, product);
       });
     },
 
@@ -6634,19 +7841,14 @@ export default {
           }
           this._productOptionCache.set(cacheKey, storefront || null);
         }
-        const products = Array.isArray(message.products) ? [...message.products] : null;
+        const products = Array.isArray(message.products) ? message.products : null;
         if (!products || !products[index]) return;
         // Mark even when the store returns nothing — otherwise every render reschedules.
+        // Mutate the slot in place — replacing `message.products` / the chat row remounts
+        // every card and replays the CSS stagger (products appear twice).
         products[index] = storefront
           ? { ...this.mergeStorefrontProduct(products[index], storefront), _assisLiveStock: true }
           : { ...this.unwrapProduct(products[index]), _assisLiveStock: true };
-        message.products = products;
-        const msgIndex = (this.chatMessages || []).indexOf(message);
-        if (msgIndex >= 0) {
-          const next = [...this.chatMessages];
-          next[msgIndex] = { ...message, products };
-          this.chatMessages = next;
-        }
       } finally {
         this._cardLiveOptionFlights?.delete(flightKey);
       }
@@ -6681,7 +7883,7 @@ export default {
       const pool = matches.length
         ? matches
         : variants.filter((variant) => this.getVariantOptionValues(variant)[optionIndex] === label);
-      const chosen = pool.find((variant) => this.isVariantAvailable(variant)) || pool[0];
+      const chosen = pool.find((variant) => this.isVariantAvailable(variant, product)) || pool[0];
       if (!chosen) return;
       this.setSelectedVariantKey(message, index, this.getVariantKey(chosen, variants.indexOf(chosen)));
       this.markProductCardVariantPicked(message, index);
@@ -6704,11 +7906,15 @@ export default {
       if (!width) return [];
       const fromStore = Array.isArray(raw)
         ? raw.map((entry) => (
-          typeof entry === 'string' ? entry.trim() : String(entry?.name || '').trim()
+          typeof entry === 'string' ? entry.trim() : String(entry?.name || entry?.label || '').trim()
         )).filter(Boolean)
         : [];
       const inferred = this.inferOptionNames(variants);
-      return Array.from({ length: width }, (_, index) => fromStore[index] || inferred[index]);
+      return Array.from({ length: width }, (_, index) => {
+        const name = fromStore[index] || '';
+        if (name && !this.isGenericOptionName(name)) return name;
+        return inferred[index] || name;
+      });
     },
 
     mergeStorefrontProduct(product, storefront) {
@@ -6725,7 +7931,7 @@ export default {
       });
       const catalogVariantOut = (catalogVariant) => Boolean(
         catalogVariant
-        && !this.isVariantAvailable(catalogVariant)
+        && !this.isVariantAvailable(catalogVariant, product)
       );
       const fromLive = (live) => {
         const liveId = this.shopifyNumericId(live?.id);
@@ -6739,8 +7945,10 @@ export default {
             title: live.title,
             price: this.storefrontDecimal(live.price),
           };
+        const preOrder = this.isVariantOrProductPreOrder(base, product);
         // Catalog OOS wins over a soft Store API "in stock" (common on Woo with hidden qty).
-        const available = live.available !== false && !catalogVariantOut(catalogVariant);
+        // Pre-order stays buyable even when the storefront reports 0 stock.
+        const available = preOrder || (live.available !== false && !catalogVariantOut(catalogVariant));
         return {
           ...base,
           ...(live.option1 ? { option1: live.option1 } : {}),
@@ -6748,7 +7956,8 @@ export default {
           ...(live.option3 ? { option3: live.option3 } : {}),
           available,
           availableForSale: available,
-          isOutOfStock: !available,
+          isOutOfStock: preOrder ? false : !available,
+          isPreOrder: preOrder || this.isProductFlagEnabled(base.isPreOrder),
           stockStatus: available ? 'instock' : 'outofstock',
           ...(live.featured_image ? { featured_image: live.featured_image } : {}),
         };
@@ -6936,7 +8145,7 @@ export default {
       const pool = matches.length
         ? matches
         : variants.filter((variant) => this.getVariantOptionValues(variant)[optionIndex] === label);
-      const chosen = pool.find((variant) => this.isVariantAvailable(variant)) || pool[0];
+      const chosen = pool.find((variant) => this.isVariantAvailable(variant, detail.product)) || pool[0];
       if (!chosen) return;
       const variantId = this.shopifyNumericId(chosen.id || chosen.variant_id || chosen.variantId);
       this.selectProductDetailVariant(this.getVariantKey(chosen, variants.indexOf(chosen)));
@@ -6975,6 +8184,7 @@ export default {
         selectedKey: '',
         messageKey: '',
         productIndex: 0,
+        width: 0,
       };
     },
 
@@ -6987,31 +8197,23 @@ export default {
 
       const trigger = event?.currentTarget;
       if (!trigger) return;
-      const rect = trigger.getBoundingClientRect();
-      const menuWidth = Math.max(rect.width, 132);
-      const viewportPadding = 8;
-      const estimatedHeight = Math.min(220, (this.getProductVariantChoices(product).length || 1) * 36 + 8);
-      let top = rect.bottom + 6;
-      let left = rect.left;
-
-      if (top + estimatedHeight > window.innerHeight - viewportPadding) {
-        top = Math.max(viewportPadding, rect.top - estimatedHeight - 6);
-      }
-      if (left + menuWidth > window.innerWidth - viewportPadding) {
-        left = Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding);
-      }
-      if (left < viewportPadding) left = viewportPadding;
+      const choices = this.getProductVariantChoices(product);
+      const place = this.measureOptionMenuPlacement(
+        trigger,
+        choices.map((choice) => choice.label),
+        { minWidth: 120, estimatedRow: 30, maxHeight: 180, preferAbove: false },
+      );
 
       this.closeProductCardOptionMenu();
       this._ignoreProductVariantMenuOutsideClick = true;
       this.productVariantMenu = {
         visible: true,
         key,
-        top,
-        left,
-        width: menuWidth,
+        top: place.top,
+        left: place.left,
+        width: place.width,
         selectedKey: this.getSelectedVariantKey(message, index, product),
-        choices: this.getProductVariantChoices(product),
+        choices,
         messageKey: this.getMessageCarouselKey(message),
         productIndex: index,
       };
@@ -7100,7 +8302,7 @@ export default {
     isSelectedVariantAvailable(product, message, index) {
       if (this.isProductFullySoldOut(product)) return false;
       const selected = this.getSelectedVariant(product, message, index);
-      if (selected) return this.isVariantAvailable(selected);
+      if (selected) return this.isVariantAvailable(selected, product);
       return this.getProductVariantChoices(product).length === 0;
     },
 
@@ -7353,6 +8555,8 @@ export default {
         || this.shopifyNumericId(selected?.id || selected?.variant_id || selected?.variantId)
         || null;
       const variantTitle = this.getSelectedVariantTitle(product, message, index);
+      const preOrder = this.isProductFlagEnabled(selected?.isPreOrder)
+        || this.isProductFlagEnabled(item?.isPreOrder);
       return {
         ...item,
         id: this.getProductDisplayId(product, index),
@@ -7362,12 +8566,29 @@ export default {
         selectedVariantTitle: variantTitle,
         variant_title: variantTitle,
         selectedVariant: selected || null,
+        // Lift variant pre-order so Shopify cart/add.js gets a selling_plan (review-standards).
+        ...(preOrder ? { isPreOrder: true } : {}),
       };
     },
 
-    addProductFromCard(product, index, message) {
+    async addProductFromCard(product, index, message) {
       if (!product || this.isProductCardInBag(product, index, message)) return;
-      return this.addPoweredByAssisHomeProduct(this.buildProductCardCartPayload(product, index, message), 'chat');
+      // Finish in-flight storefront option merge so variant ids match the live catalog.
+      const handle = this.getShopifyProductHandle?.(product);
+      if (handle && this.isStoreCart && message && !this.unwrapProduct(product)?._assisLiveStock) {
+        const flightKey = `${message.id || message.tempId || 'msg'}:${index}:${handle}`;
+        this.scheduleCardProductLiveOptions(product, message, index);
+        const started = Date.now();
+        while (this._cardLiveOptionFlights?.has(flightKey) && Date.now() - started < 2500) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+      }
+      // Button path: pin owns the one AI reply (unlike chat affirm / AI cartActions).
+      return this.addPoweredByAssisHomeProduct(
+        this.buildProductCardCartPayload(product, index, message),
+        'chat',
+        { withAi: true },
+      );
     },
 
     isProductCardInBag(product, index, message) {
@@ -7586,14 +8807,43 @@ export default {
       return String(item.summary || '').trim();
     },
 
+    sameProductCardList(a, b) {
+      if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i += 1) {
+        if (String(this.getProductDisplayId(a[i], i)) !== String(this.getProductDisplayId(b[i], i))) {
+          return false;
+        }
+      }
+      return true;
+    },
+
+    markProductCardsEntered(message) {
+      if (!message || !Array.isArray(message.products) || !message.products.length) return;
+      // Set immediately on first attach — a late chat_message must not remount / re-stagger.
+      message._productCardsEntered = true;
+    },
+
     attachDataFromWebsite(agentMessage, dataFromWebsite) {
       if (!agentMessage || !dataFromWebsite || typeof dataFromWebsite !== 'object') return agentMessage;
+      let attachedProducts = false;
       try {
         if (Array.isArray(dataFromWebsite.products) && dataFromWebsite.products.length) {
-          agentMessage.products = this.sortProductsByMessageOrder(
+          const next = this.sortProductsByMessageOrder(
             dataFromWebsite.products,
             agentMessage.message
           );
+          // Already shown (or same list) — keep the mounted array so stagger runs once.
+          if (
+            agentMessage._productCardsEntered
+            || this.sameProductCardList(agentMessage.products, next)
+          ) {
+            attachedProducts = Array.isArray(agentMessage.products) && agentMessage.products.length > 0;
+            if (attachedProducts) this.markProductCardsEntered(agentMessage);
+          } else {
+            agentMessage.products = next;
+            attachedProducts = true;
+            this.markProductCardsEntered(agentMessage);
+          }
         }
         if (Array.isArray(dataFromWebsite.orders) && dataFromWebsite.orders.length) {
           agentMessage.orders = dataFromWebsite.orders;
@@ -7605,13 +8855,31 @@ export default {
       } catch (_) {
         // Keep raw cards if sorting/normalize throws — never fail the message path.
         if (Array.isArray(dataFromWebsite.products) && dataFromWebsite.products.length) {
-          agentMessage.products = dataFromWebsite.products;
+          if (!agentMessage._productCardsEntered) {
+            agentMessage.products = dataFromWebsite.products;
+            this.markProductCardsEntered(agentMessage);
+          }
+          attachedProducts = Array.isArray(agentMessage.products) && agentMessage.products.length > 0;
         }
         if (Array.isArray(dataFromWebsite.orders) && dataFromWebsite.orders.length) {
           agentMessage.orders = dataFromWebsite.orders;
         }
       }
       this.attachOrderVerification(agentMessage, dataFromWebsite);
+      // Defer pending add until the AI bubble finished streaming — Woo cart refresh
+      // mid-stream can remount the plugin and wipe the reply before it is persisted.
+      if (attachedProducts) this._pendingChatAddProductsReady = true;
+      // Cart-add replies must not revive the same product card under "הוספתי לסל".
+      if (attachedProducts && this.messageHasAddToCartAction(agentMessage)) {
+        this.suppressProductCardsOnCartAdd(agentMessage);
+      }
+      if (
+        attachedProducts
+        || (Array.isArray(agentMessage.discounts) && agentMessage.discounts.length)
+        || (Array.isArray(agentMessage.orders) && agentMessage.orders.length)
+      ) {
+        this.scheduleFollowUpReveal(agentMessage, { force: true });
+      }
       return agentMessage;
     },
 
@@ -7653,6 +8921,11 @@ export default {
       if (!message?.pendingDataFromWebsite) return;
       this.attachDataFromWebsite(message, message.pendingDataFromWebsite);
       message.pendingDataFromWebsite = null;
+      if (typeof this.maybeRunAiCartActions === 'function') this.maybeRunAiCartActions(message);
+      if (this.messageHasAddToCartAction(message) || message._suppressProductCards) {
+        this.suppressProductCardsOnCartAdd(message);
+      }
+      this.scheduleFollowUpReveal(message, { force: true });
     },
 
     attachOrderVerification(agentMessage, payload) {
@@ -8196,6 +9469,7 @@ export default {
       const relocated = this.relocateVerifiedOrdersUnderMessage(targetMessage);
       const hasOrders = this.getNormalizedOrders(targetMessage).length > 0;
       if (!relocated && !hasOrders) return;
+      this.scheduleFollowUpReveal(targetMessage, { force: true });
       this.$nextTick(() => {
         this.expandOrdersPanel();
         this.scrollToBottom();
@@ -9008,6 +10282,11 @@ export default {
       if (!chatEl) return;
       this.chatScrollTop = chatEl.scrollTop;
       this.chatScrollBottomOffset = Math.max(0, chatEl.scrollHeight - chatEl.clientHeight - chatEl.scrollTop);
+      // Portaled option menus are position:fixed — close on scroll so they stay tied to the card.
+      if (this.productVariantMenu?.visible) this.closeProductVariantMenu();
+      if (this.productCardOptionMenu?.visible || this.productCardOptionMenuKey) {
+        this.closeProductCardOptionMenu();
+      }
       this.schedulePersistChatSession();
     },
 
@@ -9098,7 +10377,20 @@ export default {
         this.onWhatsAppBannerClick();
         return;
       }
-      if (event?.target?.closest?.('a')) this.noteBannerClicked('text');
+      if (event?.target?.closest?.('a')) {
+        this.noteBannerClicked('text');
+        return;
+      }
+      // Whole pill is clickable when the banner has a link — open the first href.
+      const html = String(this.activeBannerPromoHtml || '');
+      const href = html.match(/href\s*=\s*["']([^"']+)["']/i)?.[1];
+      if (!href) return;
+      this.noteBannerClicked('text');
+      try {
+        window.open(href, '_blank', 'noopener,noreferrer');
+      } catch {
+        /* ignore */
+      }
     },
     toggleHeaderMenu() {
       this.showHeaderMenu = !this.showHeaderMenu;
@@ -9199,12 +10491,17 @@ export default {
         }
       }
 
-      if (this.productCardOptionMenuKey) {
+      if (this.productCardOptionMenuKey || this.productCardOptionMenu?.visible) {
+        if (this._ignoreProductCardOptionMenuOutsideClick) return;
         const path = typeof event.composedPath === 'function' ? event.composedPath() : [event.target];
         const clickedCardMenu = path.some((node) => {
           if (!node || typeof node !== 'object') return false;
+          if (node.classList?.contains?.('lh-card-option-menu-portal')) return true;
           if (node.classList?.contains?.('lh-variant-select-wrap')) return true;
-          return typeof node.closest === 'function' && Boolean(node.closest('.lh-variant-select-wrap'));
+          if (node.classList?.contains?.('lh-option-select')) return true;
+          return typeof node.closest === 'function' && Boolean(
+            node.closest('.lh-variant-select-wrap, .lh-option-select, .lh-card-option-menu-portal')
+          );
         });
         if (!clickedCardMenu) this.closeProductCardOptionMenu();
       }
@@ -9307,18 +10604,192 @@ export default {
       this.headerInfoTooltipPortal = { ...this.headerInfoTooltipPortal, visible: false };
     },
 
+    stripReplyPayload(raw, { allowEmptyEnvelope = true } = {}) {
+      let out = String(raw || '')
+        .replace(/[“”]/g, '"')
+        .replace(/[‘’]/g, "'");
+      const trimmed = out.trim();
+      // Entire bubble was only a cartActions / metadata JSON object.
+      // Skip while streaming incomplete JSON (allowEmptyEnvelope=false) so we do not
+      // wipe the raw buffer before `"response"` arrives in a later delta.
+      if (
+        allowEmptyEnvelope
+        && (/^[{[]/.test(trimmed)
+          || /^(?:"?action"?|"?type"?|"?cartActions"?)\s*:/i.test(trimmed))
+        && (/cartActions\s*:/i.test(trimmed)
+          || /(?:type|action)\s*:\s*"?(?:add_to_cart|open_cart|open_checkout)"?/i.test(trimmed))
+        && !/"response"\s*:\s*"/i.test(trimmed)
+      ) {
+        return '';
+      }
+      // Prefer extracting a nested `"response"` when the model streamed a full envelope.
+      const responseMatch = out.match(/"response"\s*:\s*"((?:\\.|[^"\\])*)"/i);
+      if (responseMatch && (/cartActions\s*:/i.test(out) || /suggestedReplies\s*:/i.test(out))) {
+        try {
+          out = JSON.parse(`"${responseMatch[1]}"`);
+        } catch {
+          out = responseMatch[1]
+            .replace(/\\n/g, '\n')
+            .replace(/\\"/g, '"')
+            .replace(/\\\\/g, '\\');
+        }
+      }
+      // Cut from the first leaked cart-action key — only real action types / cartActions,
+      // not bare id/quantity digits (those false-positive on normal product copy).
+      const leakAt = out.search(
+        /["']?(?:cartActions|type|action)["']?\s*:\s*["']?(?:add_to_cart|open_cart|open_checkout)["']?/i
+      );
+      if (leakAt >= 0) out = out.slice(0, leakAt);
+      out = out
+        .replace(/```(?:json)?\s*[\s\S]*?```/gi, '')
+        .replace(/```(?:json)?[\s\S]*$/gi, '')
+        .replace(/\{\s*"suggestedReplies"[\s\S]*$/i, '')
+        .replace(/"suggestedReplies"\s*:\s*\[[\s\S]*$/i, '')
+        .replace(/\{\s*"cartActions"[\s\S]*$/i, '')
+        .replace(/"cartActions"\s*:\s*\[[\s\S]*$/i, '')
+        .replace(/[,{\[\s]*["']?(?:cartActions|type|action)["']?\s*:\s*["']?(?:add_to_cart|open_cart|open_checkout)["']?[\s\S]*$/i, '')
+        .replace(/[,{\[\s]*["']?(?:productId|id)["']?\s*:\s*["']?woocommerce_[^"'\s,}]+["']?[\s\S]*$/i, '')
+        .replace(/(?:^|\n)\s*["']?(?:action|type|cartActions)["']?\s*:\s*["']?(?:add_to_cart|open_cart|open_checkout)["']?[\s\S]*$/i, '')
+        .replace(/(?:^|\n)\s*[\[{,\]]+\s*$/g, '')
+        .replace(/^\s*[\[{,\]]+\s*|\s*[\[{,\]]+\s*$/g, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+      return out;
+    },
+
+    isCartActionFallbackText(text) {
+      const raw = String(text || '').trim();
+      if (!raw) return false;
+      return raw === 'הוספתי לסל 💙'
+        || raw === 'הוספתי לסל. 💙'
+        || raw === 'Done - I added it to your bag.'
+        || raw === 'Great - it is in your bag.'
+        || raw === 'Great - it is in your bag.\nHow would you like to continue?'
+        || raw === 'תתחדש! המוצר נוסף לסל.'
+        || raw === 'תתחדש! המוצר נוסף לסל.\nאיך תרצה להמשיך?'
+        || raw === 'פותח את הסל עכשיו.'
+        || raw === 'Opening your bag now.'
+        || raw === 'מעביר אותך לסל הקניות עכשיו.'
+        || raw === 'Taking you to your cart now.'
+        || raw === 'בשמחה - מעביר אותך לתשלום עכשיו.'
+        || raw === 'Of course - opening checkout for you now.';
+    },
+
+    /** AI said "I added X to bag" — duplicates the client `הוספתי לעגלה` pin. */
+    isAiDuplicateAddConfirm(text) {
+      const raw = String(text || '').trim();
+      if (!raw) return false;
+      if (this.isCartActionFallbackText(raw) && /^(הוספתי לסל|Done - I added|Great - it is in your bag|תתחדש! המוצר נוסף)/i.test(raw)) {
+        // Short/legacy add lines only — follow-up copy is allowed.
+        return /^(הוספתי לסל|Done - I added)/i.test(raw);
+      }
+      if (/^הוספתי\b/.test(raw) && /(לסל|לעגלה|הסל|העגלה)/.test(raw)) return true;
+      if (/^i(?:['’]ve| have)?\s+added\b/i.test(raw) && /\b(cart|bag)\b/i.test(raw)) return true;
+      return false;
+    },
+
+    /** Short twin confirm only — long "הוספתי לסל שלך: …" + question must not be nuked mid-stream. */
+    isShortAiAddConfirmOnly(text) {
+      const raw = String(text || '').trim();
+      if (!raw || !this.isAiDuplicateAddConfirm(raw)) return false;
+      if (/[?？]/.test(raw)) return false;
+      const plain = raw.replace(/\s+/g, ' ').trim();
+      return plain.length <= 80;
+    },
+
+    /** Keep follow-up question; drop only a twin "I added…" lead when the client pin already said it. */
+    stripDuplicateAiAddConfirm(text) {
+      const raw = String(text || '').trim();
+      if (!raw || !this.isAiDuplicateAddConfirm(raw)) return raw;
+      const split = this.splitLastQuestion(raw);
+      if (split.question) return split.question;
+      if (this.isShortAiAddConfirmOnly(raw)) return '';
+      // Longer add confirm without ? — keep as lead above the bag (do not swap to a fallback).
+      return raw;
+    },
+
+    messageHasAddToCartAction(message, cartActions) {
+      const list = [
+        ...(Array.isArray(cartActions) ? cartActions : []),
+        ...(Array.isArray(message?.cartActions) ? message.cartActions : []),
+      ];
+      if (list.some((item) => String(item?.type || item?.action || '').trim() === 'add_to_cart')) {
+        return true;
+      }
+      if (message?._cartActionFallback || this.isCartActionFallbackText(message?.message)) return true;
+      return false;
+    },
+
+    suppressProductCardsOnCartAdd(message) {
+      if (!message) return;
+      message._suppressProductCards = true;
+      message.products = [];
+      if (message.pendingDataFromWebsite && typeof message.pendingDataFromWebsite === 'object') {
+        message.pendingDataFromWebsite = {
+          ...message.pendingDataFromWebsite,
+          products: [],
+        };
+      }
+    },
+
+    scrubAiMessageCartLeak(message, cartActions) {
+      if (!message) return;
+      const raw = String(message.message || '');
+      const salvaged = this.salvageCartActionsFromText(raw);
+      const cleaned = this.stripReplyPayload(raw);
+      const actions = [
+        ...(Array.isArray(cartActions) ? cartActions : []),
+        ...salvaged,
+      ];
+      const hasAdd = actions.some((item) => String(item?.type || item?.action || '').trim() === 'add_to_cart');
+      if (!cleaned.trim() && actions.length) {
+        message.message = this.cartActionFallbackMessage(actions);
+        message._cartActionFallback = true;
+      } else if (cleaned !== raw) {
+        message.message = cleaned;
+        if (cleaned.trim()) message._cartActionFallback = false;
+      } else if (cleaned.trim()) {
+        message._cartActionFallback = false;
+      }
+      // Layer 2: one "I added X" only — the client pin. Keep AI follow-up; never thrash mid-stream.
+      const recentPin = (this.chatMessages || []).slice(-10).some((item) => item?.isCartAction);
+      if (
+        !message.isStreaming
+        && (hasAdd || recentPin)
+        && this.isAiDuplicateAddConfirm(message.message)
+      ) {
+        const before = String(message.message || '');
+        const kept = this.stripDuplicateAiAddConfirm(before);
+        if (kept) {
+          message.message = kept;
+          message._cartActionFallback = false;
+          message._cartActionFollowUpOnly = kept !== before || Boolean(this.splitLastQuestion(kept).question);
+        } else if (this.isShortAiAddConfirmOnly(before)) {
+          message.message = this.cartActionFallbackMessage(actions.length ? actions : [{ type: 'add_to_cart' }]);
+          message._cartActionFallback = true;
+          message._cartActionFollowUpOnly = true;
+        }
+      }
+      if (actions.length) this.applyAiCartActions(message, actions);
+      // Add-to-cart turns end with bag + best sellers — never re-show the product card.
+      if (this.messageHasAddToCartAction(message, actions)) {
+        this.suppressProductCardsOnCartAdd(message);
+      }
+    },
+
     // Render message with markdown-like formatting and URL links
     renderMessage(raw, linkClass) {
       if (!raw) return ''
       // Backend / model text often ships escaped newlines as the two-character
       // sequence "\n" instead of a real line break. Normalize those first.
-      let text = String(raw)
+      let text = this.stripReplyPayload(String(raw)
         .replace(/\\r\\n/g, '\n')
         .replace(/\\n/g, '\n')
         .replace(/\\r/g, '\n')
         .replace(/\r\n/g, '\n')
         .replace(/\r/g, '\n')
         .replace(/\*\*\s*\n+\s*\*\*/g, '\n\n')
+        .replace(/[ \t]+\*(?=\s)/g, '\n*'))
 
       // If the message already contains HTML tags, trust and render it as-is.
       // This is needed so content like `<br>`, `<ul>`, `<li>`, `<b>` from the backend
@@ -9327,6 +10798,9 @@ export default {
       if (hasHtmlTags) {
         return text.replace(/\n/g, '<br/>')
       }
+
+      const listed = text.split(' - ')
+      if (listed.length >= 4) text = listed.join('\n')
 
       // Plain-text path (no HTML tags): escape, then apply markdown-style formatting and URL links
       const escaped = text
@@ -9361,8 +10835,8 @@ export default {
       return linkConverted.replace(/\n/g, '<br/>')
     },
 
-    normalizeTypewriterText(raw) {
-      return String(raw || '')
+    normalizeTypewriterText(raw, { allowEmptyEnvelope = true } = {}) {
+      return this.stripReplyPayload(String(raw || ''), { allowEmptyEnvelope })
         .replace(/\\r\\n/g, '\n')
         .replace(/\\n/g, '\n')
         .replace(/\\r/g, '\n')
@@ -9468,6 +10942,8 @@ export default {
         if (agentMessage.discounts) target.discounts = agentMessage.discounts;
         if (agentMessage.orders) target.orders = agentMessage.orders;
       }
+      this.scrubAiMessageCartLeak(target, agentMessage.cartActions);
+      this.applySuggestedReplies(target, agentMessage.suggestedReplies);
       return target;
     },
 
@@ -9477,6 +10953,23 @@ export default {
         // Same bubble already shown (common when assis:done finishes before chat_message).
         // Merge metadata so isHumanRequested is not dropped by dedupe.
         this.mergeIncomingAgentMessage(last, agentMessage);
+        return last;
+      }
+      // Stream often commits a cart-action fallback ("הוספתי לסל 💙") before chat_message
+      // arrives with the real reply — merge into that bubble instead of a second card.
+      if (
+        last
+        && String(agentMessage?.sender || '').toLowerCase() === 'ai'
+        && String(last.sender || '').toLowerCase() === 'ai'
+        && !last.isContactSubmission
+        && (last._cartActionFallback || this.isCartActionFallbackText(last.message))
+      ) {
+        this.mergeIncomingAgentMessage(last, agentMessage);
+        const cleaned = this.stripReplyPayload(String(agentMessage.message || ''));
+        if (cleaned.trim() && cleaned.trim() !== String(last.message || '').trim()) {
+          last.message = cleaned;
+          last._cartActionFallback = false;
+        }
         return last;
       }
 
@@ -9490,6 +10983,11 @@ export default {
       if (willType) {
         stored.isTyping = true;
         this.$nextTick(() => this.typeAiReply(stored));
+      } else if (!stored.isStreaming) {
+        this.updateMessageDirections();
+        this.scheduleFollowUpReveal(stored, { force: true });
+        if (typeof this.placeCheckoutAfterAssistant === 'function') this.placeCheckoutAfterAssistant(stored);
+        if (typeof this.maybeRunAiCartActions === 'function') this.maybeRunAiCartActions(stored);
       } else {
         this.updateMessageDirections();
       }
@@ -9504,17 +11002,41 @@ export default {
       }
     },
 
+    /**
+     * Cart-add turn: lead above the bag/checkout card; question sits under it.
+     * Returns null when this is not a cart-offer split; '' when lead is empty but question exists.
+     * Split as soon as a question exists — waiting for stream/typing to finish left the
+     * question in the bubble AND under checkout (double), then snapped to one.
+     */
+    cartOfferLeadOnlyText(message) {
+      if (!this.isCartOfferTurn(message)) return null;
+      const split = this.splitLastQuestion(message?.message || '');
+      if (!split.question) return null;
+      return String(split.lead || '').trim();
+    },
+    messageStreamVisibleText(message) {
+      const leadOnly = this.cartOfferLeadOnlyText(message);
+      if (leadOnly != null) return leadOnly;
+      return String(message?.message || '');
+    },
     async typeAiReply(message) {
-      const text = this.normalizeTypewriterText(message?.message);
-      if (!text) {
+      const full = this.normalizeTypewriterText(message?.message);
+      if (!full) {
         this.clearAiTypewriter(message);
         return;
       }
+      // Never type the follow-up into the top bubble — it appears under the bag/checkout card.
+      const leadOnly = this.cartOfferLeadOnlyText(message);
+      const text = this.normalizeTypewriterText(leadOnly != null ? leadOnly : full);
 
       const token = ++this.typewriterToken;
       this.typewriterMessage = message;
       this.typewriterText = '';
       message.isTyping = true;
+      // Cart-add: start הסל שלך as soon as the AI bubble exists — do not wait for lead typing to finish.
+      if (this._cartUpsellAwaitReply && typeof this.placeCheckoutAfterAssistant === 'function') {
+        this.$nextTick(() => this.placeCheckoutAfterAssistant(message));
+      }
 
       try {
         for (let i = 0; i < text.length; i++) {
@@ -9525,7 +11047,9 @@ export default {
           this.typewriterText += text[i];
           const ch = text[i];
           const wait = ch === '\n' ? 28 : /[.,!?…;:]/.test(ch) ? 42 : 10;
-          if (i % 8 === 0) this.scrollToBottom('auto');
+          if (i % 8 === 0 && !(this.isCartOfferTurn(message) && this.shouldParkAtCartBag())) {
+            this.scrollToBottom('auto');
+          }
           await new Promise((resolve) => setTimeout(resolve, wait));
         }
       } catch (error) {
@@ -9542,8 +11066,23 @@ export default {
         message._raiseOrdersAfterType = false;
         this.raiseOrdersAfterAiText(message);
       }
+      if (Array.isArray(message._welcomeRestAfterType) && message._welcomeRestAfterType.length) {
+        const rest = message._welcomeRestAfterType;
+        message._welcomeRestAfterType = null;
+        rest.forEach((entry) => this.chatMessages.push(entry));
+      }
+      this.scheduleFollowUpReveal(message, { force: true });
+      if (typeof this.placeCheckoutAfterAssistant === 'function') this.placeCheckoutAfterAssistant(message);
+      if (typeof this.maybeRunAiCartActions === 'function') this.maybeRunAiCartActions(message);
+      this.noteAssistantReplyWhileClosed(message);
       this.$nextTick(() => {
-        if (Array.isArray(message?.products) && message.products.length > 0) {
+        // Cart-add parks on הסל שלך / מעבר לתשלום — do not yank past the bag.
+        if (this.isCartOfferTurn(message) && this.shouldParkAtCartBag()) return;
+        const willRevealBelow = Boolean(this.splitLastQuestion(message.message).question)
+          || this.followUpReplies(message).length > 0;
+        if (willRevealBelow) {
+          this.scrollTurnEndIntoView({ smooth: false });
+        } else if (Array.isArray(message?.products) && message.products.length > 0) {
           this.scrollToMessageProducts(message, 'auto');
         } else {
           this.scrollToBottom('auto');
@@ -9582,24 +11121,80 @@ export default {
     getTextDirection(text) {
       if (!text) return this.language === 'he' ? 'rtl' : 'ltr';
       const lang = this.detectLanguage(text);
-      return lang === 'he' ? 'rtl' : 'ltr';
+      if (lang === 'he') return 'rtl';
+      const hebrewChars = (String(text).match(/[\u0590-\u05FF]/g) || []).length;
+      if (this.language === 'he' && hebrewChars >= 8) return 'rtl';
+      return lang === 'en' ? 'ltr' : (this.language === 'he' ? 'rtl' : 'ltr');
     },
 
     introLineHtml(html) {
       const raw = String(html || '').trim();
       if (!raw) return [];
       const textOf = (value) => String(value || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+      const isBoldWeight = (value) => {
+        const v = String(value || '').trim().toLowerCase();
+        if (!v || v === 'inherit' || v === 'initial' || v === 'unset' || v === 'normal') return false;
+        if (v === 'bold' || v === 'bolder') return true;
+        const n = parseInt(v, 10);
+        return !Number.isNaN(n) && n >= 600;
+      };
+      // One pass on the parsed tree — whitelist size/color/weight/decoration only.
+      const sanitizeTree = (root) => {
+        root.querySelectorAll('*').forEach((node) => {
+          if (!(node instanceof HTMLElement)) return;
+          const next = [];
+          if (node.style.fontSize) next.push(`font-size:${node.style.fontSize}`);
+          const color = String(node.style.color || '').trim();
+          if (color && !['inherit', 'initial', 'unset'].includes(color.toLowerCase())) {
+            next.push(`color:${node.style.color}`);
+          }
+          const weight = node.style.fontWeight;
+          if (isBoldWeight(weight) || /^(STRONG|B)$/i.test(node.tagName)) {
+            next.push('font-weight:700');
+          } else if (weight && !['inherit', 'initial', 'unset', 'normal', '400'].includes(String(weight).trim().toLowerCase())) {
+            next.push(`font-weight:${weight}`);
+          }
+          const deco = node.style.textDecoration;
+          if (deco && deco !== 'none') next.push(`text-decoration:${deco}`);
+          if (next.length) node.setAttribute('style', next.join(';'));
+          else node.removeAttribute('style');
+        });
+      };
+      // Keep each block's size/color/weight on the line when innerHTML drops the outer <p>.
+      const withBlockStyle = (el, part) => {
+        const styles = [];
+        if (el?.style?.fontSize) styles.push(`font-size:${el.style.fontSize}`);
+        if (el?.style?.color) {
+          const c = String(el.style.color || '').trim().toLowerCase();
+          if (c && c !== 'inherit' && c !== 'initial' && c !== 'unset') {
+            styles.push(`color:${el.style.color}`);
+          }
+        }
+        const weight = el?.style?.fontWeight;
+        if (isBoldWeight(weight)) {
+          styles.push('font-weight:700');
+        } else if (weight && !['inherit', 'initial', 'unset', 'normal', '400'].includes(String(weight).trim().toLowerCase())) {
+          styles.push(`font-weight:${el.style.fontWeight}`);
+        } else if (/<(strong|b)\b/i.test(String(part || ''))) {
+          styles.push('font-weight:700');
+        }
+        const trimmed = String(part || '').trim();
+        if (!trimmed) return '';
+        return styles.length ? `<span style="${styles.join(';')}">${trimmed}</span>` : trimmed;
+      };
       try {
         const doc = new DOMParser().parseFromString(raw, 'text/html');
+        if (doc.body) sanitizeTree(doc.body);
         const blocks = [...(doc.body?.children || [])].filter((el) => /^(P|DIV|LI)$/i.test(el.tagName));
         const fromBlocks = blocks
-          .flatMap((el) => el.innerHTML.split(/<br\s*\/?>/i))
-          .map((part) => part.trim())
+          .flatMap((el) => el.innerHTML.split(/<br\s*\/?>/i).map((part) => withBlockStyle(el, part)))
           .filter((part) => textOf(part));
         if (fromBlocks.length >= 2) return fromBlocks.slice(0, 2);
         if (blocks.length === 1) {
           const kids = [...blocks[0].children].filter((el) => textOf(el.textContent));
-          if (kids.length >= 2) return kids.slice(0, 2).map((el) => el.outerHTML);
+          if (kids.length >= 2) {
+            return kids.slice(0, 2).map((el) => withBlockStyle(blocks[0], el.outerHTML));
+          }
         }
         if (fromBlocks.length === 1) return fromBlocks;
         const plainParts = raw.split(/\n+/).map((part) => part.trim()).filter(Boolean);
@@ -9610,16 +11205,584 @@ export default {
       }
     },
 
-    bubbleIcon(saved, text, index) {
+    bubbleIcon(saved, text, index, options = {}) {
+      if (saved === 'none') return '';
       const allowed = ['truck', 'key', 'chat', 'sparkle', 'gift', 'star', 'heart', 'search', 'cart', 'tag', 'phone', 'clock', 'help', 'smile', 'box', 'pin'];
-      return allowed.includes(saved) ? saved : this.starterChipIcon(text, index);
+      if (allowed.includes(saved)) return saved;
+      if (options.allowDefault === false) return '';
+      return this.starterChipIcon(text, index);
     },
 
+    normalizeSuggestedReplies(value) {
+      if (!Array.isArray(value)) return [];
+      const seen = new Set();
+      const replies = [];
+      value.forEach((item) => {
+        const text = String(item || '')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\*\*/g, '')
+          .replace(/\*/g, '')
+          .replace(/^[-•]\s*/, '')
+          .replace(/\s*\(.*$/, '')
+          .replace(/[?？]\s*$/, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (!text || text.length > 32 || seen.has(text)) return;
+        seen.add(text);
+        replies.push(text);
+      });
+      return replies.slice(0, 3);
+    },
+    /** Slim 2nd-add checkout may keep AI chips; full bag / reco turn must not. */
+    cartOfferAllowsSuggestedReplies(message) {
+      if (!message) return false;
+      if (this.isCheckoutMomentSlim(message)) return true;
+      // AI replies can arrive before the slim stamp — keep chips when this turn will be slim.
+      if (typeof this.willStampSlimCheckoutMoment === 'function'
+        && this.willStampSlimCheckoutMoment()
+        && this.cartUpsellInChat
+        && typeof this.isCheckoutChatAnchor === 'function'
+        && this.isCheckoutChatAnchor(message)) {
+        return true;
+      }
+      return false;
+    },
+    applySuggestedReplies(message, value) {
+      if (!message) return;
+      // Full bag / reco cart-offer: no chips. Slim compact checkout: keep AI chips.
+      if (this.isCartOfferTurn(message) && !this.cartOfferAllowsSuggestedReplies(message)) {
+        message.suggestedReplies = [];
+        return;
+      }
+      const replies = this.normalizeSuggestedReplies(value);
+      if (!replies.length) return;
+      message.suggestedReplies = replies;
+      this.scheduleFollowUpReveal(message);
+      if (!this.isChatOpen) {
+        this.$nextTick(() => this.armOutsideReplyChoicesFromChat());
+      }
+    },
+    applyAiCartActions(message, value) {
+      if (!message || typeof this.queueAiCartActions !== 'function') return;
+      this.queueAiCartActions(message, value);
+    },
+    followUpReplies(message) {
+      if (String(message?.sender || '').toLowerCase() !== 'ai') return [];
+      if (this.isCartOfferTurn(message) && !this.cartOfferAllowsSuggestedReplies(message)) return [];
+      const saved = this.normalizeSuggestedReplies(message?.suggestedReplies);
+      if (saved.length) return saved;
+      return this.repliesFromMessageChoices(message);
+    },
+    followUpRevealKey(message) {
+      if (!message) return '';
+      // Prefer datetime — stable for the turn; server id can arrive later and miss the ready flag.
+      if (message.datetime) return `dt:${message.datetime}`;
+      if (message.id != null && message.id !== '') return `id:${message.id}`;
+      const index = this.chatMessages.indexOf(message);
+      return index >= 0 ? `i:${index}` : '';
+    },
+    showFollowUpReplies(message) {
+      if (this.selectedAttachments.length) return false;
+      // Full bag: no chips. Slim compact checkout: chips under the question.
+      if (this.isCartOfferTurn(message) && !this.cartOfferAllowsSuggestedReplies(message)) return false;
+      if (!this.followUpReplies(message).length) return false;
+      if (this.isMessageTextRevealing(message)) return false;
+      if (message?.pendingDataFromWebsite) return false;
+      const key = this.followUpRevealKey(message);
+      if (!key) return false;
+      return this.followUpRevealReady[key] === true;
+    },
+    isQuestionBelowReady(message) {
+      const key = this.followUpRevealKey(message);
+      return Boolean(key && this.questionBelowReady[key] === true);
+    },
+    // Hold the question out of the top bubble until the below-question slot is ready
+    // (and while cards may still arrive — Shopify often sends products after text settle).
+    shouldHoldQuestionForCards(message) {
+      if (!message || this.isCartOfferTurn(message)) return false;
+      if (!this.splitLastQuestion(message.message).question) return false;
+      if (this.isMessageTextRevealing(message)) return false;
+      if (message.pendingDataFromWebsite) return true;
+      if (this.messageHasComponent(message)) return true;
+      // Replies scheduled but not shown yet — keep question out so late cards can land first.
+      if (this.followUpReplies(message).length && !this.showFollowUpReplies(message)) return true;
+      return false;
+    },
+    clearTurnReveal(key) {
+      if (!key) return;
+      let changed = false;
+      const questions = { ...this.questionBelowReady };
+      const replies = { ...this.followUpRevealReady };
+      if (questions[key]) {
+        delete questions[key];
+        changed = true;
+      }
+      if (replies[key]) {
+        delete replies[key];
+        changed = true;
+      }
+      if (!changed) return;
+      this.questionBelowReady = questions;
+      this.followUpRevealReady = replies;
+    },
+    scheduleFollowUpReveal(message, { force = false } = {}) {
+      if (!message || String(message.sender || '').toLowerCase() !== 'ai') return;
+      const key = this.followUpRevealKey(message);
+      if (!key) return;
+      const hasQuestion = Boolean(this.splitLastQuestion(message.message).question);
+      const hasChips = this.followUpReplies(message).length > 0;
+      if (!hasQuestion && !hasChips) {
+        this.clearTurnReveal(key);
+        return;
+      }
+      if (this.isMessageTextRevealing(message) || message.pendingDataFromWebsite) return;
+
+      const alreadyReady = (
+        (!hasQuestion || this.questionBelowReady[key] === true)
+        && (!hasChips || this.followUpRevealReady[key] === true)
+      );
+      if (alreadyReady && !force) return;
+      if (force) this.clearTurnReveal(key);
+
+      const index = this.chatMessages.indexOf(message);
+      if (index >= 0 && typeof this.shouldAnimateMessage === 'function' && !this.shouldAnimateMessage(index)) {
+        if (hasQuestion) this.questionBelowReady = { ...this.questionBelowReady, [key]: true };
+        if (hasChips) this.followUpRevealReady = { ...this.followUpRevealReady, [key]: true };
+        return;
+      }
+
+      const token = (this._followUpRevealToken[key] = (this._followUpRevealToken[key] || 0) + 1);
+      const seq = this.messageComponentSeq(message);
+      const hasCards = this.messageHasComponent(message);
+      // Order: cards finish → question → chips. Soft pacing (Shopify cards often land late).
+      const questionDelay = hasCards ? (620 + seq * 140) : 0;
+      const chipDelay = hasCards
+        ? (questionDelay + (hasQuestion ? 380 : 120))
+        : 480;
+
+      const settleOrRetry = () => {
+        if (this._followUpRevealToken[key] !== token) return false;
+        if (this.isMessageTextRevealing(message) || message.pendingDataFromWebsite) {
+          this.scheduleFollowUpReveal(message, { force: true });
+          return false;
+        }
+        const nextSeq = this.messageComponentSeq(message);
+        if (seq === 0 && nextSeq > 0) {
+          this.scheduleFollowUpReveal(message, { force: true });
+          return false;
+        }
+        return true;
+      };
+
+      // Only arm question-below when cards are present — never pre-arm before late Shopify products.
+      if (hasQuestion && hasCards) {
+        window.setTimeout(() => {
+          if (!settleOrRetry()) return;
+          this.questionBelowReady = { ...this.questionBelowReady, [key]: true };
+          // Stick while chips still pending; soft settle when the question is the last reveal.
+          this.$nextTick(() => this.scrollTurnEndIntoView({ smooth: !hasChips }));
+        }, questionDelay);
+      } else if (hasQuestion && !hasCards && !hasChips) {
+        // Question shows with the lead text — soft settle so it isn't cut off.
+        this.$nextTick(() => this.scrollTurnEndIntoView({ smooth: true }));
+      }
+
+      if (hasChips) {
+        window.setTimeout(() => {
+          if (!settleOrRetry()) return;
+          this.followUpRevealReady = { ...this.followUpRevealReady, [key]: true };
+          // One soft settle so chips aren't missed below the fold.
+          this.$nextTick(() => this.scrollTurnEndIntoView({ smooth: true }));
+        }, chipDelay);
+      }
+    },
+    repliesFromMessageChoices(message) {
+      if (this.isCartOfferTurn(message)) return [];
+      const raw = String(message?.message || '');
+      const plain = raw.replace(/<[^>]+>/g, ' ');
+      if (!/[?？]/.test(plain)) return [];
+      const pieces = [];
+      const items = raw.match(/<li[^>]*>[\s\S]*?<\/li>/gi) || [];
+      items.forEach((item) => pieces.push(item));
+      if (!pieces.length) {
+        raw.replace(/<br\s*\/?>/gi, '\n').split('\n').forEach((line) => {
+          const visible = line.replace(/<[^>]+>/g, '');
+          if (/^\s*(?:[-•]|\*(?!\*))\s+\S/.test(visible)) pieces.push(line);
+        });
+      }
+      return this.normalizeSuggestedReplies(pieces);
+    },
+    showMessageProductCards(message) {
+      if (!Array.isArray(message?.products) || !message.products.length) return false;
+      if (message._suppressProductCards) return false;
+      if (this.messageHasAddToCartAction(message)) return false;
+      return !this.isCartOfferTurn(message);
+    },
+    // Stagger follow-up chips after product / discount / order cards, not before them.
+    messageComponentSeq(message) {
+      if (!message || this.isMessageTextRevealing(message)) return 0;
+      let count = 0;
+      if (this.showMessageProductCards(message)) {
+        count += Math.min(message.products.length, 4);
+      }
+      count += Math.min(this.getMessageDiscounts(message).length, 4);
+      if (this.showOrderVerificationCard(message)) count += 1;
+      if (this.showOrderInMessage(message)) count += 2;
+      if (this.showCheckoutChatCard?.(message) || this.showCheckoutChatButton?.(message)) count += 1;
+      return Math.min(count, 8);
+    },
+    isCartActionMessage(message) {
+      if (!message) return false;
+      if (message.isCartAction) return true;
+      return /^(הוספתי לעגלה:|Added to cart:)/i.test(String(message.message || '').trim());
+    },
+    isCartOfferTurn(message) {
+      if (!message || String(message.sender || '').toLowerCase() !== 'ai') return false;
+      if (message._suppressProductCards || this.messageHasAddToCartAction(message)) return true;
+      if (message.checkoutMoment && !message.checkoutMoment.quiet) return true;
+      if (this.cartUpsellInChat && this.cartUpsell?.source === 'plugin' && this.isCheckoutChatAnchor(message)) {
+        return true;
+      }
+      return this.skipProductCardsAfterCart(message);
+    },
+    /** After bag stamp: keep auto-scroll on מעבר לתשלום until the shopper scrolls (or taps קרא עוד). */
+    shouldParkAtCartBag() {
+      if (this.cartUpsell?.source !== 'plugin') return false;
+      if (this.cartUpsellMoreOpened) return false;
+      return Boolean(
+        this.checkoutChatAnchorId
+        || this.cartUpsellMoreReady
+        || this._cartUpsellMoreDue
+        || this._pluginCartChoreographyRunning
+        || this._cartUpsellAwaitReply
+      );
+    },
+    skipProductCardsAfterCart(message) {
+      const messages = this.chatMessages || [];
+      const index = messages.indexOf(message);
+      if (index < 0) return Boolean(this._cartUpsellAwaitReply);
+      let sawCartPin = false;
+      for (let i = index - 1; i >= 0; i -= 1) {
+        const previous = messages[i];
+        if (!previous || previous.isContactSubmission) continue;
+        const sender = String(previous.sender || '').toLowerCase();
+        // Button/upsell pin: "הוספתי לעגלה:" — the AI under it is the bag turn.
+        // Still peek past the pin for a verbal "תוסיף לסל" ask when one exists.
+        if (sender === 'client' && this.isCartActionMessage(previous)) {
+          sawCartPin = true;
+          continue;
+        }
+        if (sender !== 'client') {
+          // Older AI/product cards above the pin must not cancel the bag turn.
+          return sawCartPin;
+        }
+        if (typeof this.isAddToCartChatRequest === 'function' && this.isAddToCartChatRequest(previous.message)) {
+          return true;
+        }
+        return false;
+      }
+      return sawCartPin || Boolean(this._cartUpsellAwaitReply);
+    },
+    messageHasComponent(message) {
+      if (!message || String(message.sender || '').toLowerCase() !== 'ai') return false;
+      if (this.showMessageProductCards(message)) return true;
+      if (this.getMessageDiscounts(message).length) return true;
+      return this.showOrderInMessage(message);
+    },
+    questionPlain(raw) {
+      return String(raw || '')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/p>\s*<p[^>]*>/gi, '\n')
+        .replace(/<\/(p|div|li|h[1-6])>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&#63;/gi, '?')
+        .replace(/\r\n/g, '\n');
+    },
+    splitLastQuestion(text) {
+      const raw = this.stripReplyPayload(text);
+      if (!raw) return { lead: '', question: '' };
+      const plain = this.questionPlain(raw);
+      const end = Math.max(plain.lastIndexOf('?'), plain.lastIndexOf('？'));
+      if (end < 0) return { lead: '', question: '' };
+      let start = this.questionSentenceStart(plain, end);
+      let question = plain.slice(start, end + 1).trim();
+      if (!question.replace(/[?？.!\s\-•*]/g, '')) {
+        const earlier = start > 0 ? start - 1 : -1;
+        if (earlier > 0) {
+          start = this.questionSentenceStart(plain, earlier);
+          question = plain.slice(start, end + 1).trim();
+        }
+      }
+      question = this.trimToQuestionClause(question);
+      const at = raw.lastIndexOf(question);
+      if (at < 0) return { lead: '', question: '' };
+      const lead = raw.slice(0, at).replace(/[ \t\n]+$/g, '').trim();
+      return { lead, question };
+    },
+    /**
+     * Outside reply card must show only the short question — never the full AI reply.
+     * Returns '' when a safe short question cannot be extracted.
+     */
+    extractOutsideReplyQuestion(text) {
+      const raw = this.stripReplyPayload(text);
+      if (!raw) return '';
+      const plainFull = this.questionPlain(raw).replace(/[ \t]+\n/g, '\n').trim();
+      if (!plainFull) return '';
+
+      let question = String(this.splitLastQuestion(raw).question || '').trim();
+      if (!question) {
+        // Prefer the last line that already ends with ?
+        const lines = plainFull.split(/\n+/).map((line) => line.replace(/\s+/g, ' ').trim()).filter(Boolean);
+        const withMark = [...lines].reverse().find((line) => /[?？]\s*$/.test(line));
+        question = withMark ? this.trimToQuestionClause(withMark) : '';
+      }
+      if (!question || !/[?？]/.test(question)) return '';
+
+      question = this.trimToQuestionClause(question).replace(/\s+/g, ' ').trim();
+      // If we still captured almost the whole reply, force the last clause only.
+      if (plainFull.length > 120 && question.length >= plainFull.length * 0.7) {
+        question = this.clipOutsideQuestion(question);
+      }
+      if (question.length > 140) question = this.clipOutsideQuestion(question);
+      if (!question || !/[?？]/.test(question) || question.length > 160) return '';
+      // Reject multi-sentence walls that still slipped through.
+      if ((question.match(/[.!](?:\s|$)/g) || []).length >= 2) {
+        question = this.clipOutsideQuestion(question);
+      }
+      if (!question || !/[?？]/.test(question) || question.length > 160) return '';
+      return question;
+    },
+    clipOutsideQuestion(question) {
+      const cleaned = String(question || '').replace(/\s+/g, ' ').trim();
+      if (!cleaned) return '';
+      const end = Math.max(cleaned.lastIndexOf('?'), cleaned.lastIndexOf('？'));
+      if (end < 0) return '';
+      const windowStart = Math.max(0, end - 139);
+      const window = cleaned.slice(windowStart, end + 1).trim();
+      const trimmed = this.trimToQuestionClause(window);
+      if (trimmed && /[?？]/.test(trimmed) && trimmed.length <= 140) return trimmed;
+      return cleaned.slice(Math.max(0, end - 119), end + 1).trim();
+    },
+    questionSentenceStart(plain, end) {
+      for (let i = end - 1; i >= 0; i -= 1) {
+        const ch = plain[i];
+        if (ch === '.' || ch === '!' || ch === '?' || ch === '？' || ch === '\n') return i + 1;
+      }
+      return 0;
+    },
+    trimToQuestionClause(question) {
+      const cleaned = String(question || '').trim();
+      const long = cleaned.length > 100 || /(^|\n)\s*[-*•]/.test(cleaned) || / - /.test(cleaned);
+      if (!long) return cleaned;
+      const openers = /(^|[\s\n])(האם|מה|מי|איזה|איזו|איך|למה|לאיזה|לאיזו|איפה|מתי|כמה|היכן|אילו|תרצ[הי]|רוצ[הי]|אפשר|which|what|do you|are you|would you|can you|want(?:\s+to)?|shall\s+we)(?=\s)/gi;
+      let last = -1;
+      let match;
+      while ((match = openers.exec(cleaned))) last = match.index + match[1].length;
+      if (last > 0) return cleaned.slice(last).trim();
+      if (cleaned.length > 140) {
+        const parts = cleaned.split(/\s+-\s+/);
+        const tail = parts[parts.length - 1].trim();
+        if (parts.length > 1 && /[?？]/.test(tail) && tail.length <= 140) return tail;
+      }
+      return cleaned;
+    },
+    questionRowDir(message) {
+      // Prefer plugin language so Hebrew UI always packs the question to the right,
+      // even when a product name in Latin would confuse getTextDirection.
+      if (this.language === 'he') return 'rtl';
+      if (this.language === 'en') return 'ltr';
+      return this.getTextDirection(this.messageQuestionText(message));
+    },
+    messageQuestionBelow(message) {
+      if (!message || this.isMessageTextRevealing(message)) return false;
+      // Cart-offer question sits under הסל שלך / slim checkout — not in the normal below slot.
+      if (this.isCartOfferTurn(message)) return false;
+      if (message.pendingDataFromWebsite) return false;
+      if (!this.splitLastQuestion(message.message).question) return false;
+      // With cards: question only after products finished entering (not before / between).
+      if (this.messageHasComponent(message)) return this.isQuestionBelowReady(message);
+      // Text-only question + chips share the same settle.
+      return this.showFollowUpReplies(message);
+    },
+    messageLeadText(message) {
+      return this.splitLastQuestion(message?.message).lead;
+    },
+    messageQuestionText(message) {
+      if (!this.messageQuestionBelow(message)) return '';
+      return this.splitLastQuestion(message.message).question;
+    },
+    messageAboveText(message) {
+      // Cart-add: lead only above the bag — never show the follow-up up top then move it.
+      const leadOnly = this.cartOfferLeadOnlyText(message);
+      if (leadOnly != null) return leadOnly;
+      if (this.shouldHoldQuestionForCards(message) || this.messageQuestionBelow(message)) {
+        return this.messageLeadText(message);
+      }
+      return message?.message || '';
+    },
+    messageShowsTopText(message) {
+      const leadOnly = this.cartOfferLeadOnlyText(message);
+      if (leadOnly != null) return Boolean(leadOnly);
+      if (this.isCartOfferTurn(message)) {
+        return Boolean(String(message?.message || '').trim());
+      }
+      if (this.shouldHoldQuestionForCards(message) || this.messageQuestionBelow(message)) {
+        return Boolean(String(this.messageLeadText(message) || '').trim());
+      }
+      return true;
+    },
+    hasFollowUpRepliesOnLatestAi() {
+      const messages = this.chatMessages || [];
+      for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const message = messages[i];
+        if (!message || message.isContactSubmission) continue;
+        const sender = String(message.sender || '').toLowerCase();
+        if (sender === 'client') return false;
+        if (sender !== 'ai') continue;
+        if (this.isMessageTextRevealing(message)) return false;
+        return this.followUpReplies(message).length > 0;
+      }
+      return false;
+    },
+    canClickFollowUp(message) {
+      if (!message || message.selectedSuggestedReply) return false;
+      if (this.isWaitingOnAiReply || this.isMessageTextRevealing(message)) return false;
+      if (!this.followUpReplies(message).length) return false;
+      const messages = this.chatMessages || [];
+      const index = messages.indexOf(message);
+      if (index < 0) return false;
+      for (let i = index + 1; i < messages.length; i += 1) {
+        const later = messages[i];
+        if (!later || later.isContactSubmission) continue;
+        const sender = String(later.sender || '').toLowerCase();
+        if (sender === 'client') return false;
+        if (sender === 'ai' && this.followUpReplies(later).length) return false;
+      }
+      return true;
+    },
+    sendFollowUpReply(message, reply) {
+      const text = String(reply || '').trim();
+      if (!text || !this.canClickFollowUp(message)) return;
+      message.selectedSuggestedReply = text;
+      this.schedulePersistChatSession();
+      this.trackPluginEvent('suggested_clicked', {
+        text: this.clipPluginEventText(text),
+        surface: 'chat',
+      });
+      this._pluginMessageSource = 'suggested';
+      this.sendQuickAction(text);
+    },
     starterChipIcon(text, index) {
       const value = String(text || '');
       if (/משלוח|מגיע|shipping|deliver|arrive/i.test(value)) return 'truck';
       if (/מתאים|בוחר|המלצ|recommend|fit|choose|pick/i.test(value)) return 'key';
       return Number(index) % 2 === 0 ? 'chat' : 'sparkle';
+    },
+
+    homeScreenChipsStorageKey() {
+      return `assis_home_chips_v3:${this.language === 'he' ? 'he' : 'en'}`;
+    },
+
+    normalizePluginHomeChipsByLang(raw) {
+      const empty = { he: [], en: [] };
+      if (!raw) return empty;
+      if (Array.isArray(raw)) {
+        const list = this.normalizeHomeScreenChips(raw);
+        return { he: list, en: list };
+      }
+      if (typeof raw !== 'object') return empty;
+      return {
+        he: this.normalizeHomeScreenChips(raw.he),
+        en: this.normalizeHomeScreenChips(raw.en),
+      };
+    },
+
+    normalizeHomeScreenChips(list) {
+      if (!Array.isArray(list)) return [];
+      const seen = new Set();
+      const chips = [];
+      list.forEach((item, index) => {
+        const text = String(item?.text || '').replace(/\s+/g, ' ').trim();
+        if (!text || seen.has(text)) return;
+        seen.add(text);
+        const sendRaw = item?.textToSend || item?.textToSendOnClick || text;
+        const textToSend = String(sendRaw).replace(/\s+/g, ' ').trim() || text;
+        const dir = item?.dir || this.getTextDirection(text);
+        chips.push({
+          text,
+          textToSend,
+          icon: item?.icon || this.starterChipIcon(text, index),
+          chipStyle: item?.chipStyle || { textAlign: dir === 'rtl' ? 'right' : 'left' },
+          dir,
+        });
+      });
+      return chips.slice(0, 6);
+    },
+
+    readFrozenHomeScreenChips() {
+      try {
+        const raw = sessionStorage.getItem(this.homeScreenChipsStorageKey());
+        const parsed = raw ? JSON.parse(raw) : null;
+        return this.normalizeHomeScreenChips(parsed);
+      } catch {
+        return [];
+      }
+    },
+
+    writeFrozenHomeScreenChips(chips) {
+      try {
+        sessionStorage.setItem(this.homeScreenChipsStorageKey(), JSON.stringify(chips));
+      } catch {
+        /* storage can be blocked */
+      }
+    },
+
+    freezeHomeScreenChips(list) {
+      const lang = this.language === 'he' ? 'he' : 'en';
+      if (
+        this.homeScreenChipsFrozenLang === lang
+        && Array.isArray(this.homeScreenChipsFrozen)
+        && this.homeScreenChipsFrozen.length
+      ) {
+        return this.homeScreenChipsFrozen;
+      }
+      const chips = this.normalizeHomeScreenChips(list);
+      if (!chips.length) return [];
+      this.homeScreenChipsFrozen = chips;
+      this.homeScreenChipsFrozenLang = lang;
+      this.writeFrozenHomeScreenChips(chips);
+      return chips;
+    },
+
+    restoreOrFreezeHomeScreenChips() {
+      const lang = this.language === 'he' ? 'he' : 'en';
+      const fromSettings = this.configuredHomeChips;
+      if (fromSettings.length) {
+        this.homeScreenChipsFrozen = fromSettings;
+        this.homeScreenChipsFrozenLang = lang;
+        this.writeFrozenHomeScreenChips(fromSettings);
+        return fromSettings;
+      }
+      if (
+        this.homeScreenChipsFrozenLang === lang
+        && Array.isArray(this.homeScreenChipsFrozen)
+        && this.homeScreenChipsFrozen.length
+      ) {
+        return this.homeScreenChipsFrozen;
+      }
+      const stored = this.readFrozenHomeScreenChips();
+      if (stored.length) {
+        this.homeScreenChipsFrozen = stored;
+        this.homeScreenChipsFrozenLang = lang;
+        return stored;
+      }
+      // Prefer the business-configured questions; otherwise freeze the first dynamic set once.
+      const configured = this.configuredOutsideQuestions;
+      if (configured.length) return this.freezeHomeScreenChips(configured);
+      const dynamic = this.pageBubbleQuestions;
+      if (dynamic.length) return this.freezeHomeScreenChips(dynamic);
+      return this.freezeHomeScreenChips(this.homeScreenFallbackChips);
     },
 
     stripQuickActionHtml(html) {
@@ -9647,7 +11810,13 @@ export default {
         let fontWeight = '';
         for (const el of nodes) {
           if (!fontSize && el.style?.fontSize) fontSize = el.style.fontSize;
-          if (!color && el.style?.color) color = el.style.color;
+          if (!color && el.style?.color) {
+            const nextColor = String(el.style.color || '').trim().toLowerCase();
+            // Ignore cleared / default markers so leftover inherit does not paint the intro.
+            if (nextColor && nextColor !== 'inherit' && nextColor !== 'initial' && nextColor !== 'unset') {
+              color = el.style.color;
+            }
+          }
           if (!fontWeight) {
             const tag = el.tagName;
             if (tag === 'STRONG' || tag === 'B') fontWeight = '700';
@@ -10084,17 +12253,31 @@ export default {
         });
       });
     },
+    async fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        return await fetch(url, { ...options, signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+    },
     async fetchWelcomeAiMessages() {
       if (this.pluginMessagesFetched) return;
 
       try {
         const storeUrl = window.location.origin;
-        const response = await fetch(`${this.ASSIS_BACKEND_URL}/api/shopify/plugin-messages?store_url=${encodeURIComponent(storeUrl)}`, {
+        const backend = String(this.ASSIS_BACKEND_URL || this.assisBackendUrl || '').trim();
+        if (!backend) {
+          this.pluginMessagesFetched = true;
+          return;
+        }
+        const response = await this.fetchWithTimeout(`${backend}/api/shopify/plugin-messages?store_url=${encodeURIComponent(storeUrl)}`, {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
             'ngrok-skip-browser-warning': 'true'
-          }
+          },
         });
 
         if (!response.ok) {
@@ -10102,10 +12285,12 @@ export default {
         }
 
         const data = await response.json();
+        // Show the heart before heavier post-processing — a hang there must not hide the launcher.
+        this.pluginMessagesFetched = true;
+        this.$forceUpdate();
 
         if (!data) {
           this.welcomeAiMessages = this.welcomeAiMessages || [];
-          this.pluginMessagesFetched = true;
           this.schedulePersistChatSession();
           return;
         }
@@ -10158,6 +12343,12 @@ export default {
         );
 
         this.pluginEilatPricing = this.normalizePluginEilatPricing(data?.plugin_eilat_pricing);
+        this.pluginOutsideReplyChoices = !(
+          data?.plugin_outside_reply_choices === false
+          || data?.plugin_outside_reply_choices === 'false'
+          || data?.plugin_outside_reply_choices === 0
+          || data?.plugin_outside_reply_choices === '0'
+        );
         this.proactiveTriggers = data?.plugin_proactive_triggers && typeof data.plugin_proactive_triggers === 'object'
           ? data.plugin_proactive_triggers
           : null;
@@ -10178,6 +12369,9 @@ export default {
           : 'above';
         this.syncClubBadgeRotation();
 
+        const storefront = String(data?.store_url || data?.shopify_domain || '').trim();
+        this.pluginStorefrontUrl = storefront;
+
         if (data?.plugin_message_when_chat_closed) {
           this.pluginMessageWhenChatClosed = data.plugin_message_when_chat_closed;
         }
@@ -10189,6 +12383,14 @@ export default {
         this.pluginOutsideBubblesByLang = this.normalizePluginOutsideBubblesByLang(
           data.plugin_outside_bubbles
         );
+        this.pluginHomeChipsByLang = this.normalizePluginHomeChipsByLang(
+          data.plugin_home_chips
+          || (data.plugin_proactive_triggers && data.plugin_proactive_triggers._home_chips)
+          || null
+        );
+        this.homeScreenChipsFrozen = null;
+        this.homeScreenChipsFrozenLang = '';
+        this.restoreOrFreezeHomeScreenChips();
         if (typeof this.refreshProactiveBubble === 'function') this.refreshProactiveBubble();
 
         if (Array.isArray(data.plugin_specific_menu)) {
@@ -10238,12 +12440,13 @@ export default {
           }
         }
 
-        this.pluginMessagesFetched = true;
         this.schedulePersistChatSession();
+        this.$nextTick(() => this.armSiteEntryNudge());
       } catch (error) {
         console.error('Error fetching welcome ai message:', error);
         // Still mark ready so the launcher isn't hidden forever on network errors.
         this.pluginMessagesFetched = true;
+        this.$nextTick(() => this.armSiteEntryNudge());
       }
     },
 
@@ -10254,47 +12457,82 @@ export default {
         return;
       }
 
-      try {
-        const storeUrl = window.location.origin;
-        const response = await fetch(`${this.ASSIS_BACKEND_URL}/api/shopify/plugin-plan-subscription?store_url=${encodeURIComponent(storeUrl)}`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'ngrok-skip-browser-warning': 'true'
-          }
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        if (!data) {
-          this.planSubscription = this.planSubscription || 'care_by_assis';
-          this.businessPictureFromDbResolved = true;
-          return;
-        }
-
-        const plan = data.plan_subscription ?? data.planSubscription ?? null;
-
-        this.planSubscription = plan || 'care_by_assis';
-        this.businessPictureFromDb = data.picture || null;
-        this.businessPictureFromDbResolved = true;
-        this.businessPictureFromDbFailed = false;
-        this.headerLogoFailed = false;
-        const name = typeof data.name === 'string' ? data.name.trim() : '';
-        if (name) {
-          this.businessNameFromApi = name;
-        }
-        this.schedulePersistChatSession();
-      } catch (error) {
-        console.error('Error fetching plan subscription:', error);
-        // Don't throw error to prevent breaking the chat flow; fall back to businessLogo
+      const storeUrl = window.location.origin;
+      const backend = String(this.ASSIS_BACKEND_URL || this.assisBackendUrl || '').trim();
+      if (!backend) {
         this.planSubscription = this.planSubscription || 'care_by_assis';
-        this.businessPictureFromDb = null;
         this.businessPictureFromDbResolved = true;
-        this.businessPictureFromDbFailed = false;
+        return;
       }
+      const requestUrl = `${backend}/api/shopify/plugin-plan-subscription?store_url=${encodeURIComponent(storeUrl)}`;
+      const requestHeaders = {
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true',
+      };
+      const maxAttempts = 3;
+      let lastError = null;
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          const response = await this.fetchWithTimeout(requestUrl, {
+            method: 'GET',
+            headers: requestHeaders,
+          });
+
+          if (!response.ok) {
+            const err = new Error(`HTTP error! status: ${response.status}`);
+            // Retry only transient failures; 4xx (e.g. unknown store) will not recover.
+            err.assisRetryable = response.status >= 500 || response.status === 429;
+            throw err;
+          }
+
+          const data = await response.json();
+          if (!data) {
+            // API reachable but empty — keep launcher hidden until a real plan arrives.
+            this.businessPictureFromDbResolved = true;
+            return;
+          }
+
+          const plan = data.plan_subscription ?? data.planSubscription ?? null;
+
+          this.planSubscription = plan || 'care_by_assis';
+          this.businessPictureFromDb = data.picture || null;
+          this.businessPictureFromDbResolved = true;
+          this.businessPictureFromDbFailed = false;
+          this.headerLogoFailed = false;
+          const name = typeof data.name === 'string' ? data.name.trim() : '';
+          if (name) {
+            this.businessNameFromApi = name;
+          }
+          this.schedulePersistChatSession();
+          return;
+        } catch (error) {
+          lastError = error;
+          // Retry network/abort/5xx/429. Do not retry explicit 4xx (unknown store, etc.).
+          const shouldRetry = attempt < maxAttempts && error?.assisRetryable !== false;
+          if (!shouldRetry) break;
+          await new Promise((resolve) => setTimeout(resolve, 400 * attempt));
+        }
+      }
+
+      console.error('Error fetching plan subscription:', lastError);
+      if (lastError?.assisRetryable === false) {
+        // Definitive 4xx (unknown store / forbidden): keep launcher hidden unless a plan
+        // was already restored. Do not invent a plan for a store Assis does not know.
+        if (!this.planSubscription) {
+          this.businessPictureFromDb = null;
+          this.businessPictureFromDbFailed = true;
+        }
+      } else if (!this.planSubscription && typeof this.isWooCommerceWebsite === 'function' && this.isWooCommerceWebsite()) {
+        // Woo only: fresh visit + transient network/timeout/5xx → show launcher.
+        // Shopify keeps the old hide-on-failure behavior so Powered / off are not mis-labeled.
+        this.planSubscription = 'care_by_assis';
+        this.businessPictureFromDbFailed = true;
+      } else if (!this.planSubscription) {
+        this.businessPictureFromDb = null;
+        this.businessPictureFromDbFailed = true;
+      }
+      this.businessPictureFromDbResolved = true;
     },
 
     handleLogoError() {
@@ -10327,10 +12565,11 @@ export default {
       const items = this.displayableBannerContent;
       if (items.length <= 1) return;
 
+      // Keep in sync with BannerPluginPreview rotation (settings live preview).
       this.bannerContentRotationTimer = setInterval(() => {
         this.bannerContentIndex = (this.bannerContentIndex + 1) % items.length;
         this.noteBannerShown();
-      }, 5000);
+      }, 4500);
     },
 
     stopBannerContentRotation() {
@@ -10345,6 +12584,9 @@ export default {
     },
 
     schedulePersistChatSession() {
+      // Typewriter updates typewriterText (not message text) — skip while active.
+      // Streaming still persists on finalize via explicit schedulePersistChatSession
+      // after clearStreamingState; mid-stream deep-watch skips separately.
       if (this.typewriterMessage) return;
       // Throttle localStorage writes (deep watch can be very chatty)
       if (this._persistChatSessionTimer) return;
@@ -10355,15 +12597,94 @@ export default {
       }, 1000);
     },
 
+    /** Server-backed message id (skip local optimistic / stream placeholders). */
+    lastServerChatMessageId() {
+      const messages = this.chatMessages || [];
+      for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const id = messages[i]?.id;
+        if (id == null || id === '') continue;
+        const key = String(id);
+        if (
+          key.startsWith('msg_')
+          || key.startsWith('prev_')
+          || key.startsWith('contact-submission-')
+          || key.startsWith('cart-action-')
+        ) continue;
+        return key;
+      }
+      return null;
+    },
+
+    requestMissedChatMessages() {
+      if (!this.socket || !this.isSocketConnected || !this.careRequestId) return;
+      const lastMessageId = this.lastServerChatMessageId();
+      if (!lastMessageId) return;
+      this.socket.emit('resume_chat', {
+        careRequestId: this.careRequestId,
+        lastMessageId,
+      });
+    },
+
+    /** Re-kick letter-by-letter reveal after chat remounts (v-if destroys the panel). */
+    resumeInFlightAiReveal() {
+      const stream = this.streamingMessage;
+      if (stream) {
+        const target = this.normalizeTypewriterText(this.streamBuffer);
+        const visible = this.normalizeTypewriterText(stream.message);
+        if (this.streamRevealFinalize || visible.length < target.length) {
+          this.queuePumpStreamReveal();
+        }
+      }
+      const typed = this.typewriterMessage;
+      if (typed?.isTyping && !this.isMessageTypewriting(typed)) {
+        this.$nextTick(() => this.typeAiReply(typed));
+      }
+    },
+
+    bumpPluginUnread(messageKeys) {
+      if (this.isChatOpen) return;
+      const keys = (Array.isArray(messageKeys) ? messageKeys : [messageKeys])
+        .map((key) => String(key || '').trim())
+        .filter(Boolean);
+      // Same reply can finish via stream (text key) + chat_message (id) — count once.
+      if (!this._pluginUnreadKeys) this._pluginUnreadKeys = new Set();
+      if (keys.length && keys.some((key) => this._pluginUnreadKeys.has(key))) return;
+      keys.forEach((key) => this._pluginUnreadKeys.add(key));
+      if (this._pluginUnreadKeys.size > 48) {
+        this._pluginUnreadKeys = new Set(keys);
+      }
+      this.pluginUnreadCount = Math.min(99, (Number(this.pluginUnreadCount) || 0) + 1);
+    },
+    clearPluginUnread() {
+      this.pluginUnreadCount = 0;
+      this._pluginUnreadKeys = new Set();
+    },
+    /** Closed chat: keep the heart waiting → unread count honest when Assis finishes. */
+    noteAssistantReplyWhileClosed(message) {
+      if (this.isChatOpen) return;
+      const keys = [];
+      if (message?.id) keys.push(String(message.id));
+      if (message) keys.push(this.incomingMessageKey(message));
+      this.bumpPluginUnread(keys);
+      this.$nextTick(() => this.armOutsideReplyChoicesFromChat());
+    },
+
     getNonPersistedStateKeys() {
       // Runtime-only / non-serializable / not useful across page navigations
       return new Set([
         'socket',
         'pluginMessagesFetched',
+        // Always take from host data-assis-backend-url / prop — never a stale session URL.
+        'ASSIS_BACKEND_URL',
         'supabaseClient',
         'checkoutChatClosing',
+        'checkoutRestored',
+        'cartFocusOn',
+        'cartUpsellHold',
         'productCardPickedVariants',
-        'selectedFiles', // File objects cannot be serialized reliably
+        'selectedAttachments', // File objects / blob URLs cannot be serialized reliably
+        'chatFileDragDepth',
+        'fileAttachError',
         'uploadProgress',
         'isUploading',
         'isSocketConnected',
@@ -10423,6 +12744,7 @@ export default {
         'productSheetBottom',
         'productSheetLeft',
         'productCardOptionMenuKey',
+        'productCardOptionMenu',
         'productVariantMenu',
       ]);
     },
@@ -10505,10 +12827,15 @@ export default {
           this[key] = restoredData[key];
         });
 
-        // Ensure we always have a boolean for quick actions if missing
-        // if (typeof this.showQuickActions !== 'boolean') {
-        //   this.showQuickActions = true;
-        // }
+        // Welcome-only restore kept isChatOpen=true and hid outside bubbles on refresh.
+        const hasClientMessage = (this.chatMessages || []).some(
+          (message) => String(message?.sender || '').toLowerCase() === 'client'
+        );
+        if (!hasClientMessage) {
+          this.isChatOpen = false;
+          this.showQuickActions = true;
+          this.outsideBubblesDismissed = false;
+        }
 
         // Ensure clientId is persisted for socket auth
         if (this.clientId) {
@@ -10542,12 +12869,28 @@ export default {
 
         this.syncPhoneCountryFromGuestPhone();
 
+        if (this.cartUpsell?.source === 'plugin') {
+          this.cartUpsellTyped = this.cartUpsellAdded;
+          this.cartUpsellCardsReady = (this.cartUpsell.suggestions || []).length > 0;
+          this.cartUpsellMoreReady = this.cartUpsellCardsReady;
+          this.cartUpsellMoreOpened = true;
+        }
+        this.cartUpsellHold = false;
+        this.cartFocusOn = false;
+        this.checkoutRestored = Boolean(
+          this.cartUpsell?.source === 'plugin'
+          || (this.chatMessages || []).some((message) => message?.checkoutMoment)
+        );
+
         (this.chatMessages || []).forEach((message) => {
           if (!message || typeof message !== 'object') return;
+          if (message.checkoutMoment && message.checkoutMoment.revealed === false) {
+            message.checkoutMoment = { ...message.checkoutMoment, revealed: true };
+          }
+          // Typewriter UI is runtime-only; stream resume uses streamTarget on the message.
           message.isTyping = false;
           message.typedText = '';
-          message.isStreaming = false;
-          message.streamPendingCommit = false;
+          message._streamRevealActive = false;
           message.pendingDataFromWebsite = null;
           if (message.isContactSubmission) {
             // Legacy inline-edit flag from older sessions
@@ -10558,7 +12901,8 @@ export default {
           }
         });
 
-        this.clearStreamingState();
+        // Do not clearStreamingState() — remount must resume letter-by-letter from streamTarget.
+        this.recoverStreamingAfterRestore();
 
         return true;
       } catch (error) {
@@ -10637,17 +12981,8 @@ export default {
         console.log('Socket connected:', this.socket.id);
         this.isSocketConnected = true;
         this.onSocketConnect();
-
-        if (this.careRequestId && this.chatMessages.length > 0) {
-          const lastMessageId = this.chatMessages[this.chatMessages.length - 1]?.id;
-
-          if (lastMessageId) {
-            this.socket.emit('resume_chat', {
-              careRequestId: this.careRequestId,
-              lastMessageId: lastMessageId
-            });
-          }
-        }
+        this.requestMissedChatMessages();
+        this.resumeInFlightAiReveal();
       });
 
       // Connection lost
@@ -10690,16 +13025,68 @@ export default {
         this.handleReceivedMessage(data);
       });
 
-      // Missing messages received
+      // Missing messages received (after reconnect / reopen while Assis was still writing)
       this.socket.on('missing_messages', (data) => {
-        // console.log("Missing messages received:", data);
-        const messages = data?.messages?.filter(message => message.type === 'message' && message.source !== 'whatsapp' && message.source !== 'email') || [];
-        if (messages && messages?.length > 0) {
-          this.chatMessages.push(...messages);
-          const lastMessage = this.chatMessages[this.chatMessages.length - 1];
-          if (lastMessage && lastMessage.sender !== 'client') {
-            this.loadingIndicator = false;
+        const messages = data?.messages?.filter((message) => (
+          message.type === 'message'
+          && message.source !== 'whatsapp'
+          && message.source !== 'email'
+        )) || [];
+        if (!messages.length) return;
+
+        messages.forEach((raw) => {
+          const sender = String(raw?.sender || '').toLowerCase();
+          if (sender === 'client') {
+            if (this.adoptCartActionServerId(raw)) return;
+            const candidates = this.chatMessages?.filter((chatMessage) => (
+              chatMessage.message === (raw.message || raw.text)
+              && chatMessage.sender === 'client'
+              && !chatMessage.id
+            )) || [];
+            const match = candidates[candidates.length - 1];
+            if (match) {
+              match.id = raw?.messageId || raw?.id;
+              return;
+            }
+            this.chatMessages.push({
+              message: raw.message || raw.text || '',
+              sender: 'client',
+              datetime: raw.datetime || new Date().toISOString(),
+              id: raw?.messageId || raw?.id,
+            });
+            return;
           }
+
+          if (sender !== 'ai' && sender !== 'assis' && sender !== 'agent' && sender !== 'business') return;
+
+          const agentMessage = {
+            message: this.enrichAgentHandoffMessage(raw.message || raw.text || ''),
+            sender: raw.sender || 'ai',
+            datetime: raw.datetime || new Date().toISOString(),
+            id: raw?.messageId || raw?.id,
+          };
+          if (raw.isHumanRequested != null) {
+            agentMessage.isHumanRequested = this.normalizeIsHumanRequested(raw.isHumanRequested);
+          }
+          this.attachDataFromWebsite(agentMessage, raw.dataFromWebsite);
+          this.attachOrderVerification(agentMessage, raw);
+          if (sender === 'ai') {
+            this.scrubAiMessageCartLeak(agentMessage, raw.cartActions);
+            this.applySuggestedReplies(agentMessage, raw.suggestedReplies);
+          }
+
+          if (sender === 'ai' && this.finalizeStreamingMessage(agentMessage, raw.dataFromWebsite)) {
+            return;
+          }
+          const stored = this.appendIncomingAgentMessage(agentMessage);
+          if (stored && !stored.isTyping && !stored.isStreaming) {
+            this.noteAssistantReplyWhileClosed(stored);
+          }
+        });
+
+        const lastMessage = this.chatMessages[this.chatMessages.length - 1];
+        if (lastMessage && String(lastMessage.sender || '').toLowerCase() !== 'client') {
+          this.loadingIndicator = false;
         }
       });
 
@@ -10772,7 +13159,14 @@ export default {
         }
 
         this.clearPartialStreamOnError();
+        if (typeof this.releaseCartUpsellWithoutReply === 'function') this.releaseCartUpsellWithoutReply();
         this.errorWithAiIntervention = error;
+        this.bumpPluginUnread();
+        if (this.idleChatPending) {
+          this.idleChatPending = false;
+          this.loadingIndicator = false;
+          this.armIdleChatNudge();
+        }
       });
 
       this.socket.on('agent_requested_success', (data) => {
@@ -10918,9 +13312,7 @@ export default {
     onSocketConnect() {
       // Handle socket connection
       console.log('WebSocket connection established');
-
-      // You can add any additional logic here when socket connects
-      // For example, join a room, send identification, etc.
+      this.armSiteEntryNudge();
     },
 
     onSocketDisconnect(reason) {
@@ -10960,6 +13352,24 @@ export default {
       }
     },
 
+    adoptCartActionServerId(message) {
+      const serverId = message?.id || message?.messageId;
+      const text = message?.message || message?.text;
+      if (!serverId || !text) return false;
+      const local = (this.chatMessages || []).find((item) => (
+        item?.isCartAction
+        && item.message === text
+        && String(item.id || '').startsWith('cart-action-')
+        && (!message.datetime || item.datetime === message.datetime)
+      ));
+      if (!local) return false;
+      const previousId = local.id;
+      local.id = serverId;
+      if (this.checkoutChatAnchorId === previousId) this.checkoutChatAnchorId = serverId;
+      this.schedulePersistChatSession();
+      return true;
+    },
+
     handleReceivedMessage(data) {
       // Handle incoming messages from agents
 
@@ -10988,9 +13398,39 @@ export default {
 
           this.attachDataFromWebsite(agentMessage, data.dataFromWebsite);
           this.attachOrderVerification(agentMessage, data);
+          if (data.proactiveIdle) agentMessage.proactiveIdle = true;
+          if (data.proactiveIdle) agentMessage.products = [];
+          if (data.sender === 'ai') {
+            this.scrubAiMessageCartLeak(agentMessage, data.cartActions);
+            this.applySuggestedReplies(agentMessage, data.suggestedReplies);
+          }
+          if (data.proactiveIdle) {
+            this.idleChatNudged = true;
+            if (data.proactiveAfterCart) this.idleCartNudged = true;
+            this.idleChatPending = false;
+            if (data.proactiveSiteEntry || this.siteEntryNudged) {
+              // Site entry: keep / open chat with the message inside (never outside chips).
+              this.siteEntryNudged = true;
+              this.poweredByAssisHomeDismissed = true;
+              this.poweredByAssisForceHome = false;
+              this.isMaximized = true;
+              if (!this.isChatOpen) {
+                this._pluginOpenSource = this._pluginOpenSource || 'proactive';
+                this.toggleChat();
+              }
+            } else if (!this.isChatOpen) {
+              const question = this.extractOutsideReplyQuestion(data.message);
+              if (question) {
+                this.showIdleOutsideFollowup(question, agentMessage.suggestedReplies);
+              }
+            }
+          }
 
           // Streaming path: finalize the in-progress bubble instead of appending a duplicate.
-          if (data.sender === 'ai' && this.finalizeStreamingMessage(agentMessage, data.dataFromWebsite)) {
+          // Unread count bumps once when the reply finishes (stream / typewriter / instant).
+          if (data.sender === 'ai' && this.finalizeStreamingMessage(agentMessage, data.proactiveIdle
+            ? { ...(data.dataFromWebsite || {}), products: [] }
+            : data.dataFromWebsite)) {
             // Letter-by-letter path raises orders only after the full text is revealed.
             if (!this.streamingMessage?.isStreaming && !this.streamRevealFinalize) {
               this.raiseOrdersAfterAiText(this.streamingMessage || agentMessage);
@@ -11006,11 +13446,19 @@ export default {
                 this.raiseOrdersAfterAiText(stored);
               }
             }
+            if (stored && !stored.isTyping && !stored.isStreaming) {
+              this.noteAssistantReplyWhileClosed(stored);
+            }
           }
 
           // Update text directions for new messages
           this.updateMessageDirections();
+          if (data.proactiveIdle && data.proactiveCheckout) {
+            const checkoutMessage = this.chatMessages?.[this.chatMessages.length - 1];
+            if (checkoutMessage) this.pinProactiveCheckout(checkoutMessage);
+          }
         } else if (data.sender === 'client') {
+          if (this.adoptCartActionServerId(data)) return;
           // Attach server id to the matching optimistic client message (prefer datetime, else latest text match)
           const candidates = this.chatMessages?.filter((chatMessage) => (
             chatMessage.message === data.message
@@ -11060,12 +13508,17 @@ export default {
             sender: message.sender,
             datetime: message.datetime || new Date().toISOString(),
             id: message?.messageId || message?.id,
+            proactiveIdle: Boolean(message.proactiveIdle || data.proactiveIdle),
           };
           if (message.isHumanRequested != null) {
             agentMessage.isHumanRequested = this.normalizeIsHumanRequested(message.isHumanRequested);
           }
 
           this.attachDataFromWebsite(agentMessage, message.dataFromWebsite);
+          if (message.sender === 'ai') {
+            this.scrubAiMessageCartLeak(agentMessage, message.cartActions || data.cartActions);
+            this.applySuggestedReplies(agentMessage, message.suggestedReplies || data.suggestedReplies);
+          }
           this.attachOrderVerification(agentMessage, {
             ...message,
             shouldShowOrderVerification: message.shouldShowOrderVerification
@@ -11080,9 +13533,13 @@ export default {
           if (message.sender === 'ai' && this.finalizeStreamingMessage(agentMessage, message.dataFromWebsite)) {
             this.updateMessageDirections();
           } else {
-            this.appendIncomingAgentMessage(agentMessage, { typewrite });
+            const stored = this.appendIncomingAgentMessage(agentMessage, { typewrite });
+            if (stored && !stored.isTyping && !stored.isStreaming) {
+              this.noteAssistantReplyWhileClosed(stored);
+            }
           }
           } else if (message.sender === 'client') {
+            if (this.adoptCartActionServerId(message)) return;
             // Attach server id to the matching optimistic client message (prefer datetime, else latest text match)
             const candidates = this.chatMessages?.filter((chatMessage) => (
               chatMessage.message === message.message
@@ -11108,14 +13565,80 @@ export default {
 
     clearStreamingState() {
       // Never drop product/order cards that were deferred until reveal finished.
-      this.flushPendingDataFromWebsite(this.streamingMessage);
+      const message = this.streamingMessage;
+      if (message) {
+        delete message.streamTarget;
+        delete message._streamFinalize;
+        delete message._streamingCareRequestId;
+        message.streamPendingCommit = false;
+        message.isStreaming = false;
+        message._streamRevealActive = false;
+      }
+      this.flushPendingDataFromWebsite(message);
       this.streamRevealToken += 1;
       this.streamRevealFinalize = false;
       this.streamBuffer = '';
+      this.streamRawBuffer = '';
       this.streamingCareRequestId = null;
       this.streamingMessage = null;
       this.streamStatusStage = null;
       this.streamStatusTool = null;
+    },
+
+    /** Persist in-progress stream onto the message so Shopify/Woo remount can resume. */
+    checkpointStreamProgress() {
+      const message = this.streamingMessage;
+      if (!message) return;
+      const target = this.normalizeTypewriterText(this.streamBuffer);
+      if (target) message.streamTarget = target;
+      message.isStreaming = true;
+      message.streamPendingCommit = true;
+      message._streamFinalize = Boolean(this.streamRevealFinalize);
+      if (this.streamingCareRequestId) {
+        message._streamingCareRequestId = this.streamingCareRequestId;
+      }
+      if (this._persistChatSessionTimer) {
+        clearTimeout(this._persistChatSessionTimer);
+        this._persistChatSessionTimer = null;
+      }
+      this._persistChatSessionTimer = setTimeout(() => {
+        this._persistChatSessionTimer = null;
+        this.persistChatSession();
+      }, 400);
+    },
+
+    /** After remount: continue letter-by-letter from message.streamTarget (do not freeze mid-reply). */
+    recoverStreamingAfterRestore() {
+      const messages = this.chatMessages || [];
+      for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const message = messages[i];
+        if (!message || message.isContactSubmission) continue;
+        const sender = String(message.sender || '').toLowerCase();
+        if (sender === 'client') return;
+        if (sender !== 'ai' && sender !== 'assis') continue;
+
+        const target = this.normalizeTypewriterText(message.streamTarget || '');
+        const visible = this.normalizeTypewriterText(message.message || '');
+        const needsResume = (target && visible.length < target.length)
+          || message.isStreaming
+          || message.streamPendingCommit
+          || message._streamFinalize;
+        if (!needsResume) return;
+
+        this.streamingMessage = message;
+        this.streamBuffer = target || visible;
+        this.streamRawBuffer = this.streamBuffer;
+        this.streamRevealFinalize = Boolean(
+          message._streamFinalize
+          || (target && visible.length < target.length && message.streamPendingCommit)
+        );
+        this.streamingCareRequestId = message._streamingCareRequestId || this.careRequestId || null;
+        message.isStreaming = true;
+        message.streamPendingCommit = true;
+        message._streamRevealActive = false;
+        this.queuePumpStreamReveal();
+        return;
+      }
     },
 
     logAssisEvent(eventName, data) {
@@ -11149,6 +13672,7 @@ export default {
       this.streamRevealFinalize = false;
       this.streamingCareRequestId = careRequestId;
       this.streamBuffer = '';
+      this.streamRawBuffer = '';
       this.errorWithAiIntervention = null;
       this.loadingIndicator = false;
 
@@ -11199,7 +13723,18 @@ export default {
             message.message = target.slice(0, current.length + 1);
             message.isStreaming = true;
             typedSinceScroll += 1;
-            if (typedSinceScroll === 1 || typedSinceScroll % 8 === 0) {
+            // Cart-add: reveal הסל שלך once the AI has started — don't wait for stream finalize.
+            if (
+              typedSinceScroll === 1
+              && this._cartUpsellAwaitReply
+              && typeof this.placeCheckoutAfterAssistant === 'function'
+            ) {
+              this.placeCheckoutAfterAssistant(message);
+            }
+            if (
+              (typedSinceScroll === 1 || typedSinceScroll % 8 === 0)
+              && !(this.isCartOfferTurn(message) && this.shouldParkAtCartBag())
+            ) {
               this.scrollToBottom('auto');
             }
             await new Promise((resolve) => setTimeout(resolve, this.streamRevealDelay(nextChar)));
@@ -11208,24 +13743,41 @@ export default {
 
           // Caught up to everything received so far.
           if (this.streamRevealFinalize) {
-            message.message = this.enrichAgentHandoffMessage(target);
+            const enriched = this.normalizeTypewriterText(this.enrichAgentHandoffMessage(target));
+            // Enrichment must not dump leftover text — keep typing the rest.
+            if (current.length < enriched.length) {
+              this.streamBuffer = enriched;
+              continue;
+            }
+            message.message = enriched;
             message.isStreaming = false;
             message.streamPendingCommit = false;
             this.streamRevealFinalize = false;
             this.flushPendingDataFromWebsite(message);
             this.raiseOrdersAfterAiText(message);
+            this.scheduleFollowUpReveal(message, { force: true });
             this.updateMessageDirections();
             this.$nextTick(() => {
               try {
-                if (Array.isArray(message?.products) && message.products.length > 0) {
+                if (this.isCartOfferTurn(message) && this.shouldParkAtCartBag()) return;
+                const willRevealBelow = Boolean(this.splitLastQuestion(message.message).question)
+                  || this.followUpReplies(message).length > 0;
+                // With question/chips coming, stay pinned to bottom (no jump to products mid-turn).
+                if (willRevealBelow) {
+                  this.scrollTurnEndIntoView({ smooth: false });
+                } else if (Array.isArray(message?.products) && message.products.length > 0) {
                   this.scrollToMessageProducts(message, 'auto');
                 } else {
                   this.scrollToBottom();
                 }
               } catch (_) { /* ignore scroll errors */ }
             });
-            this.schedulePersistChatSession();
+            this.persistChatSession();
             this.clearStreamingState();
+            if (typeof this.placeCheckoutAfterAssistant === 'function') this.placeCheckoutAfterAssistant(message);
+            if (typeof this.maybeRunAiCartActions === 'function') this.maybeRunAiCartActions(message);
+            if (typeof this.flushPendingChatAddToCart === 'function') this.flushPendingChatAddToCart();
+            this.noteAssistantReplyWhileClosed(message);
             return;
           }
 
@@ -11307,6 +13859,19 @@ export default {
         }
       }
       if (!target) {
+        // Cart JSON was scrubbed to a fallback bubble; chat_message has the real text.
+        for (let i = this.chatMessages.length - 1; i >= 0; i--) {
+          const m = this.chatMessages[i];
+          if (!m || m.isContactSubmission) continue;
+          if (String(m.sender || '').toLowerCase() === 'client') break;
+          if (String(m.sender || '').toLowerCase() !== 'ai') continue;
+          if (m._cartActionFallback || this.isCartActionFallbackText(m.message)) {
+            target = m;
+          }
+          break;
+        }
+      }
+      if (!target) {
         if (this.streamingCareRequestId) this.clearStreamingState();
         return false;
       }
@@ -11322,19 +13887,40 @@ export default {
       if (Object.prototype.hasOwnProperty.call(agentMessage, 'isHumanRequested')) {
         this.applyHumanRequestedFlag(target, agentMessage.isHumanRequested);
       }
+      this.scrubAiMessageCartLeak(target, agentMessage.cartActions);
+      let visible = this.normalizeTypewriterText(target.message);
+      // Never dump the rest of the reply onto the bubble. Keep the typed prefix and
+      // continue letter-by-letter via streamBuffer — even when chat_message already has the full text.
+      if (agentMessage.message && target.message !== agentMessage.message) {
+        const scrubbed = this.stripReplyPayload(agentMessage.message);
+        const scrubbedNorm = this.normalizeTypewriterText(scrubbed || '');
+        if (scrubbedNorm) {
+          if (target._cartActionFallback || this.isCartActionFallbackText(target.message)) {
+            // Replace cart-fallback placeholder; type the real reply from scratch.
+            target.message = '';
+            visible = '';
+            target._cartActionFallback = false;
+          } else if (visible.length >= scrubbedNorm.length) {
+            target.message = scrubbed;
+            visible = scrubbedNorm;
+          }
+          // else: keep typed prefix; finalText feeds the pump below.
+        }
+      }
+      this.applySuggestedReplies(target, agentMessage.suggestedReplies);
       this.loadingIndicator = false;
       this.clearAiTypewriter(target);
 
-      const visible = this.normalizeTypewriterText(target.message);
-      // Only defer cards while characters are still missing. isStreaming alone is not
-      // enough — chat_message often arrives after the buffer is caught up but before
-      // assis:done, and clearing products into pending was dropping them.
-      const textIncomplete = visible.length < finalText.length;
+      // Defer cards while characters are still missing (or stream still owns the bubble).
+      const textIncomplete = visible.length < finalText.length
+        || Boolean(target.isStreaming || target.streamPendingCommit);
 
-      if (textIncomplete) {
+      if (textIncomplete && visible.length < finalText.length) {
         this.streamingMessage = target;
         this.streamBuffer = finalText;
+        target.streamTarget = finalText;
         this.streamRevealFinalize = true;
+        target._streamFinalize = true;
         target.isStreaming = true;
         target.streamPendingCommit = true;
         target.pendingDataFromWebsite = this.mergePendingDataFromWebsite(
@@ -11350,9 +13936,12 @@ export default {
             }
           );
         }
-        // Hold product and order cards until letter-by-letter reveal completes.
-        if (target.pendingDataFromWebsite) {
-          target.products = undefined;
+        // Hold cards until letter-by-letter completes — never unmount cards that already entered
+        // (that replays the product stagger a second time).
+        if (target.pendingDataFromWebsite && !target._productCardsEntered) {
+          if (!Array.isArray(target.products) || !target.products.length) {
+            target.products = undefined;
+          }
           target.discounts = undefined;
           target.orderVerification = undefined;
           target.orders = undefined;
@@ -11375,13 +13964,19 @@ export default {
         && agentMessage.products.length
       ) {
         target.products = agentMessage.products;
+        this.markProductCardsEntered(target);
       }
       target.isStreaming = false;
       target.streamPendingCommit = false;
+      this.persistChatSession();
       this.clearStreamingState();
       this.raiseOrdersAfterAiText(target);
+      this.scheduleFollowUpReveal(target, { force: true });
       this.scrollToBottom();
-      this.schedulePersistChatSession();
+      if (typeof this.placeCheckoutAfterAssistant === 'function') this.placeCheckoutAfterAssistant(target);
+      if (typeof this.maybeRunAiCartActions === 'function') this.maybeRunAiCartActions(target);
+      if (typeof this.flushPendingChatAddToCart === 'function') this.flushPendingChatAddToCart();
+      this.noteAssistantReplyWhileClosed(target);
       return true;
     },
 
@@ -11410,11 +14005,24 @@ export default {
         this.ensureStreamingBubble(careRequestId);
       }
 
-      // Keep full received text in streamBuffer; reveal letter-by-letter into the bubble.
-      this.streamBuffer += this.normalizeTypewriterText(String(text));
+      // Keep the raw stream intact; strip only for display. Re-stripping an already
+      // emptied buffer used to drop replies when cartActions JSON arrived before
+      // `"response"` in a later delta.
+      this.streamRawBuffer = `${this.streamRawBuffer || ''}${String(text)}`;
+      const cleaned = this.normalizeTypewriterText(this.streamRawBuffer, {
+        allowEmptyEnvelope: false,
+      });
+      if (cleaned) this.streamBuffer = cleaned;
+      else if (!this.streamBuffer) this.streamBuffer = '';
+      const visible = String(this.streamingMessage.message || '');
+      if (visible.length > this.streamBuffer.length) {
+        this.streamingMessage.message = this.streamBuffer;
+      }
       this.streamingMessage.isStreaming = true;
+      this.streamingMessage.streamTarget = this.streamBuffer;
       this.loadingIndicator = false;
       this.errorWithAiIntervention = null;
+      this.checkpointStreamProgress();
       this.queuePumpStreamReveal();
     },
 
@@ -11426,6 +14034,7 @@ export default {
       this.streamRevealToken += 1;
       this.streamRevealFinalize = false;
       this.streamBuffer = '';
+      this.streamRawBuffer = '';
       if (this.streamingMessage) {
         this.streamingMessage.message = '';
         this.streamingMessage.isStreaming = true;
@@ -11465,14 +14074,25 @@ export default {
         const doneText = this.normalizeTypewriterText(this.enrichAgentHandoffMessage(response));
         if (doneText) {
           const doneKey = this.incomingMessageKey({ sender: 'ai', message: doneText });
-          const alreadyCommitted = this.chatMessages.some((m) => (
+          const alreadyCommitted = this.chatMessages.find((m) => (
             m?.sender === 'ai'
             && !m.isContactSubmission
             && !m.isStreaming
             && !m.streamPendingCommit
             && this.incomingMessageKey(m) === doneKey
           ));
-          if (alreadyCommitted) return;
+          if (alreadyCommitted) {
+            if (response) {
+              alreadyCommitted.message = this.normalizeTypewriterText(
+                this.enrichAgentHandoffMessage(response)
+              );
+            }
+            this.scrubAiMessageCartLeak(alreadyCommitted, result?.cartActions);
+            this.applySuggestedReplies(alreadyCommitted, result?.suggestedReplies);
+            if (typeof this.tryShowCartUpsellUnderReply === 'function') this.tryShowCartUpsellUnderReply();
+            this.noteAssistantReplyWhileClosed(alreadyCommitted);
+            return;
+          }
         }
 
         if (careRequestId) {
@@ -11483,6 +14103,30 @@ export default {
       }
 
       if (this.streamingMessage) {
+        if (response) {
+          const cleaned = this.normalizeTypewriterText(
+            this.enrichAgentHandoffMessage(response)
+          );
+          this.streamBuffer = cleaned;
+          // Never assign the full reply onto the bubble here — the pump types the rest.
+          const visibleNow = this.normalizeTypewriterText(this.streamingMessage.message);
+          if (visibleNow.length > cleaned.length) {
+            this.streamingMessage.message = cleaned;
+          }
+        } else if (this.streamRawBuffer) {
+          const fromRaw = this.normalizeTypewriterText(this.streamRawBuffer);
+          if (fromRaw) {
+            this.streamBuffer = fromRaw;
+            const visibleNow = this.normalizeTypewriterText(this.streamingMessage.message);
+            if (visibleNow.length > fromRaw.length) {
+              this.streamingMessage.message = fromRaw;
+            }
+          }
+        }
+        this.scrubAiMessageCartLeak(this.streamingMessage, result?.cartActions);
+        // Cart scrub can replace the bubble with a short fallback — do not let that
+        // wipe a longer typed prefix; final text stays in streamBuffer for the pump.
+        this.applySuggestedReplies(this.streamingMessage, result?.suggestedReplies);
         const visible = this.normalizeTypewriterText(this.streamingMessage.message);
         const targetText = this.normalizeTypewriterText(this.streamBuffer);
         // Avoid flipping isStreaming back on when text is already complete — that hides
@@ -11491,6 +14135,7 @@ export default {
           this.streamingMessage.isStreaming = true;
         }
         this.streamingMessage.streamPendingCommit = true;
+        this.streamingMessage.streamTarget = targetText;
       }
 
       this.loadingIndicator = false;
@@ -11929,14 +14574,16 @@ export default {
 
       if (this.isChatOpen) {
         if (this.loginChannels === 'ai' && this.chatMessages.length === 0) {
-          await this.setWelcomeMessages();
+          const typewriteFirst = Boolean(this._siteEntryTypewriteWelcome);
+          this._siteEntryTypewriteWelcome = false;
+          await this.setWelcomeMessages({ typewriteFirst });
         }
         this.scrollToBottom();
       }
 
       // Don't reset the flow when closing chat - preserve user's progress
     },
-    async setWelcomeMessages() {
+    async setWelcomeMessages({ typewriteFirst = false } = {}) {
       await this.fetchWelcomeAiMessages();
 
       const welcomeMessages = Array.isArray(this.welcomeAiMessages) ? this.welcomeAiMessages : [];
@@ -11953,26 +14600,35 @@ A human agent will continue helping you from there.`);
 
       // Only set the welcome message if nothing else was added while awaiting (e.g. quick actions)
       if (this.chatMessages.length === 0) {
-        this.chatMessages = [{
+        const first = {
           type: 'message',
           message: firstWelcomeMessage,
           datetime: new Date().toISOString(),
           sender: 'ai',
-          id: `prev_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-        }];
-
+          id: `prev_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        };
+        const rest = [];
         if (welcomeMessages.length > 1) {
-          welcomeMessages.slice(1).forEach(message => {
+          welcomeMessages.slice(1).forEach((message) => {
             if (typeof message !== 'string' || !message.trim()) return;
-            this.chatMessages.push({
+            rest.push({
               type: 'message',
-              message: message,
+              message,
               datetime: new Date().toISOString(),
               sender: 'ai',
               id: `prev_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
               hideWhatsappInput: true,
             });
           });
+        }
+
+        if (typewriteFirst) {
+          first.isTyping = true;
+          if (rest.length) first._welcomeRestAfterType = rest;
+          this.chatMessages = [first];
+          this.$nextTick(() => this.typeAiReply(first));
+        } else {
+          this.chatMessages = [first, ...rest];
         }
 
         this.schedulePersistChatSession();
@@ -11984,6 +14640,9 @@ A human agent will continue helping you from there.`);
       }
       this.trackPluginEvent('outside_bubbles_dismissed');
       this.showQuickActions = false;
+      this.clearOutsideReplyChoices();
+      this.outsideBubblesDismissed = true;
+      if (typeof this.dismissCartUpsell === 'function') this.dismissCartUpsell();
       this.persistChatSession();
     },
     sendOutsideBubble(bubble) {
@@ -11993,6 +14652,8 @@ A human agent will continue helping you from there.`);
       });
       this._pluginMessageSource = 'bubble';
       this._pluginOpenSource = 'bubble';
+      this.clearOutsideReplyChoices();
+      // Outside recommended reply: open the chat and send (same as + / other quick actions).
       this.sendQuickAction(text);
     },
     sendSuggestedChip(text) {
@@ -12008,6 +14669,21 @@ A human agent will continue helping you from there.`);
         this._pluginMessageSource = this.isChatOpen ? 'suggested' : 'bubble';
       }
       if (!this.isChatOpen) this._pluginOpenSource = this._pluginOpenSource || 'bubble';
+      // Explicit cart/checkout chips: navigate here and skip the AI round (fast path).
+      // Free-typed chat relies on AI cartActions instead — do not keyword-gate those.
+      if (typeof this.handleCartNavFromChatRequest === 'function') {
+        const leftForCart = await this.handleCartNavFromChatRequest(text);
+        if (leftForCart) {
+          this.pendingQuickActionMessage = null;
+          return;
+        }
+      }
+      // Queue bag add with a short beat — instant add + "הוספתי לעגלה" feels too snappy.
+      if (typeof this.queueChatAddToCartRequest === 'function') {
+        this.queueChatAddToCartRequest(text);
+      } else if (typeof this.addProductFromChatRequest === 'function') {
+        void this.addProductFromChatRequest(text);
+      }
       this.pendingQuickActionMessage = text;
       this.notePluginMaximized('message');
       // Same as home send: conversation view at full width
@@ -12138,6 +14814,168 @@ A human agent will continue helping you from there.`);
         }
       });
     },
+    // Stick/settle at the end of a turn (question + chips) without fighting mid-reveal scrolls.
+    scrollTurnEndIntoView({ smooth = true } = {}) {
+      if (this._turnEndScrollTimer) clearTimeout(this._turnEndScrollTimer);
+      this._turnEndScrollTimer = window.setTimeout(() => {
+        this._turnEndScrollTimer = null;
+        const chatEl = this.$refs.chatMessages;
+        if (!chatEl) return;
+        const dist = chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight;
+        // Don't yank users who scrolled up to read earlier messages.
+        if (this._chatUserScroll && dist > 140) return;
+        const reduce = typeof window !== 'undefined'
+          && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+        const top = chatEl.scrollHeight;
+        // Instant stick while content is still growing; one soft settle when the turn ends.
+        chatEl.scrollTo({
+          top,
+          behavior: reduce || !smooth ? 'auto' : 'smooth',
+        });
+      }, smooth ? 70 : 0);
+    },
+    onChatMessagesScroll() {
+      this.closeProductVariantMenu();
+      this.closeProductCardOptionMenu();
+      this.hideCartUpsellMoreIfVisible();
+      if (this._chatUserScroll) this.noteFloatingChatDate();
+      this.scanChatReveal();
+    },
+    bindChatReveal() {
+      const root = this.$refs.chatMessages;
+      if (!root || typeof IntersectionObserver !== 'function') return;
+      if (!this._chatRevealObserver) {
+        this._chatRevealObserver = new IntersectionObserver((entries) => {
+          let index = 0;
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            entry.target.style.setProperty('--reveal-i', String(index));
+            index += 1;
+            entry.target.classList.add('is-revealed');
+            this._chatRevealObserver.unobserve(entry.target);
+          });
+        }, { root, threshold: 0.2, rootMargin: '0px 0px -36px 0px' });
+      }
+      if (!this._chatRevealWatch) {
+        this._chatRevealWatch = new MutationObserver(() => this.scanChatReveal());
+        this._chatRevealWatch.observe(root, { childList: true, subtree: true });
+      }
+      this.scanChatReveal();
+    },
+    scanChatReveal() {
+      if (this._scanRevealFrame) return;
+      this._scanRevealFrame = requestAnimationFrame(() => {
+        this._scanRevealFrame = 0;
+        this.flushChatReveal();
+      });
+    },
+    flushChatReveal() {
+      const root = this.$refs.chatMessages;
+      if (!root || !this._chatRevealObserver) return;
+      // Product slots use CSS stagger only — do not observe them. A second flush while
+      // they are mid-animation used to force opacity:1 (all at once) then remount staggered again.
+      root.querySelectorAll('.assis-checkout-card, .cart-upsell-chat-arrive .cart-upsell-card').forEach((node) => {
+        if (node.dataset.revealBound) {
+          if (!node.classList.contains('is-revealed')) {
+            node.classList.add('is-revealed');
+            node.style.animation = 'none';
+            node.style.opacity = '1';
+            node.style.translate = 'none';
+            node.style.scale = 'none';
+          }
+          return;
+        }
+        if (node.classList.contains('is-revealed')) {
+          node.dataset.revealBound = '1';
+          return;
+        }
+        node.dataset.revealBound = '1';
+        if (node.classList.contains('assis-checkout-card--still') || node.closest('.message-no-animation') || node.closest('.chat-turn')?.querySelector('.message-no-animation')) {
+          node.classList.add('is-revealed');
+          return;
+        }
+        this._chatRevealObserver.observe(node);
+      });
+    },
+    hideCartUpsellMoreIfVisible() {
+      // Only react to real shopper scroll into under-bag content — never treat a peek
+      // under הסל שלך as an auto קרא עוד (that unlocks scroll-past-bag).
+      if (!this._cartUpsellMoreWatch || !this.cartUpsellInChat || this.cartUpsellMoreOpened) return;
+      if (this._pluginCartChoreographyRunning) return;
+      const scroller = this.$refs.chatMessages;
+      const target = scroller?.querySelector?.('.cart-upsell-chat-arrive, .cart-upsell-chat-question');
+      if (!scroller || !target) return;
+      const view = scroller.getBoundingClientRect();
+      const row = target.getBoundingClientRect();
+      // Require a solid chunk of the under-bag block inside the viewport.
+      const visiblePx = Math.min(row.bottom, view.bottom) - Math.max(row.top, view.top);
+      const mostlyVisible = visiblePx >= Math.min(96, row.height * 0.45);
+      const scrolledPast = row.bottom < view.top + 8;
+      if (mostlyVisible || scrolledPast) this.cartUpsellMoreOpened = true;
+    },
+    scrollToCartUpsell() {
+      // Explicit shopper tap on קרא עוד only — never called from choreography.
+      this.cartUpsellMoreOpened = true;
+      this.cartUpsellMoreReady = false;
+      if (typeof this.openCheckoutRecoCards === 'function') this.openCheckoutRecoCards();
+      this.$nextTick(() => {
+        requestAnimationFrame(() => {
+          const chatEl = this.$refs.chatMessages;
+          const targets = this.$el?.querySelectorAll?.(
+            '.cart-upsell-chat-question, .cart-upsell-chat-arrive',
+          );
+          const target = targets && targets.length ? targets[0] : null;
+          if (!chatEl || !target) {
+            this.scrollToBottom();
+            return;
+          }
+          const top = target.getBoundingClientRect().top - chatEl.getBoundingClientRect().top + chatEl.scrollTop - 8;
+          chatEl.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+        });
+      });
+    },
+    scrollCheckoutCardIntoView() {
+      return new Promise((resolve) => {
+        this.$nextTick(() => {
+          const chatEl = this.$refs.chatMessages;
+          // Prefer the bag for the current cart-add turn — never jump up to an older card.
+          const anchorId = this.checkoutChatAnchorId;
+          let card = null;
+          if (anchorId) {
+            const turns = this.$el?.querySelectorAll?.('.chat-turn') || [];
+            for (const turn of turns) {
+              const keys = String(turn?.dataset?.anchorKeys || turn?.dataset?.messageKey || '');
+              if (keys && keys.split('|').includes(String(anchorId))) {
+                card = turn.querySelector?.('.assis-checkout-card, .assis-checkout-inline--moment');
+                if (card) break;
+              }
+            }
+          }
+          if (!card) {
+            const cards = this.$el?.querySelectorAll?.('.assis-checkout-card, .assis-checkout-inline--moment');
+            card = cards && cards.length ? cards[cards.length - 1] : null;
+          }
+          if (!chatEl || !card) {
+            resolve();
+            return;
+          }
+          const edgeBottom = card.getBoundingClientRect().bottom - chatEl.getBoundingClientRect().top + chatEl.scrollTop;
+          const top = Math.max(0, edgeBottom - chatEl.clientHeight + 8);
+          const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+          let settled = false;
+          const finish = () => {
+            if (settled) return;
+            settled = true;
+            chatEl.removeEventListener('scrollend', finish);
+            resolve();
+          };
+          chatEl.addEventListener('scrollend', finish);
+          chatEl.scrollTo({ top, behavior: reduce ? 'auto' : 'smooth' });
+          if (Math.abs(chatEl.scrollTop - top) < 2) finish();
+          else window.setTimeout(finish, reduce ? 40 : 420);
+        });
+      });
+    },
     scrollToMessageProducts(message, behavior = 'smooth') {
       this.$nextTick(() => {
         requestAnimationFrame(() => {
@@ -12187,12 +15025,16 @@ A human agent will continue helping you from there.`);
         return;
       }
 
-      if ((this.newMessage.trim() || this.selectedFiles.length > 0) && this.socket) {
+      if ((this.newMessage.trim() || this.selectedAttachments.length > 0) && this.socket) {
 
         if (!this.isSocketConnected) {
           console.log("Socket not connected, message not sent");
           return;
         }
+
+        this.clearIdleChatNudge();
+        this.clearSiteEntryNudge();
+        this.cartFocusOn = false;
 
         // New outbound turn — drop any unfinished stream bubble from a prior reply.
         if (this.streamingMessage?.isStreaming) {
@@ -12201,8 +15043,8 @@ A human agent will continue helping you from there.`);
           this.clearStreamingState();
         }
 
-        this.loadingIndicator = true;
-
+        // Do not start AI thinking yet — wait until uploads finish and the
+        // client message (with images) is actually in the chat transcript.
         const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         let mediaFiles = [];
         let isTemporaryCustomer = false;
@@ -12227,7 +15069,7 @@ A human agent will continue helping you from there.`);
         }
 
         // Upload files if any are selected
-        if (this.selectedFiles.length > 0) {
+        if (this.selectedAttachments.length > 0) {
           mediaFiles = await this.uploadFiles(messageId);
         }
 
@@ -12269,7 +15111,7 @@ A human agent will continue helping you from there.`);
             }
 
             if (mediaFiles.length > 0) {
-              mediaFiles.forEach(file => {
+              mediaFiles.forEach((file) => {
                 message.messages.push({
                   text: file.url,
                   sender: "client",
@@ -12293,13 +15135,19 @@ A human agent will continue helping you from there.`);
             }
 
             if (mediaFiles.length > 0) {
-              mediaFiles.forEach(file => {
-                this.chatMessages.push({...message, message: file.url});
+              mediaFiles.forEach((file) => {
+                this.chatMessages.push({
+                  ...message,
+                  message: file.url,
+                });
               });
             }
           } else {
             this.chatMessages.push(message);
           }
+
+          // Thinking only after the turn is visible in chat (text + uploaded images).
+          this.loadingIndicator = true;
 
           // Queue for debounced send (group multiple user messages into one socket emit)
           const queuedMediaUrls = Array.isArray(mediaFiles) ? mediaFiles.map(f => f?.url).filter(Boolean) : [];
@@ -12335,7 +15183,15 @@ A human agent will continue helping you from there.`);
               mediaUrls: queuedMediaUrls,
               datetime: new Date().toISOString(),
             });
-            if (outgoingText) this.addProductFromChatRequest(outgoingText);
+            if (outgoingText) {
+              // Optimistic bag add for clear add-intent (skipAi pin); AI cartActions stay authoritative.
+              // Cart/checkout navigation for typed chat is owned by AI cartActions — chips use sendQuickAction.
+              if (typeof this.queueChatAddToCartRequest === 'function') {
+                this.queueChatAddToCartRequest(outgoingText);
+              } else if (typeof this.addProductFromChatRequest === 'function') {
+                this.addProductFromChatRequest(outgoingText);
+              }
+            }
             if (typedText && this.productDetail) this.closeProductDetail();
 
             if (this.outboundTypingHoldTimer) {
@@ -12348,7 +15204,7 @@ A human agent will continue helping you from there.`);
 
         // Add message to local chat
         this.newMessage = '';
-        this.selectedFiles = []; // Clear selected files
+        this.clearSelectedAttachments();
 
         // Reset textarea height
         this.$nextTick(() => {
@@ -12392,7 +15248,32 @@ A human agent will continue helping you from there.`);
       this.userAcknowledgment = false;
       this.chatMessages = [];
       this.newMessage = '';
+      this.showGoToCheckout = false;
+      this.checkoutChatAnchorId = '';
+      this.checkoutChatForcedOpen = false;
+      this.checkoutChatSnapshot = null;
+      this.finishCheckoutChatClose();
+      if (typeof this.dismissCartUpsell === 'function') this.dismissCartUpsell();
+      if (typeof this.closeProductDetail === 'function') this.closeProductDetail();
+      if (typeof this.closeProductVariantMenu === 'function') this.closeProductVariantMenu();
+      this.showShopifyCartPanel = false;
+      this.shopifyCartListExpanded = false;
+      if (typeof this.clearSelectedAttachments === 'function') this.clearSelectedAttachments();
       this.careRequestId = null;
+      this.idleChatNudged = false;
+      this.siteEntryNudged = false;
+      this.idleCartNudged = false;
+      this.idleChatPending = false;
+      this.clearPluginUnread();
+      this.clearOutsideReplyChoices();
+      this._idleOutside = false;
+      this.clearIdleChatNudge();
+      this.clearSiteEntryNudge();
+      this.clearCartIconNudge();
+      // Restore outside bubbles after reset (dismiss / idle chips must not stick).
+      this.showQuickActions = true;
+      this.outsideBubblesDismissed = false;
+      this.idleOutsideFollowup = null;
       this.isSocketInitialized = false;
       this.isWhatsAppMode = false; // Reset WhatsApp mode flag
       this.showSignInForm = false; // Reset sign in form flag
@@ -12411,7 +15292,8 @@ A human agent will continue helping you from there.`);
       this.isChatClosedAutomatically = false; // Reset chat closed automatically flag
       this.reasonForClosingChat = null; // Reset reason for closing chat
       this.poweredByAssisHomeDismissed = false;
-      this.poweredByAssisForceHome = false;
+      // Land on a clean home shell for Powered/Care AI — never leave chat painted under home.
+      this.poweredByAssisForceHome = this.isNewAssisDesign;
       this.poweredByAssisHomeDraft = '';
       this.poweredByAssisAddedProductIds = {};
       this.appliedDiscountCode = '';
@@ -12450,7 +15332,8 @@ A human agent will continue helping you from there.`);
       if (this.loginChannels === 'ai' && this.chatMessages.length === 0) {
         await this.setWelcomeMessages();
       }
-      this.scrollToBottom();
+      // Only scroll chat when conversation view is showing (home uses its own layout).
+      if (!this.showPoweredByAssisHome) this.scrollToBottom();
     },
     isTemporaryCustomerEmail(email) {
       const normalized = (email || '').trim().toLowerCase();
@@ -12509,6 +15392,96 @@ A human agent will continue helping you from there.`);
         (message.startsWith('http') || message.startsWith('https')) &&
         imageExtensions.some(ext => message.includes(`.${ext}`))
     },
+    isConsecutiveImagePair(a, b) {
+      if (!a || !b) return false;
+      if (String(a.sender || '').toLowerCase() !== String(b.sender || '').toLowerCase()) return false;
+      return this.isImage(a.message) && this.isImage(b.message);
+    },
+    isImageGroupFollower(index) {
+      const messages = Array.isArray(this.chatMessages) ? this.chatMessages : [];
+      return this.isConsecutiveImagePair(messages[index - 1], messages[index]);
+    },
+    getImageGroupAt(index) {
+      const messages = Array.isArray(this.chatMessages) ? this.chatMessages : [];
+      const lead = messages[index];
+      if (!lead || !this.isImage(lead.message) || this.isImageGroupFollower(index)) return null;
+      const urls = [lead.message];
+      for (let i = index + 1; i < messages.length; i += 1) {
+        if (!this.isConsecutiveImagePair(messages[i - 1], messages[i])) break;
+        urls.push(messages[i].message);
+      }
+      return { urls, count: urls.length };
+    },
+    shouldRenderMediaCollage(index) {
+      const group = this.getImageGroupAt(index);
+      return Boolean(group && group.count >= 2);
+    },
+    mediaCollageUrls(index) {
+      const group = this.getImageGroupAt(index);
+      return group ? group.urls : [];
+    },
+    mediaCollageLayoutClass(index) {
+      const group = this.getImageGroupAt(index);
+      if (!group) return '';
+      return `assis-media-collage--fan assis-media-collage--n${Math.min(group.count, 3)}`;
+    },
+    /** Coverflow slot relative to the focused/center card (home-product fan language). */
+    carouselFanSlot(itemIndex, focusIndex, count) {
+      const n = Math.max(0, Number(count) || 0);
+      const focus = Math.max(0, Math.min(Math.max(n - 1, 0), Number(focusIndex) || 0));
+      const i = Number(itemIndex) || 0;
+      if (n <= 1) return 'center';
+      if (i === focus) return 'center';
+      if (n === 2) return ((focus + 1) % n) === i ? 'right' : 'left';
+      const rel = (i - focus + n) % n;
+      if (rel === 1) return 'right';
+      return 'left';
+    },
+    mediaCollageFanSlot(messageIndex, imgIndex) {
+      return this.carouselFanSlot(
+        imgIndex,
+        this.getMediaCollageFocus(messageIndex),
+        this.mediaCollageUrls(messageIndex).length,
+      );
+    },
+    getMediaCollageFocus(index) {
+      const group = this.getImageGroupAt(index);
+      if (!group?.count) return 0;
+      const lead = this.chatMessages[index];
+      const focus = Number(lead?._collageFocus);
+      if (!Number.isFinite(focus)) return 0;
+      return Math.max(0, Math.min(group.count - 1, focus));
+    },
+    setMediaCollageFocus(index, focusIndex) {
+      const group = this.getImageGroupAt(index);
+      if (!group?.count) return;
+      const next = Math.max(0, Math.min(group.count - 1, Number(focusIndex) || 0));
+      const lead = this.chatMessages[index];
+      if (!lead) return;
+      this.chatMessages.splice(index, 1, { ...lead, _collageFocus: next });
+    },
+    nudgeMediaCollageFocus(index, delta) {
+      const group = this.getImageGroupAt(index);
+      if (!group?.count) return;
+      const cur = this.getMediaCollageFocus(index);
+      const next = (cur + delta + group.count) % group.count;
+      this.setMediaCollageFocus(index, next);
+    },
+    onCollageSwipeStart(event) {
+      this._collageSwipeX = event.changedTouches?.[0]?.clientX ?? null;
+    },
+    onCollageSwipeEnd(event, messageIndex) {
+      if (this._collageSwipeX == null) {
+        this._collageSwipeX = null;
+        return;
+      }
+      const x = event.changedTouches?.[0]?.clientX;
+      const dx = (typeof x === 'number' ? x : this._collageSwipeX) - this._collageSwipeX;
+      this._collageSwipeX = null;
+      if (Math.abs(dx) < 36) return;
+      const forward = dx < 0 ? 1 : -1;
+      this.nudgeMediaCollageFocus(messageIndex, this.language === 'he' ? -forward : forward);
+    },
     isVideo(message) {
       const videoExtensions = ['mp4', 'avi', 'mov', 'wmv', 'flv', 'webm', 'mkv']
       return message && typeof message === 'string' &&
@@ -12527,27 +15500,115 @@ A human agent will continue helping you from there.`);
         (message.startsWith('http') || message.startsWith('https')) &&
         documentExtensions.some(ext => message.includes(`.${ext}`))
     },
-    formatTimestamp(timestamp) {
-      // Convert timestamp to "Month Day, Hour:Min" format
+    formatMessageClock(timestamp) {
       const date = new Date(timestamp);
-
-      // Options for formatting
-      const options = {
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
+      if (Number.isNaN(date.getTime())) return '';
+      return date.toLocaleTimeString(this.language === 'he' ? 'he-IL' : 'en-US', {
+        hour: '2-digit',
         minute: '2-digit',
-        hour12: false
-      };
-
-      // Format the date
-      const formatted = date.toLocaleDateString('en-US', options);
-
-      // Extract month, day and time parts and reformat
-      const monthDay = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: false });
-
-      return `${monthDay}, ${time}`;
+        hour12: false,
+      });
+    },
+    messageClockMinuteKey(timestamp) {
+      const date = new Date(timestamp);
+      if (Number.isNaN(date.getTime())) return '';
+      return [
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+        date.getHours(),
+        date.getMinutes(),
+      ].join('-');
+    },
+    mediaFileNameFromUrl(url) {
+      const raw = String(url || '');
+      try {
+        const path = decodeURIComponent(new URL(raw).pathname || '');
+        const base = path.split('/').filter(Boolean).pop() || '';
+        if (base) return base;
+      } catch (_) { /* ignore */ }
+      const fallback = raw.split('?')[0].split('/').filter(Boolean).pop();
+      return fallback || (this.language === 'he' ? 'תמונה' : 'image');
+    },
+    shouldShowMessageWhen(message, index) {
+      if (!message?.datetime || message.isTyping || message.isStreaming) return false;
+      // Hidden collage followers never show their own clock — the leader owns it.
+      if (this.isImageGroupFollower(index)) return false;
+      const messages = Array.isArray(this.chatMessages) ? this.chatMessages : [];
+      const sender = String(message.sender || '').toLowerCase();
+      // Image-only streak (1 or many): stamp the visible card using the last image in the group.
+      let compareFrom = index;
+      if (this.isImage(message.message)) {
+        while (
+          compareFrom + 1 < messages.length
+          && this.isConsecutiveImagePair(messages[compareFrom], messages[compareFrom + 1])
+        ) {
+          compareFrom += 1;
+        }
+      }
+      const minuteKey = this.messageClockMinuteKey(messages[compareFrom]?.datetime || message.datetime);
+      if (!minuteKey) return false;
+      for (let i = compareFrom + 1; i < messages.length; i += 1) {
+        const next = messages[i];
+        if (!next) continue;
+        if (next.isStreaming && !String(next.message || '').trim()) continue;
+        if (String(next.sender || '').toLowerCase() !== sender) return true;
+        const nextKey = this.messageClockMinuteKey(next.datetime);
+        if (!nextKey || nextKey !== minuteKey) return true;
+        return false;
+      }
+      return true;
+    },
+    floatingDateLabel(timestamp) {
+      const date = new Date(timestamp);
+      if (Number.isNaN(date.getTime())) return '';
+      const start = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+      const today = new Date();
+      const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+      const diff = Math.round((todayStart - start) / 86400000);
+      if (diff === 0) return this.language === 'he' ? 'היום' : 'Today';
+      if (diff === 1) return this.language === 'he' ? 'אתמול' : 'Yesterday';
+      return date.toLocaleDateString(this.language === 'he' ? 'he-IL' : 'en-US', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      });
+    },
+    markChatUserScroll() {
+      this._chatUserScroll = true;
+      if (this._chatUserScrollTimer) clearTimeout(this._chatUserScrollTimer);
+      this._chatUserScrollTimer = setTimeout(() => {
+        this._chatUserScroll = false;
+      }, 180);
+    },
+    noteFloatingChatDate() {
+      const scroller = this.$refs.chatMessages;
+      if (!scroller || !this.isNewAssisDesign) return;
+      const edge = scroller.getBoundingClientRect().top + 36;
+      const turns = scroller.querySelectorAll('.chat-turn[data-when]');
+      let stamp = '';
+      turns.forEach((node) => {
+        const when = node.getAttribute('data-when');
+        if (!when) return;
+        if (node.getBoundingClientRect().top <= edge) stamp = when;
+      });
+      if (!stamp && turns[0]) stamp = turns[0].getAttribute('data-when') || '';
+      const label = this.floatingDateLabel(stamp);
+      if (!label) return;
+      this.floatingChatDate = label;
+      this.floatingChatDateOn = true;
+      if (this._floatingDateTimer) clearTimeout(this._floatingDateTimer);
+      this._floatingDateTimer = setTimeout(() => {
+        this.floatingChatDateOn = false;
+      }, 800);
+    },
+    formatTimestamp(timestamp) {
+      const date = new Date(timestamp);
+      if (Number.isNaN(date.getTime())) return '';
+      const locale = this.language === 'he' ? 'he-IL' : 'en-US';
+      const day = date.toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
+      const time = date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false });
+      return `${day}, ${time}`;
     },
     handleClickOutside(event) {
       // Only handle clicks when chat is open
@@ -12997,6 +16058,7 @@ A human agent will continue helping you from there.`);
           if (this.productDetail) this.syncProductSheetBottom();
         });
       }
+      this.$nextTick(() => this.syncBannerPromoMarquee());
 
       if (this.isMobileSheetLayout()) {
         this.clearChatWindowPosStyles(el);
@@ -13024,6 +16086,42 @@ A human agent will continue helping you from there.`);
       el.style.top = `${vv.offsetTop}px`;
       if (keyboardOpening) {
         this.scrollToBottom('auto');
+      }
+    },
+    syncBannerPromoMarquee() {
+      const el = this.$refs.bannerPromoText;
+      if (!el || typeof el.clientWidth !== 'number') {
+        this.bannerPromoMarquee = false;
+        this.bannerPromoMarqueePx = 0;
+        return;
+      }
+      if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {
+        this.bannerPromoMarquee = false;
+        this.bannerPromoMarqueePx = 0;
+        return;
+      }
+      const inner = el.querySelector?.('.assis-demo-promo-text-inner');
+      if (!inner) {
+        this.bannerPromoMarquee = false;
+        this.bannerPromoMarqueePx = 0;
+        return;
+      }
+      // Measure natural copy width (animation transform must not shrink scrollWidth).
+      const prevTransform = inner.style.transform;
+      const prevAnim = inner.style.animation;
+      inner.style.transform = 'none';
+      inner.style.animation = 'none';
+      const textWidth = Math.ceil(inner.scrollWidth || 0);
+      const trackWidth = Math.ceil(el.clientWidth || 0);
+      inner.style.transform = prevTransform;
+      inner.style.animation = prevAnim;
+      const overflow = textWidth - trackWidth;
+      if (overflow > 4) {
+        this.bannerPromoMarquee = true;
+        this.bannerPromoMarqueePx = overflow;
+      } else {
+        this.bannerPromoMarquee = false;
+        this.bannerPromoMarqueePx = 0;
       }
     },
     async initiateGoogleOAuth() {
@@ -13485,6 +16583,401 @@ A human agent will continue helping you from there.`);
       ));
     },
 
+    hasIdleConversation() {
+      return (this.chatMessages || []).some((message) => (
+        String(message?.sender || '').toLowerCase() === 'client'
+        && !message.isContactSubmission
+        && !message.isCartAction
+        && String(message.message || '').trim()
+      ));
+    },
+    clearOutsideReplyChoicesTimer() {
+      if (this._outsideReplyChoicesTimer) {
+        clearTimeout(this._outsideReplyChoicesTimer);
+        this._outsideReplyChoicesTimer = null;
+      }
+    },
+    clearOutsideReplyChoices() {
+      this.clearOutsideReplyChoicesTimer();
+      const root = this.$refs.outsideReplyRootEl;
+      if (root?.style) root.style.width = '';
+      const actions = root?.closest?.('.quick-actions');
+      if (actions?.style) actions.style.removeProperty('--assis-reply-lift');
+      this.outsideReplyChipsMeasuring = false;
+      if (!this.idleOutsideFollowup) return;
+      this.idleOutsideFollowup = null;
+      this.outsideReplyVisibleChipCount = null;
+      this.outsideReplyShowMore = false;
+      if (!this.isChatOpen && typeof this.refreshProactiveBubble === 'function') {
+        this.refreshProactiveBubble();
+      }
+    },
+    latestAiWithReplyChoices() {
+      const messages = this.chatMessages || [];
+      for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const message = messages[i];
+        if (!message || message.isContactSubmission) continue;
+        const sender = String(message.sender || '').toLowerCase();
+        if (sender === 'client') return null;
+        if (sender !== 'ai' && sender !== 'assis') continue;
+        if (this.isMessageTextRevealing?.(message)) return null;
+        const replies = this.followUpReplies(message);
+        if (!replies.length) return null;
+        return message;
+      }
+      return null;
+    },
+    syncOutsideReplyChipsFit() {
+      const chips = this.outsideReplyChoiceChips;
+      const total = chips.length;
+      const root = this.$refs.outsideReplyRootEl;
+      if (root?.style) root.style.width = '';
+      const actionsReset = root?.closest?.('.quick-actions');
+      if (actionsReset?.style) actionsReset.style.removeProperty('--assis-reply-lift');
+      if (!total) {
+        this.outsideReplyChipsMeasuring = false;
+        this.outsideReplyVisibleChipCount = 0;
+        this.outsideReplyShowMore = false;
+        return;
+      }
+      // Hidden measure of all chips → then keep only what fits under the question (+ for rest).
+      this.outsideReplyChipsMeasuring = true;
+      this.outsideReplyVisibleChipCount = total;
+      this.outsideReplyShowMore = false;
+      this.$nextTick(() => {
+        const questionEl = this.$refs.outsideReplyQuestionEl;
+        const rowEl = this.$refs.outsideReplyChipsEl;
+        const rootEl = this.$refs.outsideReplyRootEl;
+        const finish = (count, showMore) => {
+          this.outsideReplyVisibleChipCount = count;
+          this.outsideReplyShowMore = showMore;
+          this.$nextTick(() => {
+            this.outsideReplyChipsMeasuring = false;
+            this.$nextTick(() => this.alignOutsideReplyChipsToHeart());
+          });
+        };
+        if (!questionEl || !rowEl) {
+          finish(0, false);
+          return;
+        }
+        const titleEl = questionEl.querySelector('.quick-starter-title') || questionEl;
+        let textW = 0;
+        try {
+          const range = document.createRange();
+          range.selectNodeContents(titleEl);
+          textW = range.getBoundingClientRect().width;
+        } catch (_) {
+          textW = titleEl.getBoundingClientRect().width;
+        }
+        const cs = window.getComputedStyle(questionEl);
+        const padX = (parseFloat(cs.paddingLeft) || 0)
+          + (parseFloat(cs.paddingRight) || 0)
+          + (parseFloat(cs.borderLeftWidth) || 0)
+          + (parseFloat(cs.borderRightWidth) || 0);
+        const maxCap = Math.min(280, Math.max(0, window.innerWidth - 28));
+        const maxW = Math.min(maxCap, Math.ceil(textW + padX));
+        if (!(maxW > 0)) {
+          finish(0, false);
+          return;
+        }
+        if (rootEl?.style) rootEl.style.width = `${maxW}px`;
+
+        const chipNodes = rowEl.querySelectorAll('.quick-starter-item--follow');
+        const widths = Array.from(chipNodes).map((node) => Math.ceil(node.getBoundingClientRect().width));
+        if (!widths.length) {
+          finish(0, false);
+          return;
+        }
+        const gap = 6;
+        const plusW = 28;
+        let used = 0;
+        for (let i = 0; i < widths.length; i += 1) {
+          used += (i ? gap : 0) + widths[i];
+        }
+        if (used <= maxW + 0.5) {
+          finish(total, false);
+          return;
+        }
+        let fit = 0;
+        used = 0;
+        for (let i = 0; i < widths.length; i += 1) {
+          const next = used + (i ? gap : 0) + widths[i];
+          if (next + gap + plusW <= maxW + 0.5) {
+            used = next;
+            fit = i + 1;
+          } else {
+            break;
+          }
+        }
+        if (fit <= 0) {
+          finish(0, plusW <= maxW + 0.5);
+          return;
+        }
+        if (fit >= total) fit = Math.max(0, total - 1);
+        finish(fit, fit < total);
+      });
+    },
+    /** Pin suggested-reply chip row to the heart mid-line (question stays above). */
+    alignOutsideReplyChipsToHeart() {
+      const chips = this.$refs.outsideReplyChipsEl;
+      const root = this.$refs.outsideReplyRootEl;
+      const actions = root?.closest?.('.quick-actions');
+      const heart = this.$el?.querySelector?.('.fixed-heart-btn');
+      if (!actions?.style || !chips || !heart) return;
+      actions.style.removeProperty('--assis-reply-lift');
+      const chipRect = chips.getBoundingClientRect();
+      const heartRect = heart.getBoundingClientRect();
+      if (!(chipRect.height > 0) || !(heartRect.height > 0)) return;
+      // translate uses `- lift`: positive lift moves up; negative moves down.
+      const delta = Math.round(
+        ((chipRect.top + chipRect.bottom) / 2) - ((heartRect.top + heartRect.bottom) / 2)
+      );
+      if (delta) {
+        actions.style.setProperty('--assis-reply-lift', `${delta}px`);
+      }
+    },
+    openOutsideReplyChoicesInChat() {
+      this.clearOutsideReplyChoices();
+      this.outsideBubblesDismissed = true;
+      this._pluginOpenSource = 'bubble';
+      if (!this.isChatOpen) this.toggleChat();
+    },
+    armOutsideReplyChoicesFromChat() {
+      if (this.isChatOpen || this.loginChannels !== 'ai') return;
+      if (this.pluginOutsideReplyChoices === false) {
+        this.clearOutsideReplyChoices();
+        return;
+      }
+      // Only after a real turn with suggested answers — never the welcome / first plugin message.
+      if (!this.hasClientChatMessages) {
+        this.clearOutsideReplyChoices();
+        return;
+      }
+      const withChoices = this.latestAiWithReplyChoices();
+      if (!withChoices) {
+        this.clearOutsideReplyChoices();
+        return;
+      }
+      const question = this.extractOutsideReplyQuestion(withChoices.message);
+      if (!question) {
+        this.clearOutsideReplyChoices();
+        return;
+      }
+      this.showIdleOutsideFollowup(question, this.followUpReplies(withChoices));
+    },
+    showIdleOutsideFollowup(message, replies) {
+      const chips = this.normalizeSuggestedReplies(replies).map((reply) => ({
+        text: reply,
+        clickable: true,
+        textToSendOnClick: reply,
+      }));
+      if (!chips.length) return;
+      // Outside card: short question only — never the full AI reply / welcome wall.
+      const question = this.extractOutsideReplyQuestion(message);
+      if (!question) return;
+      this.clearOutsideReplyChoicesTimer();
+      this.outsideReplyVisibleChipCount = null;
+      this.outsideReplyShowMore = false;
+      this.outsideReplyChipsMeasuring = false;
+      this.idleOutsideFollowup = [
+        { text: question, lines: [question], clickable: false },
+        ...chips.slice(0, 3),
+      ];
+      this.showQuickActions = true;
+      this.outsideBubblesDismissed = false;
+      this.$nextTick(() => this.syncOutsideReplyChipsFit());
+      this._outsideReplyChoicesTimer = window.setTimeout(() => {
+        this._outsideReplyChoicesTimer = null;
+        this.idleOutsideFollowup = null;
+        if (!this.isChatOpen && typeof this.refreshProactiveBubble === 'function') {
+          this.refreshProactiveBubble();
+        }
+      }, 90 * 1000);
+    },
+    idleRightAfterCart() {
+      const messages = this.chatMessages || [];
+      for (let index = messages.length - 1; index >= 0; index -= 1) {
+        const message = messages[index];
+        if (String(message?.sender || '').toLowerCase() !== 'client') continue;
+        if (message.isContactSubmission) continue;
+        return Boolean(message.isCartAction);
+      }
+      return false;
+    },
+    pinProactiveCheckout(message) {
+      if (!message || message.checkoutMoment) return;
+      const prior = [...(this.chatMessages || [])].reverse().find((item) => item && item !== message && item.checkoutMoment);
+      const snap = prior?.checkoutMoment;
+      const lines = snap?.lines || this.checkoutChatSnapshot?.lines;
+      if (!snap && !lines?.length) return;
+      message.checkoutMoment = {
+        lead: '',
+        quiet: true,
+        title: snap?.title || '',
+        lines: Array.isArray(lines) ? lines : [],
+        moreCount: snap?.moreCount || this.checkoutChatSnapshot?.moreCount || 0,
+        names: snap?.names || this.checkoutChatSnapshot?.names || '',
+        extraCount: snap?.extraCount || this.checkoutChatSnapshot?.extraCount || 0,
+        extraNames: snap?.extraNames || this.checkoutChatSnapshot?.extraNames || [],
+        price: snap?.price || this.checkoutChatSnapshot?.price || '',
+        suggestions: [],
+      };
+      if (typeof this.schedulePersistChatSession === 'function') this.schedulePersistChatSession();
+    },
+    clearIdleChatNudge() {
+      if (this._idleChatTimer) {
+        clearTimeout(this._idleChatTimer);
+        this._idleChatTimer = null;
+      }
+    },
+    clearCartIconNudge() {
+      if (this._cartIconNudgeTimer) {
+        clearTimeout(this._cartIconNudgeTimer);
+        this._cartIconNudgeTimer = null;
+      }
+      this.cartIconNudge = false;
+    },
+    armCartIconNudge() {
+      this.clearCartIconNudge();
+      if (!this.isChatOpen || this.showShopifyCartPanel || !this.shopifyCartItemCount) return;
+      this._cartIconNudgeTimer = setTimeout(() => {
+        this._cartIconNudgeTimer = null;
+        if (!this.isChatOpen || this.showShopifyCartPanel || !this.shopifyCartItemCount) return;
+        this.cartIconNudge = true;
+      }, 20000);
+    },
+    proactiveDelayMs(id, fallbackSeconds) {
+      const map = this.proactiveTriggers;
+      const delays = map && typeof map === 'object' && map._delays && typeof map._delays === 'object'
+        ? map._delays
+        : null;
+      const raw = Number(delays?.[id]);
+      const seconds = Number.isFinite(raw) && raw >= 0 ? raw : Number(fallbackSeconds) || 0;
+      return Math.max(0, Math.round(seconds * 1000));
+    },
+    clearSiteEntryNudge() {
+      if (this._siteEntryTimer) {
+        clearTimeout(this._siteEntryTimer);
+        this._siteEntryTimer = null;
+      }
+    },
+    canArmSiteEntryNudge() {
+      if (this.loginChannels !== 'ai') return false;
+      if (typeof this.proactiveTriggerDisabled === 'function' && this.proactiveTriggerDisabled('site_entry')) return false;
+      if (this.siteEntryNudged) return false;
+      // Already chatting / already wrote — do not auto-open again.
+      if (this.hasIdleConversation()) return false;
+      if (this.isChatOpen) return false;
+      if (!this.pluginMessagesFetched) return false;
+      return true;
+    },
+    armSiteEntryNudge({ forceRestart = false } = {}) {
+      if (!this.canArmSiteEntryNudge()) {
+        this.clearSiteEntryNudge();
+        return;
+      }
+      const ms = this.proactiveDelayMs('site_entry', 30);
+      if (ms <= 0) {
+        this.clearSiteEntryNudge();
+        return;
+      }
+      // Do not reset an already-running countdown (socket connect / watchers used to rewind it).
+      if (!forceRestart && this._siteEntryTimer) return;
+      this.clearSiteEntryNudge();
+      this._siteEntryTimer = setTimeout(() => this.showSiteEntryNudge(), ms);
+    },
+    showSiteEntryNudge() {
+      // Auto-open on site entry is off — keep the timer path for admin timing only.
+      this._siteEntryTimer = null;
+      this._siteEntryTypewriteWelcome = false;
+    },
+    armIdleChatNudge() {
+      this.clearIdleChatNudge();
+      if (this.loginChannels !== 'ai') return;
+      // Wait until add-to-cart choreography (message → drawer → best sellers) finishes.
+      if (this._pluginCartChoreographyRunning || this._cartUpsellAwaitReply) return;
+      if (typeof this.proactiveTriggerDisabled === 'function' && this.proactiveTriggerDisabled('idle_chat')) return;
+      if (this.isChatOpen && this.showPoweredByAssisHome) return;
+      if (!this.isChatOpen && !this.hasIdleConversation() && !this.idleRightAfterCart()) return;
+      if ((this.idleChatNudged && !(this.idleRightAfterCart() && !this.idleCartNudged)) || this.idleChatPending || this.isWaitingOnAiReply) return;
+      if (this.isChatOpen && String(this.newMessage || '').trim()) return;
+      const ms = this.proactiveDelayMs('idle_chat', 60);
+      if (ms <= 0) return;
+      this._idleChatTimer = setTimeout(() => this.showIdleChatNudge(), ms);
+    },
+    showIdleChatNudge() {
+      this._idleChatTimer = null;
+      if (this.loginChannels !== 'ai' || (this.isChatOpen && this.showPoweredByAssisHome)) return;
+      if (typeof this.proactiveTriggerDisabled === 'function' && this.proactiveTriggerDisabled('idle_chat')) return;
+      if (!this.isChatOpen && !this.hasIdleConversation() && !this.idleRightAfterCart()) return;
+      if ((this.idleChatNudged && !(this.idleRightAfterCart() && !this.idleCartNudged)) || this.idleChatPending) return;
+      if ((this.isChatOpen && String(this.newMessage || '').trim()) || this.isWaitingOnAiReply) {
+        this.armIdleChatNudge();
+        return;
+      }
+      if (!this.socket || !this.isSocketConnected) {
+        this.armIdleChatNudge();
+        return;
+      }
+      const rightAfterCart = this.idleRightAfterCart();
+      this.emitProactiveIdleNudge({ rightAfterCart, siteEntry: false });
+    },
+    emitProactiveIdleNudge({ rightAfterCart = false, siteEntry = false } = {}) {
+      if (!this.guestEmail && !this.guestPhone) {
+        this.generatedEmail = this.generateRandomEmail();
+        this.guestEmail = this.generatedEmail;
+      }
+      const phone = this.guestPhone?.replace(/[^\d]/g, '')?.length > 5
+        ? this.guestPhone.replace(/[^\d]/g, '')
+        : null;
+      if (rightAfterCart) this.idleCartNudged = true;
+      const hasCart = (this.chatMessages || []).some((message) => message?.checkoutMoment || message?.isCartAction);
+      const history = (this.chatMessages || [])
+        .filter((message) => (
+          message
+          && !message.isContactSubmission
+          && (!message.isCartAction || rightAfterCart)
+          && String(message.message || '').trim()
+        ))
+        .slice(-8)
+        .map((message) => ({
+          text: String(message.message).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 400),
+          sender: String(message.sender || '').toLowerCase() === 'client' ? 'client' : 'ai',
+          datetime: message.datetime || new Date().toISOString(),
+        }))
+        .filter((message) => message.text);
+      const transcript = history
+        .map((message) => `${message.sender === 'client' ? 'Customer' : 'Assis'}: ${message.text}`)
+        .join('\n');
+      this.clearSiteEntryNudge();
+      this.idleChatPending = true;
+      // Site entry always keeps the chat open; other idle nudges may stay outside.
+      this._idleOutside = siteEntry ? false : !this.isChatOpen;
+      this.loadingIndicator = true;
+      this.socket.emit('customer_to_agent_via_widget_with_ai', {
+        type: 'message',
+        proactiveIdle: true,
+        proactiveSiteEntry: Boolean(siteEntry),
+        proactiveAfterCart: Boolean(rightAfterCart),
+        proactiveCheckout: !rightAfterCart && !siteEntry && hasCart,
+        proactiveTranscript: transcript,
+        messages: history,
+        datetime: new Date().toISOString(),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        website: window.location.origin,
+        isShopify: true,
+        careRequestId: this.careRequestId || null,
+        language: this.language,
+        isTemporaryCustomer: (!this.guestPhone) || (this.generatedEmail && this.generatedEmail === this.guestEmail),
+        userInfo: {
+          name: this.guestName || 'Customer',
+          email: this.guestEmail || this.generatedEmail,
+          phone,
+          websiteUrl: window.location.origin,
+        },
+      });
+    },
+
     buildContactSubmissionEntry(channel) {
       const resolvedChannel = channel === 'email' ? 'email' : 'whatsapp';
       return {
@@ -13733,8 +17226,12 @@ A human agent will continue helping you from there.`);
               message: request.message,
               sender: request.sender || 'agent',
               datetime: request.datetime || new Date().toISOString(),
-              id: request.id || `prev_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+              id: request.id || `prev_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              ...(Array.isArray(request.suggestedReplies) && request.suggestedReplies.length
+                ? { suggestedReplies: request.suggestedReplies }
+                : {}),
             });
+            if (request.proactiveIdle) this.idleChatNudged = true;
           }
         });
 
@@ -13781,29 +17278,220 @@ A human agent will continue helping you from there.`);
 
     // File upload methods
     triggerFileSelect() {
+      if (!this.canAttachChatFiles) return;
       const input = this.$refs.homeFileInput || this.$refs.fileInput;
       input?.click();
     },
 
+    isChatFileDragEvent(event) {
+      const types = event?.dataTransfer?.types;
+      if (!types) return false;
+      return Array.from(types).includes('Files');
+    },
+
+    setFileAttachError(message) {
+      this.fileAttachError = String(message || '');
+      if (this._fileAttachErrorTimer) clearTimeout(this._fileAttachErrorTimer);
+      if (!this.fileAttachError) return;
+      this._fileAttachErrorTimer = setTimeout(() => {
+        this.fileAttachError = '';
+        this._fileAttachErrorTimer = null;
+      }, 4200);
+    },
+
+    clearSelectedAttachments() {
+      (this.selectedAttachments || []).forEach((item) => {
+        if (item?.previewUrl) {
+          try { URL.revokeObjectURL(item.previewUrl); } catch (_) { /* ignore */ }
+        }
+      });
+      this.selectedAttachments = [];
+    },
+
+    addChatFiles(fileList, source = 'picker') {
+      if (!this.canAttachChatFiles) return 0;
+      const incoming = Array.from(fileList || []).filter(Boolean);
+      if (!incoming.length) return 0;
+
+      const accepted = [];
+      let rejected = 0;
+      for (const file of incoming) {
+        try {
+          FileUploadService.validateFile(file);
+          accepted.push(file);
+        } catch (_) {
+          rejected += 1;
+        }
+      }
+
+      if (rejected && !accepted.length) {
+        this.setFileAttachError(
+          this.language === 'he'
+            ? 'לא ניתן לצרף את הקובץ (סוג או גודל לא נתמכים).'
+            : 'Could not attach the file (unsupported type or size).'
+        );
+        return 0;
+      }
+      if (rejected) {
+        this.setFileAttachError(
+          this.language === 'he'
+            ? 'חלק מהקבצים לא נתמכים ודולגו.'
+            : 'Some files were skipped (unsupported type or size).'
+        );
+      } else {
+        this.setFileAttachError('');
+      }
+
+      const maxAttachments = 3;
+      const room = Math.max(0, maxAttachments - this.selectedAttachments.length);
+      const toAdd = accepted.slice(0, room);
+      if (!toAdd.length) {
+        this.setFileAttachError(
+          this.language === 'he' ? 'אפשר לצרף עד 3 תמונות או קבצים להודעה.' : 'You can attach up to 3 files per message.'
+        );
+        return 0;
+      }
+      if (accepted.length > toAdd.length) {
+        this.setFileAttachError(
+          this.language === 'he' ? 'אפשר לצרף עד 3 תמונות או קבצים להודעה.' : 'You can attach up to 3 files per message.'
+        );
+      }
+
+      const next = toAdd.map((file) => {
+        const kind = FileUploadService.resolveFileCategory(file);
+        let previewUrl = '';
+        if (kind === 'image') {
+          try { previewUrl = URL.createObjectURL(file); } catch (_) { previewUrl = ''; }
+        }
+        this._selectedAttachmentSeq += 1;
+        return {
+          id: `att-${this._selectedAttachmentSeq}-${file.name || 'file'}`,
+          file,
+          previewUrl,
+        };
+      });
+      this.selectedAttachments = [...this.selectedAttachments, ...next];
+
+      this.trackPluginEvent('file_attached', {
+        source: source || (this.showPoweredByAssisHome ? 'home' : 'chat'),
+        count: next.length,
+      });
+
+      // Stay on home when attaching — preview shows there until the shopper sends.
+      return next.length;
+    },
+
     handleFileSelect(event) {
-      const files = Array.from(event.target.files);
-      if (files.length) {
-        this.trackPluginEvent('file_attached', {
-          source: this.showPoweredByAssisHome ? 'home' : 'chat',
-          count: files.length,
+      this.addChatFiles(event?.target?.files, this.showPoweredByAssisHome ? 'home' : 'chat');
+      // Clear the input so the same file can be selected again
+      if (event?.target) event.target.value = '';
+    },
+
+    extractClipboardFiles(clipboard) {
+      if (!clipboard) return [];
+      const files = [];
+      if (clipboard.files?.length) {
+        files.push(...Array.from(clipboard.files));
+      } else if (clipboard.items?.length) {
+        Array.from(clipboard.items).forEach((item) => {
+          if (item.kind === 'file') {
+            const file = item.getAsFile();
+            if (file) files.push(file);
+          }
         });
       }
-      this.selectedFiles = [...this.selectedFiles, ...files];
-      // Clear the input so the same file can be selected again
-      if (this.showPoweredByAssisHome && files.length) {
-        this.poweredByAssisHomeDismissed = true;
-        this.poweredByAssisForceHome = false;
+      return files;
+    },
+
+    onChatComposerPaste(event) {
+      if (!this.canAttachChatFiles) return;
+      const files = this.extractClipboardFiles(event?.clipboardData);
+      if (!files.length) return;
+      // Keep pasted plain text; only intercept when files/images are present.
+      event.preventDefault();
+      this.addChatFiles(files, 'paste');
+    },
+
+    onHomeDocumentPaste(event) {
+      if (!this.showPoweredByAssisHome || !this.isChatOpen || !this.canAttachChatFiles) return;
+      const files = this.extractClipboardFiles(event?.clipboardData);
+      if (!files.length) return;
+      const target = event?.target;
+      // Home/chat composer already handle @paste — skip or we'd attach the same file twice.
+      if (
+        target
+        && typeof target.closest === 'function'
+        && target.closest('.assis-home-input, .chat-input, .input-container textarea, textarea')
+        && this.$el
+        && this.$el.contains(target)
+      ) {
+        return;
       }
-      event.target.value = '';
+      // Don't steal paste from inputs on the host page outside the widget.
+      if (
+        target
+        && typeof target.closest === 'function'
+        && target.closest('input, textarea, [contenteditable="true"]')
+        && this.$el
+        && !this.$el.contains(target)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      this.addChatFiles(files, 'paste');
+    },
+
+    syncHomeFilePasteListener(enabled) {
+      if (typeof document === 'undefined') return;
+      if (enabled) {
+        if (this._homeFilePasteBound) return;
+        this._homeFilePasteBound = true;
+        document.addEventListener('paste', this.onHomeDocumentPaste, true);
+        return;
+      }
+      if (!this._homeFilePasteBound) return;
+      this._homeFilePasteBound = false;
+      document.removeEventListener('paste', this.onHomeDocumentPaste, true);
+    },
+
+    onChatFileDragEnter(event) {
+      if (!this.canAttachChatFiles || !this.isChatFileDragEvent(event)) return;
+      event.preventDefault();
+      this.chatFileDragDepth += 1;
+    },
+
+    onChatFileDragOver(event) {
+      if (!this.canAttachChatFiles || !this.isChatFileDragEvent(event)) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    },
+
+    onChatFileDragLeave(event) {
+      if (!this.chatFileDragDepth) return;
+      event.preventDefault();
+      this.chatFileDragDepth = Math.max(0, this.chatFileDragDepth - 1);
+    },
+
+    onChatFileDrop(event) {
+      event.preventDefault();
+      this.chatFileDragDepth = 0;
+      if (!this.canAttachChatFiles) return;
+      const files = event?.dataTransfer?.files;
+      if (files?.length) this.addChatFiles(files, 'drop');
     },
 
     removeSelectedFile(index) {
-      this.selectedFiles.splice(index, 1);
+      const item = this.selectedAttachments[index];
+      if (item?.previewUrl) {
+        try { URL.revokeObjectURL(item.previewUrl); } catch (_) { /* ignore */ }
+      }
+      this.selectedAttachments.splice(index, 1);
+    },
+
+    setAttachmentUploadStatus(index, status) {
+      const item = this.selectedAttachments[index];
+      if (!item) return;
+      this.selectedAttachments.splice(index, 1, { ...item, uploadStatus: status });
     },
 
     async uploadFiles(messageId) {
@@ -13817,21 +17505,28 @@ A human agent will continue helping you from there.`);
       try {
         this.isUploading = true;
         this.uploadProgress = 0;
+        this.selectedAttachments = this.selectedAttachments.map((item) => ({
+          ...item,
+          uploadStatus: 'pending',
+        }));
 
         const uploadedFiles = [];
-        const totalFiles = this.selectedFiles.length;
+        const totalFiles = this.selectedAttachments.length;
 
-        for (let i = 0; i < this.selectedFiles.length; i++) {
-          const file = this.selectedFiles[i];
+        for (let i = 0; i < this.selectedAttachments.length; i++) {
+          const file = this.selectedAttachments[i]?.file;
+          if (!file) continue;
+          this.setAttachmentUploadStatus(i, 'uploading');
           try {
             const uploadedFile = await FileUploadService.uploadFile(file, messageId, this.supabaseClient);
             uploadedFiles.push(uploadedFile);
+            this.setAttachmentUploadStatus(i, 'done');
           } catch (error) {
             console.error(`Failed to upload file ${file.name}:`, error);
+            this.setAttachmentUploadStatus(i, 'error');
             // Continue with other files even if one fails
           }
 
-          // Update progress
           this.uploadProgress = Math.round(((i + 1) / totalFiles) * 100);
         }
 
@@ -13966,7 +17661,13 @@ A human agent will continue helping you from there.`);
     openProductModal(product) {
       this._pluginProductSource = 'home';
       this.trackPluginEvent('home_product_clicked', this.pluginProductProps(product));
+      // Same as typing from home: expand small chat so the product sheet has room.
+      if (!this.isMaximized) {
+        this.notePluginMaximized('home_product');
+        this.isMaximized = true;
+      }
       this.openProductDetail(product, null, 0);
+      this.$nextTick(() => this.syncProductSheetBottom());
     },
     syncProductDetailDescClamp() {
       if (this.productDetailDescOpen) return;
@@ -14172,10 +17873,9 @@ A human agent will continue helping you from there.`);
       const payload = this.buildProductCardCartPayload(detail.product, detail.index, detail.message);
       const variantId = this.shopifyNumericId(payload.variant_id || payload.variantId || payload.selectedVariantId);
       if (variantId) {
-        const byVariant = items.find((item) => (
+        return items.find((item) => (
           this.shopifyNumericId(item?.variant_id || item?.id) === variantId
-        ));
-        if (byVariant) return byVariant;
+        )) || null;
       }
       const productId = String(payload.product_id || payload.id || '').trim();
       if (productId) {
@@ -14230,6 +17930,11 @@ A human agent will continue helping you from there.`);
       const detail = this.productDetail;
       if (!detail) return '';
       return this.getProductCardDiscountLabel(detail.product, detail.message, detail.index);
+    },
+    isProductDetailPreOrder() {
+      const detail = this.productDetail;
+      if (!detail) return false;
+      return this.isProductCardPreOrder(detail.product, detail.message, detail.index);
     },
     getProductDetailRating() {
       return this.readProductRating(this.productDetail?.product);
@@ -14347,6 +18052,11 @@ A human agent will continue helping you from there.`);
     },
     getProductDetailAddLabel() {
       if (this.isProductDetailInBag()) return this.shopifyCartCheckoutLabel;
+      if (this.isProductDetailPreOrder()) {
+        return this.language === 'he'
+          ? 'הוסף לסל - המוצר בהזמנה מוקדמת'
+          : 'Add to bag - product is on pre-order';
+      }
       return this.getAddToCartLabel(false);
     },
     getProductDetailLineTotal() {
@@ -14367,14 +18077,20 @@ A human agent will continue helping you from there.`);
       const quantity = Math.max(1, Number(detail.quantity) || 1);
       const payload = this.buildProductCardCartPayload(detail.product, detail.index, detail.message);
       await this.addPoweredByAssisHomeProduct({ ...payload, quantity }, 'product_sheet');
+      if (this.isProductInBag(payload) || this.isProductDetailInBag()) {
+        this.closeProductDetail();
+      }
     },
     submitPoweredByAssisHome(text, kind = 'typed') {
       const message = String(text || '').trim();
-      if (!message) return;
+      if (!message && !this.selectedAttachments.length) return;
       if (kind === 'chip') {
         this.trackPluginEvent('home_chip_clicked', { text: this.clipPluginEventText(message) });
       } else {
-        this.trackPluginEvent('home_message_sent', { text: this.clipPluginEventText(message) });
+        this.trackPluginEvent('home_message_sent', {
+          text: this.clipPluginEventText(message),
+          has_file: this.selectedAttachments.length > 0,
+        });
       }
       this._pluginMessageSource = 'home';
       this.poweredByAssisHomeDismissed = true;
@@ -14382,6 +18098,12 @@ A human agent will continue helping you from there.`);
       this.poweredByAssisHomeDraft = '';
       this.isMaximized = true;
       this.$nextTick(() => this.autoResizeHomeTextarea());
+      // Attachments must go through sendMessage (upload); chips/text-only keep quick-action path.
+      if (this.selectedAttachments.length) {
+        this.newMessage = message;
+        void this.sendMessage();
+        return;
+      }
       this.sendQuickAction(message);
     },
     isLastAiMessageWithHumanRequested(message) {
@@ -14428,16 +18150,37 @@ You can always open a new conversation here with Assis AI.`
       await new Promise(resolve => setTimeout(resolve, 500));
       this.scrollToBottom();
     },
-    // Handle page refresh/unload to clear localStorage
+    // Persist mid-stream text so navigation/remount can resume typing.
     handleBeforeUnload() {
+      this.checkpointStreamProgress();
       this.persistChatSession();
     },
   },
   created() {
     // Restore before first render to avoid closed->open flicker on remount.
     this.wasSessionRestored = this.restoreChatSession();
+    // Host dataset/prop always wins — never boot fetches against a blank restored URL.
+    this.ASSIS_BACKEND_URL = String(this.assisBackendUrl || this.ASSIS_BACKEND_URL || '').trim();
+    // Restored sessions skip plan fetch; still must reveal the heart if welcome fetch hangs.
+    setTimeout(() => {
+      if (!this.planSubscription) this.planSubscription = 'care_by_assis';
+      if (!this.pluginMessagesFetched) this.pluginMessagesFetched = true;
+      this.$forceUpdate();
+    }, 2500);
     this.disableInitialAnimations = this.wasSessionRestored;
     this.restoredMessagesCount = this.wasSessionRestored && Array.isArray(this.chatMessages) ? this.chatMessages.length : 0;
+    if (this.wasSessionRestored) {
+      const ready = {};
+      (this.chatMessages || []).forEach((message) => {
+        if (String(message?.sender || '').toLowerCase() !== 'ai') return;
+        const key = message.datetime
+          ? `dt:${message.datetime}`
+          : (message.id != null && message.id !== '' ? `id:${message.id}` : '');
+        if (key) ready[key] = true;
+      });
+      this.questionBelowReady = { ...ready };
+      this.followUpRevealReady = ready;
+    }
     this._chatDrag = {
       active: false,
       moved: false,
@@ -14460,14 +18203,29 @@ You can always open a new conversation here with Assis AI.`
     this.initSelectedPhoneCountry();
 
     // console.log("On Mounted")
-    this.ASSIS_BACKEND_URL = this.assisBackendUrl;
+    // Re-assert after created(); HMR / remount can leave data blank while the prop is set.
+    this.ASSIS_BACKEND_URL = String(this.assisBackendUrl || this.ASSIS_BACKEND_URL || '').trim();
     // Initialize persistent clientId
     this.getOrCreateClientId();
-    // Wait for both so language (from /plugin-messages) is known before any UI paints.
-    await Promise.all([
-      this.fetchPlanSubscription(),
-      this.fetchWelcomeAiMessages(),
-    ]);
+    // Heart is gated on planSubscription && pluginMessagesFetched — never leave either hanging forever.
+    // Independent of the await below (background-tab timer throttling / rejected races).
+    const revealLauncher = () => {
+      if (!this.planSubscription) this.planSubscription = 'care_by_assis';
+      if (!this.pluginMessagesFetched) this.pluginMessagesFetched = true;
+      // Hung boot fetches can leave the render effect stale — force the heart to paint.
+      this.$forceUpdate();
+    };
+    try {
+      await Promise.all([
+        this.fetchPlanSubscription(),
+        this.fetchWelcomeAiMessages(),
+      ]);
+    } catch (error) {
+      console.error('Error during plugin boot fetches:', error);
+    } finally {
+      revealLauncher();
+    }
+    this.restoreOrFreezeHomeScreenChips();
     this.defaultErrorMessage = this.language === 'he' ? DEFAULT_ERROR_MESSAGE_HE : DEFAULT_ERROR_MESSAGE_EN;
     if (this.isChatOpen && this.loginChannels === 'ai' && this.chatMessages.length === 0) {
       await this.setWelcomeMessages();
@@ -14583,6 +18341,7 @@ You can always open a new conversation here with Assis AI.`
       this.scheduleDiscountCarouselOverflowSync();
       this.scheduleProductCarouselOverflowSync();
       this.scheduleFitPluginBottomOffset();
+      this.bindChatReveal();
     });
   },
   updated() {
@@ -14590,8 +18349,32 @@ You can always open a new conversation here with Assis AI.`
     this.scheduleProductCarouselOverflowSync();
   },
   beforeUnmount() {
+    // Shopify page changes remount the widget — checkpoint so typing can resume.
+    this.checkpointStreamProgress();
+    this.persistChatSession();
+    this.syncHomeFilePasteListener(false);
+    this.clearSelectedAttachments();
+    if (this._fileAttachErrorTimer) {
+      clearTimeout(this._fileAttachErrorTimer);
+      this._fileAttachErrorTimer = null;
+    }
+    this.clearIdleChatNudge();
+    this.clearCartIconNudge();
+    if (this._chatRevealObserver) {
+      this._chatRevealObserver.disconnect();
+      this._chatRevealObserver = null;
+    }
+    if (this._chatRevealWatch) {
+      this._chatRevealWatch.disconnect();
+      this._chatRevealWatch = null;
+    }
     this.stopProductDetailSlideshow();
     this.stopClubBadgeRotation();
+    this.stopHomeProductRotation();
+    if (this._bannerPromoMarqueeTimer) {
+      clearTimeout(this._bannerPromoMarqueeTimer);
+      this._bannerPromoMarqueeTimer = null;
+    }
     if (this._pinnedHoverLeaveTimer) {
       clearTimeout(this._pinnedHoverLeaveTimer);
       this._pinnedHoverLeaveTimer = null;
@@ -14708,9 +18491,25 @@ You can always open a new conversation here with Assis AI.`
   padding: 0;
   box-sizing: border-box;
   font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
-  font-weight: 400;
   line-height: 1.6;
   letter-spacing: normal;
+}
+
+/* Do not put text line-height / letter-spacing on SVG geometry - it stretches
+   shapes like the header menu dots when the chat scales up. */
+.assis-plugin-root svg,
+.assis-plugin-root svg * {
+  line-height: 0;
+  letter-spacing: 0;
+}
+
+/* Root default weight. Descendants inherit so a bold parent span is not flattened by a nested span.
+   Exempt b/strong so UA / explicit 700 rules still apply. */
+.assis-plugin-root {
+  font-weight: 400;
+}
+.assis-plugin-root *:where(:not(b):not(strong)) {
+  font-weight: inherit;
 }
 
 /* Scoped `*` above compiles to `.assis-plugin-root[data-v] *` and zeros child padding.
@@ -14882,6 +18681,7 @@ You can always open a new conversation here with Assis AI.`
   border-radius: 4px;
 }
 
+.assis-product-detail-preorder,
 .assis-product-detail-sale {
   position: absolute;
   top: 20px;
@@ -14897,9 +18697,18 @@ You can always open a new conversation here with Assis AI.`
   line-height: 1.3;
 }
 
+.assis-product-detail-preorder {
+  background: rgba(29, 111, 238, 0.14);
+}
+
+.assis-product-detail-card[dir="ltr"] .assis-product-detail-preorder,
 .assis-product-detail-card[dir="ltr"] .assis-product-detail-sale {
   left: auto;
   right: 20px;
+}
+
+.assis-product-detail-sale--under-preorder {
+  top: 48px;
 }
 
 .assis-product-detail-club-badge {
@@ -14938,8 +18747,13 @@ You can always open a new conversation here with Assis AI.`
   }
 }
 
-.assis-product-detail-club-badge--under-sale {
+.assis-product-detail-club-badge--under-sale,
+.assis-product-detail-club-badge--under-preorder {
   top: 48px;
+}
+
+.assis-product-detail-club-badge--under-preorder-sale {
+  top: 76px;
 }
 
 .assis-product-detail-zoom {
@@ -15110,6 +18924,14 @@ You can always open a new conversation here with Assis AI.`
   line-height: 1.3;
   color: #0f172a;
   text-align: start;
+}
+
+.assis-product-detail-title--link {
+  cursor: pointer;
+}
+
+.assis-product-detail-title--link:hover {
+  color: #1d6fee;
 }
 
 .assis-product-detail-main[dir="rtl"] .assis-product-detail-title {
@@ -15758,6 +19580,11 @@ You can always open a new conversation here with Assis AI.`
     #ffffff;
 }
 
+/* Belt-and-suspenders: never paint conversation under the home shell (reset race). */
+.chat-container.assis-home-open > .chat-content {
+  display: none !important;
+}
+
 .chat-container.assis-chat-v2 {
   width: min(500px, calc(100vw - 40px));
   height: min(420px, calc(100dvh - 100px));
@@ -15791,10 +19618,18 @@ You can always open a new conversation here with Assis AI.`
 }
 
 .chat-container.assis-chat-v2 .chat-header--with-promo {
-  display: flex;
-  flex-wrap: nowrap;
+  display: grid;
+  /* Compact chat (~343px): keep brand + actions usable; promo stays small. */
+  grid-template-columns: minmax(72px, 1fr) minmax(0, 140px) minmax(108px, 1fr);
   align-items: center;
-  justify-content: flex-start;
+  column-gap: 6px;
+  position: relative;
+}
+
+.chat-container.assis-chat-v2.chat-maximized .chat-header--with-promo {
+  /* Large / maximized chat: more room for Summary. */
+  grid-template-columns: minmax(120px, 1fr) minmax(0, 340px) minmax(120px, 1fr);
+  column-gap: 8px;
 }
 
 .chat-container.assis-home-open .header-content.header-brand,
@@ -15817,10 +19652,11 @@ You can always open a new conversation here with Assis AI.`
 }
 
 .chat-container.assis-chat-v2 .chat-header--with-promo .header-content.header-brand {
-  flex: 1 1 0;
+  grid-column: 1;
+  justify-self: start;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
-  max-width: none;
-  width: auto;
 }
 
 .chat-container.assis-home-open .header-content.header-brand img,
@@ -15861,8 +19697,16 @@ You can always open a new conversation here with Assis AI.`
 .chat-container.assis-chat-v2 .header-actions > button svg,
 .chat-container.assis-chat-v2 .header-menu-wrapper > button svg,
 .chat-container.assis-chat-v2 #assis-furisport-cart-btn svg {
+  display: block;
   width: 12px;
   height: 12px;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+.chat-container.assis-chat-v2 .header-menu-wrapper > button svg.menu-btn-icon {
+  fill: currentColor;
+  stroke: none;
 }
 
 .chat-container.assis-chat-v2 #assis-furisport-cart-btn svg {
@@ -15879,22 +19723,50 @@ You can always open a new conversation here with Assis AI.`
   top: auto;
   transform: none;
   z-index: 40;
-  flex: 0 1 auto;
-  width: auto;
-  max-width: 50%;
+  grid-column: 2;
+  justify-self: center;
+  /* Always bound by the grid track — never overlap brand / header buttons. */
+  width: 100%;
+  max-width: 100%;
+  max-height: none;
   min-width: 0;
   margin: 0;
-  padding: 0;
+  /* Inset so the pill shadow is not clipped by the grid cell edges. */
+  padding: 2px 4px;
   box-sizing: border-box;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   -webkit-user-select: none;
   user-select: none;
   pointer-events: none;
-  overflow: hidden;
+  overflow: visible;
+}
+
+.chat-container.assis-chat-v2.chat-maximized .assis-demo-chat-promo,
+.chat-container.assis-chat-v2.chat-maximized .assis-demo-chat-promo.assis-demo-chat-promo--whatsapp {
+  padding: 2px 5px;
 }
 
 .chat-container.assis-home-open .assis-demo-chat-promo {
   display: none !important;
+}
+
+/* Same swap as Banner settings preview — a touch slower than the demo 180ms. */
+.assis-banner-swap-enter-active,
+.assis-banner-swap-leave-active {
+  transition: opacity 280ms ease, transform 280ms ease;
+}
+
+.assis-banner-swap-enter-from,
+.assis-banner-swap-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assis-banner-swap-enter-active,
+  .assis-banner-swap-leave-active {
+    transition: none;
+  }
 }
 
 .assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-link {
@@ -15903,18 +19775,30 @@ You can always open a new conversation here with Assis AI.`
   align-items: center;
   justify-content: center;
   gap: 6px;
+  width: 100%;
   max-width: 100%;
   min-width: 0;
   height: 26px;
-  padding: 0 10px 0 8px;
+  padding: 0 10px;
   box-sizing: border-box;
   text-decoration: none;
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.88);
   color: #5b6470;
-  box-shadow: none;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 6px 14px rgba(15, 23, 42, 0.06);
   cursor: default;
+  appearance: none;
+  font: inherit;
+  /* Keep overflow visible so the soft side shadow is not squared off. */
+  overflow: visible;
+}
+
+.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-link.is-clickable {
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 .assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-link:hover {
@@ -15923,25 +19807,128 @@ You can always open a new conversation here with Assis AI.`
   color: #5b6470;
 }
 
-.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-icon {
+.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-link.is-clickable:hover {
+  background: #ffffff;
+  border-color: rgba(29, 111, 238, 0.2);
+  color: #1d6fee;
+}
+
+.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-icon,
+.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-end {
   display: inline-flex;
-  flex-shrink: 0;
+  flex: 0 0 11px;
+  align-items: center;
+  justify-content: center;
+  width: 11px;
+  height: 11px;
   line-height: 0;
   opacity: 0.72;
   color: inherit;
+}
+
+.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-end.is-sparkle {
+  opacity: 0.72;
+}
+
+.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-end:not(.is-arrow):not(.is-sparkle) {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-text {
   margin: 0;
   font-size: 11px;
   font-weight: 450;
-  line-height: 1.2;
-  text-align: center;
+  /* Block + nowrap so overflow/marquee measure real text width (flex here hid overflow). */
+  display: block;
+  /* Content box is ~24px with 1px border on the 26px pill — match that, not full height. */
+  line-height: 24px;
+  height: 24px;
   letter-spacing: 0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-align: center;
   color: inherit;
+  max-width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-self: center;
+}
+
+.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-text-inner {
+  display: inline-block;
+  max-width: none;
+  white-space: nowrap;
+  line-height: 24px;
+  vertical-align: middle;
+}
+
+.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-text.is-marquee {
+  text-overflow: clip;
+  /* Soft fade on both edges so the sliding copy does not look hard-clipped. */
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent 0,
+    #000 10px,
+    #000 calc(100% - 10px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    90deg,
+    transparent 0,
+    #000 10px,
+    #000 calc(100% - 10px),
+    transparent 100%
+  );
+}
+
+.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-text.is-marquee .assis-demo-promo-text-inner {
+  will-change: transform;
+  animation: assis-promo-marquee var(--assis-promo-marquee-duration, 8s) ease-in-out infinite alternate;
+  animation-delay: 0.9s;
+}
+
+.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-link:hover .assis-demo-promo-text.is-marquee .assis-demo-promo-text-inner,
+.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-link:focus-visible .assis-demo-promo-text.is-marquee .assis-demo-promo-text-inner {
+  animation-play-state: paused;
+}
+
+@keyframes assis-promo-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(var(--assis-promo-shift, 0)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-text.is-marquee .assis-demo-promo-text-inner {
+    animation: none;
+  }
+}
+
+.chat-container.assis-chat-v2.chat-maximized .assis-demo-chat-promo .assis-demo-promo-link {
+  height: 28px;
+  padding: 0 12px;
+}
+
+.chat-container.assis-chat-v2.chat-maximized .assis-demo-chat-promo .assis-demo-promo-text {
+  font-size: 11.5px;
+  line-height: 26px;
+  height: 26px;
+}
+
+.chat-container.assis-chat-v2.chat-maximized .assis-demo-chat-promo .assis-demo-promo-text-inner {
+  line-height: 26px;
+}
+
+.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-text-rtl {
+  direction: rtl;
+  text-align: center;
+}
+
+.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-text-ltr {
+  direction: ltr;
+  text-align: center;
 }
 
 .assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-text :deep(a) {
@@ -15952,7 +19939,7 @@ You can always open a new conversation here with Assis AI.`
 }
 
 .assis-plugin-root .assis-demo-chat-promo.assis-demo-chat-promo--whatsapp {
-  max-width: none;
+  max-width: 100%;
 }
 
 .assis-plugin-root .assis-demo-chat-promo.assis-demo-chat-promo--whatsapp .assis-demo-promo-link {
@@ -15973,14 +19960,11 @@ You can always open a new conversation here with Assis AI.`
   min-width: 0;
 }
 
-.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-arrow {
-  display: inline-flex;
-  flex-shrink: 0;
+.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-end.is-arrow {
   opacity: 0.4;
-  color: inherit;
 }
 
-.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-arrow svg {
+.assis-plugin-root .assis-demo-chat-promo .assis-demo-promo-arrow {
   display: block;
   width: 9px;
   height: 9px;
@@ -16003,9 +19987,10 @@ You can always open a new conversation here with Assis AI.`
 }
 
 .chat-container.assis-chat-v2 .chat-header--with-promo .header-actions {
-  flex: 1 1 0;
-  min-width: 0;
-  justify-content: flex-end;
+  grid-column: 3;
+  justify-self: end;
+  flex: 0 0 auto;
+  min-width: auto;
   margin-inline-start: 0;
 }
 
@@ -16020,10 +20005,188 @@ You can always open a new conversation here with Assis AI.`
   padding-right: 14px;
 }
 
+.chat-messages.assis-reveal-on .assis-checkout-card:not(.is-revealed):not(.assis-checkout-card--still) {
+  opacity: 0;
+  translate: 0 10px;
+  scale: 0.98;
+}
+
+.chat-messages.assis-reveal-on .message-no-animation .assis-product-card-slot,
+.chat-messages.assis-reveal-on .assis-checkout-card--still {
+  opacity: 1;
+  translate: none;
+  scale: none;
+  filter: none;
+}
+
+.chat-messages.assis-reveal-on .assis-checkout-card.is-revealed {
+  animation: none;
+  opacity: 1;
+  translate: none;
+  scale: none;
+}
+
+.chat-container.assis-chat-v2 .chat-turn .assis-message-question {
+  /* Mounted after cards — soft fade/rise, no snap. */
+  animation: assis-product-card-in 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation-delay: 0.06s;
+}
+
+.chat-container.assis-chat-v2 .chat-turn .assis-follow-reply {
+  /* Mounted after the question — soft stagger. */
+  animation: assis-product-card-in 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation-delay: calc(0.1s + (var(--reply-i, 0) * 0.12s));
+}
+
+.chat-container.assis-chat-v2 .chat-turn:has(.assis-follow-replies) > .assis-message-when {
+  animation: assis-clock-in 0.35s ease both;
+  animation-delay: calc(0.22s + ((var(--reply-n, 1) - 1) * 0.12s) + 0.4s);
+}
+
+@keyframes assis-clock-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.chat-container.assis-chat-v2 .chat-turn:has(.message-no-animation) .assis-message-question,
+.chat-container.assis-chat-v2 .chat-turn:has(.message-no-animation) .assis-follow-reply,
+.chat-container.assis-chat-v2 .chat-turn:has(.message-no-animation) > .assis-message-when {
+  animation: none;
+  opacity: 1;
+}
+
+.chat-messages.assis-reveal-on .chat-turn:has(.message-no-animation) .assis-checkout-card,
+.chat-messages.assis-reveal-on .chat-turn:has(.message-no-animation) .cart-upsell-card,
+.chat-messages.assis-reveal-on .chat-turn:has(.message-no-animation) .assis-product-card-slot,
+.chat-messages.assis-reveal-on .assis-checkout-card--still {
+  opacity: 1;
+  translate: none;
+  scale: none;
+  filter: none;
+  animation: none;
+}
+
+@keyframes assis-tech-reveal {
+  0% {
+    opacity: 0;
+    translate: 0 10px;
+    scale: 0.98;
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-messages.assis-reveal-on .assis-checkout-card:not(.is-revealed):not(.assis-checkout-card--still),
+  .chat-messages.assis-reveal-on .cart-upsell-chat-arrive .cart-upsell-card:not(.is-revealed),
+  .chat-messages.assis-reveal-on .assis-product-card-slot:not(.is-revealed),
+  .chat-messages.assis-reveal-on .assis-checkout-card.is-revealed,
+  .chat-messages.assis-reveal-on .cart-upsell-chat-arrive .cart-upsell-card.is-revealed,
+  .chat-messages.assis-reveal-on .assis-product-card-slot.is-revealed {
+    opacity: 1;
+    translate: none;
+    scale: none;
+    filter: none;
+    animation: none;
+  }
+}
+
 .chat-container.assis-chat-v2 .ai-today-message {
   color: #9ca3af;
   font-size: 11px;
   font-weight: 500;
+}
+
+.chat-container.assis-chat-v2 .assis-message-when {
+  align-self: flex-start;
+  width: max-content;
+  margin: 0 2px 2px;
+  font-size: 10px;
+  line-height: 1.2;
+  font-weight: 500;
+  color: #94a3b8;
+}
+.chat-container.assis-chat-v2 .chat-turn--client > .assis-message-when,
+.chat-container.assis-chat-v2.assis-chat-he-flip .chat-turn--ai > .assis-message-when,
+.chat-container.assis-chat-v2.assis-chat-he-flip .chat-turn--agent > .assis-message-when,
+.chat-container.assis-chat-v2.assis-chat-he-flip .chat-turn--assis > .assis-message-when,
+.chat-container.assis-chat-v2.assis-chat-he-flip .chat-turn--business > .assis-message-when {
+  align-self: flex-end;
+}
+.chat-container.assis-chat-v2.assis-chat-he-flip .chat-turn--ai > .assis-message-when,
+.chat-container.assis-chat-v2.assis-chat-he-flip .chat-turn--agent > .assis-message-when,
+.chat-container.assis-chat-v2.assis-chat-he-flip .chat-turn--assis > .assis-message-when,
+.chat-container.assis-chat-v2.assis-chat-he-flip .chat-turn--business > .assis-message-when,
+.chat-container.assis-chat-v2.assis-chat-he-flip .chat-turn:has(.assis-follow-replies) > .assis-message-when,
+.chat-container.assis-chat-v2.assis-chat-he-flip .chat-turn:has(.assis-message-question) > .assis-message-when {
+  align-self: flex-end;
+  margin-right: 0;
+  margin-left: 0;
+  text-align: right;
+}
+.chat-container.assis-chat-v2.assis-chat-he-flip .chat-turn--client > .assis-message-when {
+  align-self: flex-start;
+}
+.chat-container.assis-chat-v2 .chat-turn:has(.assis-checkout-slot) > .assis-message-when {
+  align-self: flex-start;
+  margin-right: 2px;
+  margin-left: 2px;
+}
+.chat-container.assis-chat-v2.assis-chat-he-flip .chat-turn:has(.assis-checkout-slot) > .assis-message-when {
+  align-self: flex-end;
+}
+.chat-container.assis-chat-v2 .chat-turn--client > .assis-message-when {
+  order: 1;
+}
+.chat-container.assis-chat-v2 .chat-turn--client > .assis-checkout-slot {
+  order: 2;
+  margin-top: 0;
+}
+.chat-container.assis-chat-v2 .chat-turn--client:has(.assis-checkout-slot) > .assis-message-when {
+  align-self: flex-end;
+}
+.chat-container.assis-chat-v2.assis-chat-he-flip .chat-turn--client:has(.assis-checkout-slot) > .assis-message-when {
+  align-self: flex-start;
+}
+
+.chat-container.assis-chat-v2 .assis-float-date {
+  position: sticky;
+  top: 8px;
+  z-index: 5;
+  height: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.chat-container.assis-chat-v2 .assis-float-date span {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 18px;
+  opacity: 0;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+  backdrop-filter: blur(8px);
+  transition: opacity 0.25s ease;
+}
+
+.chat-container.assis-chat-v2 .assis-float-date.is-on span {
+  opacity: 1;
 }
 
 .chat-container.assis-chat-v2 .message.sender-client {
@@ -16052,6 +20215,7 @@ You can always open a new conversation here with Assis AI.`
   max-width: 100%;
   min-width: 0;
   box-sizing: border-box;
+  padding-top: 10px;
   animation: assis-agent-card-in 0.48s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
@@ -16223,6 +20387,7 @@ span.assis-contact-submission-channel {
 
 .chat-container.assis-chat-v2 .message.sender-client .message-bubble {
   background-color: #1d6fee;
+  background-image: linear-gradient(160deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0) 46%, rgba(15, 23, 42, 0.1) 100%);
   color: #ffffff;
   border: none;
   border-radius: 14px;
@@ -16332,6 +20497,26 @@ span.assis-contact-submission-channel {
   max-width: 80%;
   width: auto;
   overflow: visible;
+}
+
+/* Large / maximized chat: let long AI copy use more of the window. */
+.chat-container.assis-chat-v2.chat-maximized .message.sender-ai .message-content,
+.chat-container.assis-chat-v2.chat-maximized .message.sender-agent .message-content,
+.chat-container.assis-chat-v2.chat-maximized .message.sender-assis .message-content,
+.chat-container.assis-chat-v2.chat-maximized .message.sender-business .message-content {
+  max-width: min(640px, 92%);
+}
+
+.chat-container.assis-chat-v2.chat-maximized .message.sender-client .message-content {
+  max-width: min(520px, 78%);
+}
+
+.chat-container.assis-chat-v2.chat-maximized .message.sender-ai .message-bubble,
+.chat-container.assis-chat-v2.chat-maximized .message.sender-agent .message-bubble,
+.chat-container.assis-chat-v2.chat-maximized .message.sender-assis .message-bubble,
+.chat-container.assis-chat-v2.chat-maximized .message.sender-business .message-bubble {
+  width: 100%;
+  max-width: 100%;
 }
 
 .message-content:has(.assis-products-container),
@@ -16475,6 +20660,7 @@ span.assis-contact-submission-channel {
   width: 100%;
   max-width: 100%;
   margin-bottom: 15px;
+  padding-top: 10px;
 }
 
 .assis-order-inline-host .assis-order-preview {
@@ -17776,7 +21962,9 @@ span.assis-contact-submission-channel {
   color: #1a1a1a;
   border-radius: 0;
   box-shadow: none;
+  /* Space before the start of the copy (RTL = right, LTR = left). */
   padding: 2px 0;
+  padding-inline-start: 8px;
   max-width: 100%;
   width: fit-content;
   min-width: 0;
@@ -17813,34 +22001,39 @@ span.assis-contact-submission-channel {
   align-items: stretch;
   border-top: none;
   background: transparent;
-  padding: 0 14px 0;
+  padding: 18px 14px 0;
   box-shadow: none;
 }
 
 .chat-container.assis-chat-v2 .flex.gap-2 {
   position: relative;
+  display: flex;
+  align-items: center;
   width: 100%;
   max-width: 100%;
-  gap: 0;
+  gap: 8px;
   margin: 0;
   padding: 0;
 }
 
 .chat-container.assis-chat-v2 .input-container {
   position: relative;
-  min-height: 44px;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 48px;
   height: auto;
-  align-items: flex-end;
+  align-items: center;
   background: #ffffff;
-  border-radius: 22px;
-  border: 1px solid rgba(0, 0, 0, 0.16);
-  padding: 14px 42px 14px 14px !important;
-  gap: 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  padding: 10px 14px !important;
+  gap: 10px;
 }
 
 .chat-container.assis-chat-v2 .input-container:focus-within {
   border-color: #1d6fee;
-  box-shadow: 0 0 0 1px #1d6fee;
+  box-shadow: 0 0 0 3px rgba(29, 111, 238, 0.14);
 }
 
 .chat-container.assis-chat-v2 .chat-input {
@@ -17856,43 +22049,69 @@ span.assis-contact-submission-channel {
 
 .chat-container.assis-chat-v2 .chat-input::placeholder {
   font-size: 13px !important;
-  color: rgba(0, 0, 0, 0.4);
+  color: rgba(100, 116, 139, 0.85);
 }
 
-.chat-container.assis-chat-v2 .attach-btn {
-  width: 16px;
-  height: 16px;
-  opacity: 0.55;
-  color: #6b7280;
+.chat-container.assis-chat-v2 .attach-btn,
+.chat-container.assis-chat-v2 .emoji-btn {
+  width: 20px;
+  height: 20px !important;
+  opacity: 0.62;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.chat-container.assis-chat-v2 .attach-btn:hover,
+.chat-container.assis-chat-v2 .emoji-btn:hover:not(:disabled) {
+  opacity: 1;
+  color: #475569;
 }
 
 .chat-container.assis-chat-v2 .send-btn {
-  position: absolute;
-  right: 7px;
-  top: 50%;
+  position: static;
+  right: auto;
+  left: auto;
+  top: auto;
   bottom: auto;
   translate: none;
-  transform: translateY(-50%);
+  transform: none;
   z-index: 2;
-  width: 28px;
-  min-width: 28px;
-  height: 28px;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  border-radius: 50%;
   background: #1d6fee;
+  box-shadow: 0 2px 8px rgba(29, 111, 238, 0.32);
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.chat-container.assis-chat-v2 .send-btn:hover:not(:disabled) {
+  background: #1557c0;
+}
+
+.chat-container.assis-chat-v2 .send-btn:disabled {
+  opacity: 0.45;
+  box-shadow: none;
+}
+
+.chat-container.assis-chat-v2 .chat-input-multiline .input-container {
+  border-radius: 22px;
+  align-items: flex-end;
 }
 
 .chat-container.assis-chat-v2 .chat-input-multiline .send-btn {
-  top: auto;
-  bottom: 8px;
-  transform: none;
+  align-self: flex-end;
+  margin-bottom: 4px;
 }
 
 .chat-container.assis-chat-v2 .flex-rtl .send-btn {
   right: auto;
-  left: 7px;
+  left: auto;
 }
 
 .chat-container.assis-chat-v2 .flex-rtl .input-container {
-  padding: 14px 14px 14px 42px !important;
+  padding: 10px 14px !important;
 }
 
 .assis-suggest-chips {
@@ -17953,12 +22172,196 @@ span.assis-contact-submission-channel {
 .assis-home-chips button:nth-child(4) { animation-delay: 0.2s; }
 .assis-suggest-chips button:nth-child(5),
 .assis-home-chips button:nth-child(5) { animation-delay: 0.26s; }
+.assis-suggest-chips button:nth-child(6),
+.assis-home-chips button:nth-child(6) { animation-delay: 0.32s; }
 
 .assis-suggest-chips button:hover {
   color: #1d6fee;
   background: #ffffff;
   border-color: rgba(29, 111, 238, 0.28);
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.chat-container::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.08);
+  z-index: 3;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.45s ease;
+}
+.chat-container.assis-cart-focus::after {
+  opacity: 1;
+}
+.chat-container.assis-cart-focus .message.assis-cart-action,
+.chat-container.assis-cart-focus .assis-message-question,
+.chat-container.assis-cart-focus .assis-products-container,
+.chat-container.assis-cart-focus .assis-checkout-card,
+.chat-container.assis-cart-focus .assis-checkout-inline,
+.chat-container.assis-cart-focus .cart-upsell-chat-lead,
+.chat-container.assis-cart-focus .cart-upsell {
+  position: relative;
+  z-index: 4;
+}
+.chat-container.assis-cart-focus .assis-checkout-card,
+.chat-container.assis-cart-focus .assis-products-container,
+.chat-container.assis-cart-focus .cart-upsell {
+  filter: drop-shadow(0 16px 28px rgba(15, 23, 42, 0.22));
+}
+.chat-container.assis-chat-v2 .assis-message-question,
+.chat-container.assis-chat-v2.assis-chat-he-flip .assis-message-question {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: flex-start;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 12px 0 0;
+  gap: 8px;
+}
+/* Hebrew: physical right packing. Prefer row-reverse+flex-start (see .message .assis-message-question below). */
+.chat-container.assis-chat-v2.assis-chat-he-flip .assis-message-question,
+.chat-container.assis-chat-v2 .assis-message-question[dir="rtl"] {
+  direction: ltr;
+  justify-content: flex-end;
+}
+.chat-container.assis-chat-v2.assis-chat-he-flip .message .assis-message-question {
+  justify-content: flex-start;
+}
+.assis-message-question-main {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  width: fit-content;
+}
+.chat-container.assis-chat-v2.assis-chat-he-flip .assis-message-question-main,
+.chat-container.assis-chat-v2 .assis-message-question[dir="rtl"] .assis-message-question-main {
+  align-items: flex-end;
+  margin-left: auto;
+  margin-right: 0;
+}
+.chat-container.assis-chat-v2 .assis-message-question .message-bubble,
+.chat-container.assis-chat-v2.assis-chat-he-flip .assis-message-question .message-bubble {
+  width: fit-content;
+  max-width: min(80vw, 100%);
+  min-width: 0;
+  margin: 0;
+  text-align: start;
+}
+.chat-container.assis-chat-v2.assis-chat-he-flip .assis-message-question .message-bubble,
+.chat-container.assis-chat-v2 .assis-message-question[dir="rtl"] .message-bubble {
+  direction: rtl;
+  text-align: right;
+  margin-left: auto;
+  margin-right: 0;
+}
+.chat-container.assis-chat-v2 .assis-message-question[dir="ltr"] .message-bubble {
+  direction: ltr;
+  text-align: left;
+  margin-left: 0;
+  margin-right: auto;
+}
+.assis-message-question .assis-follow-replies,
+.assis-message-question + .assis-follow-replies {
+  margin-top: 0;
+}
+.assis-follow-replies {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 2px;
+  margin-bottom: 0;
+}
+
+.assis-follow-replies--en {
+  direction: ltr;
+  align-self: flex-start;
+  margin-left: 0;
+  margin-right: auto;
+}
+
+.assis-follow-replies--he {
+  direction: rtl;
+  align-self: flex-end;
+  margin-left: auto;
+  margin-right: 0;
+  justify-content: flex-end;
+}
+
+.chat-container.assis-chat-v2 .assis-follow-replies--he,
+.chat-container.assis-chat-v2 .assis-message-question .assis-follow-replies--he {
+  margin-left: auto;
+  margin-right: 0;
+  justify-content: flex-end;
+}
+.chat-container.assis-chat-v2 .assis-message-question[dir="ltr"] .assis-message-question-main {
+  align-items: flex-start;
+  margin-left: 0;
+  margin-right: auto;
+}
+
+.assis-follow-reply {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  max-width: 100%;
+  margin: 0;
+  padding: 7px 13px;
+  border: 1px solid rgba(29, 111, 238, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #374151;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  text-align: start;
+  white-space: nowrap;
+  cursor: pointer;
+  animation: assis-agent-card-in 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation-delay: calc(0.1s + (var(--reply-i, 0) * 0.12s));
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.assis-follow-reply:hover:not(:disabled) {
+  color: #1d6fee;
+  background: #ffffff;
+  border-color: rgba(29, 111, 238, 0.34);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(29, 111, 238, 0.12);
+}
+
+.assis-follow-reply:disabled {
+  cursor: default;
+}
+
+.assis-follow-reply:disabled:not(.is-selected) {
+  background: rgba(255, 255, 255, 0.7);
+  border-color: rgba(15, 23, 42, 0.06);
+  color: #9aa3af;
+  box-shadow: none;
+}
+
+.assis-follow-reply.is-selected {
+  background: #e8f3ff;
+  border-color: rgba(29, 111, 238, 0.4);
+  color: #1d6fee;
+  box-shadow: none;
+  font-weight: 600;
 }
 
 .assis-chat-footer {
@@ -17980,6 +22383,7 @@ span.assis-contact-submission-channel {
 }
 
 .assis-home {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -18093,8 +22497,15 @@ span.assis-contact-submission-channel {
   transform-origin: center center;
   isolation: isolate;
   z-index: 1;
-  transition: rotate 0.32s cubic-bezier(0.22, 1, 0.36, 1), translate 0.32s cubic-bezier(0.22, 1, 0.36, 1), scale 0.32s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.32s ease, top 0.35s cubic-bezier(0.22, 1, 0.36, 1), left 0.35s cubic-bezier(0.22, 1, 0.36, 1);
-  animation: assis-home-card-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* Quiet fan drift — no pop / lift on auto-rotate. */
+  transition:
+    rotate 0.72s cubic-bezier(0.33, 1, 0.68, 1),
+    translate 0.72s cubic-bezier(0.33, 1, 0.68, 1),
+    scale 0.72s cubic-bezier(0.33, 1, 0.68, 1),
+    box-shadow 0.45s ease,
+    top 0.72s cubic-bezier(0.33, 1, 0.68, 1),
+    left 0.72s cubic-bezier(0.33, 1, 0.68, 1),
+    opacity 0.55s ease;
 }
 
 .assis-home-card-link {
@@ -18112,13 +22523,56 @@ span.assis-contact-submission-channel {
 @keyframes assis-home-card-in {
   from {
     opacity: 0;
-    translate: 0 16px;
-    scale: 0.94;
+    translate: 0 6px;
+    scale: 0.98;
   }
   to {
     opacity: 1;
     translate: 0 0;
     scale: 1;
+  }
+}
+
+/* New back card: quiet fade-in under the leaving front. */
+.assis-home-card-fan-enter-active {
+  z-index: 0 !important;
+  animation: assis-home-card-in 0.7s cubic-bezier(0.33, 1, 0.68, 1) 0.06s both;
+}
+
+.assis-home-card-fan-appear-active {
+  animation: assis-home-card-in 0.55s cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+
+.assis-home-card-fan-appear-active:nth-child(1) { animation-delay: 0.06s; }
+.assis-home-card-fan-appear-active:nth-child(2) { animation-delay: 0.14s; }
+.assis-home-card-fan-appear-active:nth-child(3) { animation-delay: 0.22s; }
+
+/* Leaving front fades out gently — no pop, blur, or hard lift. */
+.assis-home-card-fan-leave-active {
+  position: absolute !important;
+  transition:
+    opacity 0.65s cubic-bezier(0.33, 1, 0.68, 1),
+    transform 0.65s cubic-bezier(0.33, 1, 0.68, 1);
+  pointer-events: none !important;
+  z-index: 4 !important;
+}
+
+.assis-home-card-fan-leave-to {
+  opacity: 0;
+  transform: scale(0.97) translateY(-4px);
+}
+
+.assis-home-card-fan-move {
+  transition: transform 0.72s cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assis-home-card-fan-enter-active,
+  .assis-home-card-fan-appear-active,
+  .assis-home-card-fan-leave-active,
+  .assis-home-card-fan-move {
+    animation: none;
+    transition: opacity 0.2s ease;
   }
 }
 
@@ -18128,7 +22582,6 @@ span.assis-contact-submission-channel {
   left: 0;
   rotate: -8deg;
   z-index: 3;
-  animation-delay: 0.12s;
 }
 
 .assis-home-card--b {
@@ -18136,7 +22589,6 @@ span.assis-contact-submission-channel {
   left: 52px;
   rotate: 10deg;
   z-index: 2;
-  animation-delay: 0.24s;
 }
 
 .assis-home-card--c {
@@ -18149,7 +22601,6 @@ span.assis-contact-submission-channel {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  animation: none;
   transition: none;
 }
 
@@ -18277,15 +22728,17 @@ span.assis-contact-submission-channel {
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
+  padding: 2px 14px 2px 0;
   scrollbar-width: none;
-  /* Start inset so the first chip is not flush-clipped; end inset for the fade. */
-  padding: 2px 18px 2px 4px;
-  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 22px), transparent 100%);
+  -webkit-overflow-scrolling: touch;
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 18px), transparent 100%);
 }
 
 .assis-home[dir="rtl"] .assis-home-chips {
-  padding: 2px 4px 2px 18px;
-  mask-image: linear-gradient(to left, #000 0, #000 calc(100% - 22px), transparent 100%);
+  justify-content: flex-start;
+  direction: rtl;
+  padding: 2px 0 2px 14px;
+  mask-image: linear-gradient(to left, #000 0, #000 calc(100% - 18px), transparent 100%);
 }
 
 .assis-home-chips::-webkit-scrollbar {
@@ -18297,23 +22750,32 @@ span.assis-contact-submission-channel {
   appearance: none;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  height: auto;
-  padding-block: 4px;
-  padding-inline: 4px 14px;
-  border: 1px solid rgba(29, 111, 238, 0.18);
+  gap: 6px;
+  height: 28px;
+  padding-block: 0;
+  padding-inline: 3px 10px;
+  border: 1px solid rgba(29, 111, 238, 0.14);
   border-radius: 9999px;
   background: rgba(255, 255, 255, 0.96);
-  color: #374151;
-  font-size: 13px;
+  color: #4b5563;
+  font-size: 12px;
   font-weight: 500;
   letter-spacing: -0.01em;
   font-family: inherit;
-  line-height: 1.3;
+  line-height: 1.2;
   white-space: nowrap;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.04);
   cursor: pointer;
-  animation: assis-agent-card-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.assis-home-chips .assis-chip-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.assis-home-chips .assis-chip-icon svg {
+  width: 11px;
+  height: 11px;
 }
 
 .assis-chip-icon {
@@ -18350,8 +22812,8 @@ span.assis-contact-submission-channel {
 .assis-home-chips button:hover {
   color: #1d6fee;
   background: #ffffff;
-  border-color: rgba(29, 111, 238, 0.28);
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+  border-color: rgba(29, 111, 238, 0.24);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
 }
 
 .assis-home-composer {
@@ -18492,15 +22954,23 @@ span.assis-contact-submission-channel {
   border-radius: 999px;
   background: #1d6fee;
   color: #fff;
-  display: none;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   padding: 0;
+  box-shadow: 0 2px 8px rgba(29, 111, 238, 0.28);
+  opacity: 0.72;
+  transition: opacity 0.15s ease, background 0.15s ease;
 }
 
 .assis-home-composer[data-has-text="true"] .assis-home-send {
-  display: inline-flex;
+  opacity: 1;
+}
+
+.assis-home-send:hover {
+  background: #1557c0;
+  opacity: 1;
 }
 
 .assis-home-send svg {
@@ -18703,8 +23173,19 @@ span.assis-contact-submission-channel {
     gap: 8px;
   }
 
-  .assis-plugin-root .assis-demo-chat-promo {
-    max-width: 46%;
+  .chat-container.assis-chat-v2 .chat-header--with-promo {
+    /* Mobile full-sheet: more width than compact widget, still leave brand/actions alone. */
+    grid-template-columns: minmax(88px, 1fr) minmax(0, 200px) minmax(112px, 1fr);
+    column-gap: 6px;
+  }
+
+  .chat-container.assis-chat-v2.chat-maximized .chat-header--with-promo {
+    grid-template-columns: minmax(88px, 1fr) minmax(0, 240px) minmax(112px, 1fr);
+  }
+
+  .assis-plugin-root .assis-demo-chat-promo,
+  .assis-plugin-root .assis-demo-chat-promo.assis-demo-chat-promo--whatsapp {
+    max-width: 100%;
   }
 
   .ai-human-contact-sheet--v2 {
@@ -18728,8 +23209,11 @@ span.assis-contact-submission-channel {
 
   .chat-container.assis-chat-v2 .header-actions > button svg,
   .chat-container.assis-chat-v2 .header-menu-wrapper > button svg {
+    display: block;
     width: 16px;
     height: 16px;
+    flex-shrink: 0;
+    overflow: visible;
   }
 
   .chat-container.assis-chat-v2 #assis-furisport-cart-btn svg {
@@ -18771,11 +23255,11 @@ span.assis-contact-submission-channel {
     align-items: center;
     height: 48px;
     min-height: 48px;
-    padding: 0 48px 0 14px !important;
+    padding: 0 14px !important;
   }
 
   .chat-container.assis-chat-v2 .flex-rtl .input-container {
-    padding: 0 14px 0 48px !important;
+    padding: 0 14px !important;
   }
 
   .chat-container.assis-chat-v2 .chat-input-multiline .input-container {
@@ -18787,17 +23271,20 @@ span.assis-contact-submission-channel {
   }
 
   .chat-container.assis-chat-v2 .send-btn {
-    width: 34px;
-    min-width: 34px;
-    height: 34px;
-    right: 7px;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    right: auto;
+    left: auto;
   }
 
   .chat-container.assis-chat-v2 .flex-rtl .send-btn {
-    left: 7px;
+    left: auto;
+    right: auto;
   }
 
-  .chat-container.assis-chat-v2 .attach-btn {
+  .chat-container.assis-chat-v2 .attach-btn,
+  .chat-container.assis-chat-v2 .emoji-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -19000,9 +23487,19 @@ span.assis-contact-submission-channel {
   }
 
   .assis-home-chips button {
-    height: 34px;
-    padding: 0 12px 0 10px;
-    font-size: 12.5px;
+    height: 26px;
+    padding-inline: 3px 9px;
+    font-size: 11.5px;
+  }
+
+  .assis-home-chips .assis-chip-icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  .assis-home-chips .assis-chip-icon svg {
+    width: 10px;
+    height: 10px;
   }
 
   .assis-home-composer {
@@ -19254,7 +23751,7 @@ span.assis-contact-submission-channel {
 @keyframes slideUpMessage {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(8px);
   }
 
   to {
@@ -19363,13 +23860,14 @@ span.assis-contact-submission-channel {
 
 .banner-text-enter-active,
 .banner-text-leave-active {
-  transition: opacity 0.45s ease, transform 0.45s ease;
+  /* Match new-design / preview banner swap tempo. */
+  transition: opacity 280ms ease, transform 280ms ease;
 }
 
 .banner-text-enter-from,
 .banner-text-leave-to {
   opacity: 0;
-  transform: translateY(6px);
+  transform: translateY(4px);
 }
 
 .banner-text-leave-active {
@@ -19412,18 +23910,19 @@ span.assis-contact-submission-channel {
 .chat-header-banner-text {
   line-height: 1.3;
   font-weight: 400;
-  text-align: center;
   width: 100%;
+  max-height: 2.6em;
+  overflow: hidden;
 }
 
 .chat-header-banner-text-rtl {
   direction: rtl;
-  text-align: center;
+  text-align: right;
 }
 
 .chat-header-banner-text-ltr {
   direction: ltr;
-  text-align: center;
+  text-align: left;
 }
 
 .chat-header-banner-text :deep(a),
@@ -19601,6 +24100,57 @@ span.assis-contact-submission-channel {
   border-radius: inherit;
   animation: assis-lh-cart-ring 0.6s ease-out;
   pointer-events: none;
+}
+
+#assis-furisport-cart-btn.is-lure {
+  animation: assis-cart-lure 4.6s ease-in-out infinite;
+}
+
+#assis-furisport-cart-btn.is-lure .cart-badge {
+  animation: assis-cart-lure-badge 4.6s ease-in-out infinite;
+}
+
+#assis-furisport-cart-btn .cart-lure-rings,
+#assis-furisport-cart-btn .cart-lure-rings::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: 0;
+  border-radius: 999px;
+  border: 1.5px solid rgba(29, 111, 238, 0.45);
+  pointer-events: none;
+  animation: assis-cart-ring 2.4s ease-out infinite;
+}
+
+#assis-furisport-cart-btn .cart-lure-rings::after {
+  animation-delay: 0.8s;
+}
+
+@keyframes assis-cart-ring {
+  0% { opacity: 0.7; scale: 0.9; }
+  100% { opacity: 0; scale: 1.9; }
+}
+
+@keyframes assis-cart-lure {
+  0%, 70%, 100% { translate: 0 0; color: #7a8490; }
+  78% { translate: 0 -3px; color: #1d6fee; }
+  86% { translate: 0 1px; color: #1d6fee; }
+  94% { translate: 0 0; color: #1d6fee; }
+}
+
+@keyframes assis-cart-lure-badge {
+  0%, 70%, 100% { scale: 1; }
+  78% { scale: 1.18; }
+  88% { scale: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #assis-furisport-cart-btn.is-lure,
+  #assis-furisport-cart-btn.is-lure .cart-badge,
+  #assis-furisport-cart-btn .cart-lure-rings,
+  #assis-furisport-cart-btn .cart-lure-rings::after {
+    animation: none;
+  }
 }
 
 #assis-furisport-cart-panel {
@@ -20123,6 +24673,7 @@ span.assis-contact-submission-channel {
 /* Chat Content */
 .chat-content {
   /* padding: 24px 20px; */
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -20476,6 +25027,12 @@ span.assis-contact-submission-channel {
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
+.quick-actions--starter:has(.cart-upsell-bubble) {
+  max-width: min(320px, calc(100vw - 24px));
+  z-index: 1002;
+  pointer-events: auto;
+}
+
 .quick-actions--starter .quick-actions-list {
   position: relative;
   gap: 5px;
@@ -20523,6 +25080,95 @@ span.assis-contact-submission-channel {
   right: auto;
 }
 
+/* Cart upsell docks above the heart even when bubble layout is side_* */
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_one,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_two,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_long,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_one.plan-powered-by-assis,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_two.plan-powered-by-assis,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_long.plan-powered-by-assis {
+  transform: none;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 24px));
+}
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_one.quick-right,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_two.quick-right,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_long.quick-right,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-right {
+  align-items: flex-end;
+}
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_one.quick-left,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_two.quick-left,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_long.quick-left,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-left {
+  align-items: flex-start;
+}
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_one.plan-powered-by-assis.quick-small,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_two.plan-powered-by-assis.quick-small,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_long.plan-powered-by-assis.quick-small {
+  bottom: 98px;
+}
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_one.plan-powered-by-assis.quick-medium,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_two.plan-powered-by-assis.quick-medium,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_long.plan-powered-by-assis.quick-medium {
+  bottom: 106px;
+}
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_one.plan-powered-by-assis.quick-large,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_two.plan-powered-by-assis.quick-large,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_long.plan-powered-by-assis.quick-large {
+  bottom: 110px;
+}
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_one.plan-powered-by-assis.quick-right,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_two.plan-powered-by-assis.quick-right,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_long.plan-powered-by-assis.quick-right {
+  right: 44px;
+  left: auto;
+}
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_one.plan-powered-by-assis.quick-large.quick-right,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_two.plan-powered-by-assis.quick-large.quick-right,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_long.plan-powered-by-assis.quick-large.quick-right {
+  right: 40px;
+}
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_one.plan-powered-by-assis.quick-left,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_two.plan-powered-by-assis.quick-left,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_long.plan-powered-by-assis.quick-left {
+  left: 44px;
+  right: auto;
+}
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_one.plan-powered-by-assis.quick-large.quick-left,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_two.plan-powered-by-assis.quick-large.quick-left,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_long.plan-powered-by-assis.quick-large.quick-left {
+  left: 40px;
+}
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_one:not(.plan-powered-by-assis).quick-small,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_two:not(.plan-powered-by-assis).quick-small,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_long:not(.plan-powered-by-assis).quick-small {
+  bottom: 110px;
+}
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_one:not(.plan-powered-by-assis).quick-medium,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_two:not(.plan-powered-by-assis).quick-medium,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_long:not(.plan-powered-by-assis).quick-medium {
+  bottom: 124px;
+}
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_one:not(.plan-powered-by-assis).quick-large,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_two:not(.plan-powered-by-assis).quick-large,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_long:not(.plan-powered-by-assis).quick-large {
+  bottom: 130px;
+}
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_one:not(.plan-powered-by-assis).quick-right,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_two:not(.plan-powered-by-assis).quick-right,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_long:not(.plan-powered-by-assis).quick-right {
+  right: 30px;
+  left: auto;
+}
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_one:not(.plan-powered-by-assis).quick-left,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_two:not(.plan-powered-by-assis).quick-left,
+.quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_long:not(.plan-powered-by-assis).quick-left {
+  left: 30px;
+  right: auto;
+}
+/* Cart-upsell close uses the same flow as other outside bubbles (row above, not absolute on the pad). */
+
 /* Side: the first bubble stays centered on the square. The rest sit above it. */
 .quick-actions.quick-layout-side_one .quick-starter-intro-wrap,
 .quick-actions.quick-layout-side_two .quick-starter-intro-wrap,
@@ -20533,24 +25179,25 @@ span.assis-contact-submission-channel {
   margin: 0;
 }
 
+/* Stack floats as one unit — keep a tight 5px gap between bubbles / X. */
 .quick-actions.quick-layout-side_two .quick-actions-list:has(.quick-starter-item--follow) .quick-starter-intro-wrap,
 .quick-actions.quick-layout-side_long .quick-actions-list:has(.quick-starter-item--follow) .quick-starter-intro-wrap {
-  bottom: calc(100% + 40px);
+  bottom: calc(100% + 42px);
 }
 
 .quick-actions.quick-layout-side_long .quick-actions-list:has(.quick-starter-item--follow ~ .quick-starter-item--follow) .quick-starter-intro-wrap {
-  bottom: calc(100% + 76px);
+  bottom: calc(100% + 80px);
 }
 
 .quick-actions.quick-layout-side_two .quick-starter-item--follow,
 .quick-actions.quick-layout-side_long .quick-starter-item--follow {
   position: absolute;
   right: 0;
-  bottom: calc(100% + 4px);
+  bottom: calc(100% + 5px);
 }
 
 .quick-actions.quick-layout-side_long .quick-starter-item--follow ~ .quick-starter-item--follow {
-  bottom: calc(100% + 40px);
+  bottom: calc(100% + 42px);
 }
 
 .quick-actions.quick-layout-side_one.quick-left .quick-starter-intro-wrap,
@@ -20583,16 +25230,368 @@ span.assis-contact-submission-channel {
   align-items: stretch;
   gap: 0;
   width: fit-content;
-  max-width: 100%;
-  padding-block: 10px 9px;
-  padding-inline: 14px 16px;
+  max-width: min(240px, calc(100vw - 40px));
+  padding-block: 8px 7px;
+  padding-inline: 12px 13px;
   box-sizing: border-box;
-  border-radius: 20px 20px 7px 20px;
+  border-radius: 18px 18px 6px 18px;
   background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(18px) saturate(1.15);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
   border: 1px solid rgba(29, 111, 238, 0.18);
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  font-size: 12px;
+  color: #1f2937;
+  box-shadow:
+    0 18px 40px rgba(15, 23, 42, 0.12),
+    0 4px 12px rgba(15, 23, 42, 0.05);
+}
+
+button.quick-starter-intro {
+  appearance: none;
+  margin: 0;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+/* Optional icon on the first bubble (1 or 2 lines) - icon side follows plugin language via dir.
+   Match chip `.quick-starter-btn` icon→edge gap (4px / 14px). */
+.quick-starter-intro--with-icon {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding-inline: 4px 14px;
+}
+
+.quick-starter-intro--with-icon .quick-starter-intro__copy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.quick-actions--idle .quick-starter-intro {
+  max-width: 248px;
+  padding-block: 12px 11px;
+  padding-inline: 14px;
+  border-radius: 18px 18px 18px 6px;
+  background: #f3f7ff;
+  border-color: rgba(29, 111, 238, 0.28);
+  box-shadow: 0 12px 28px rgba(29, 111, 238, 0.14);
+}
+
+.quick-actions--idle .quick-starter-intro--with-icon {
+  padding-inline: 4px 14px;
+}
+
+.quick-actions--idle.quick-right .quick-starter-intro {
+  border-radius: 18px 18px 6px 18px;
+}
+
+.quick-actions--idle .quick-starter-title,
+.quick-actions--idle .quick-starter-sub {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  color: #1e293b;
+}
+
+.quick-actions--idle .quick-starter-sub {
+  margin-top: 4px;
+  color: #526075;
+}
+
+.quick-actions--idle .quick-starter-btn,
+.quick-actions--idle .quick-starter-btn--static {
+  padding-inline: 12px;
+  background: #fff;
+  border-color: rgba(29, 111, 238, 0.22);
+  box-shadow:
+    0 14px 30px rgba(15, 23, 42, 0.11),
+    0 3px 10px rgba(15, 23, 42, 0.05);
+}
+
+.quick-actions--idle .quick-starter-btn__icon {
+  display: none;
+}
+
+.quick-actions--reply-choices {
+  pointer-events: none;
+  /* Suggested replies after chat: chip row on the heart line, question above.
+     Cancel side-layout translateY(50%) which would drop chips too low. */
+  translate: 0 calc(-1 * var(--assis-bottom-offset, 0px) - var(--assis-reply-lift, 0px));
+  transition: translate 0.22s ease;
+}
+/* Beat side translateY(50%). Bottoms ≈ heart line; JS aligns chip mid to heart mid. */
+.quick-actions.quick-actions--reply-choices.quick-layout-side_one,
+.quick-actions.quick-actions--reply-choices.quick-layout-side_two,
+.quick-actions.quick-actions--reply-choices.quick-layout-side_long,
+.quick-actions.quick-actions--reply-choices {
+  transform: none;
+}
+.quick-actions.quick-actions--reply-choices.quick-small:not(.plan-powered-by-assis) {
+  bottom: 48px;
+}
+.quick-actions.quick-actions--reply-choices.quick-medium:not(.plan-powered-by-assis) {
+  bottom: 52px;
+}
+.quick-actions.quick-actions--reply-choices.quick-large:not(.plan-powered-by-assis) {
+  bottom: 56px;
+}
+.quick-actions.quick-actions--reply-choices.quick-small.plan-powered-by-assis,
+.quick-actions.quick-actions--reply-choices.quick-layout-side_one.plan-powered-by-assis.quick-small,
+.quick-actions.quick-actions--reply-choices.quick-layout-side_two.plan-powered-by-assis.quick-small,
+.quick-actions.quick-actions--reply-choices.quick-layout-side_long.plan-powered-by-assis.quick-small {
+  bottom: 40px;
+  transform: none;
+}
+.quick-actions.quick-actions--reply-choices.quick-medium.plan-powered-by-assis,
+.quick-actions.quick-actions--reply-choices.quick-layout-side_one.plan-powered-by-assis.quick-medium,
+.quick-actions.quick-actions--reply-choices.quick-layout-side_two.plan-powered-by-assis.quick-medium,
+.quick-actions.quick-actions--reply-choices.quick-layout-side_long.plan-powered-by-assis.quick-medium {
+  bottom: 44px;
+  transform: none;
+}
+.quick-actions.quick-actions--reply-choices.quick-large.plan-powered-by-assis,
+.quick-actions.quick-actions--reply-choices.quick-layout-side_one.plan-powered-by-assis.quick-large,
+.quick-actions.quick-actions--reply-choices.quick-layout-side_two.plan-powered-by-assis.quick-large,
+.quick-actions.quick-actions--reply-choices.quick-layout-side_long.plan-powered-by-assis.quick-large {
+  bottom: 48px;
+  transform: none;
+}
+/* Keep the reply stack clear of the heart (same idea as side layouts ~98px). */
+.quick-actions--reply-choices.plan-powered-by-assis.quick-right {
+  right: 102px;
+}
+.quick-actions--reply-choices.plan-powered-by-assis.quick-left {
+  left: 102px;
+}
+.quick-actions--reply-choices:not(.plan-powered-by-assis).quick-right {
+  right: 96px;
+}
+.quick-actions--reply-choices:not(.plan-powered-by-assis).quick-left {
+  left: 96px;
+}
+.quick-actions--reply-choices .quick-starter-intro-wrap,
+.quick-actions--reply-choices .quick-reply-outside {
+  pointer-events: auto;
+}
+.quick-actions--reply-choices .quick-starter-intro-wrap {
+  position: static !important;
+  right: auto !important;
+  left: auto !important;
+  bottom: auto !important;
+  margin: 0 0 4px;
+  align-self: flex-end;
+}
+.quick-actions--reply-choices .quick-actions-list {
+  align-items: flex-end;
+  width: auto;
+  max-width: min(280px, calc(100vw - 28px));
+}
+/* Side layouts absolutely park .quick-starter-item--follow — undo for reply chips. */
+.quick-actions--reply-choices.quick-layout-side_one .quick-starter-item--follow,
+.quick-actions--reply-choices.quick-layout-side_two .quick-starter-item--follow,
+.quick-actions--reply-choices.quick-layout-side_long .quick-starter-item--follow,
+.quick-actions--reply-choices .quick-reply-outside .quick-starter-item--follow,
+.quick-actions--reply-choices .quick-reply-outside .quick-starter-item--float {
+  position: relative !important;
+  top: auto !important;
+  right: auto !important;
+  left: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+}
+.quick-reply-outside {
+  direction: ltr;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+  width: fit-content;
+  max-width: min(280px, calc(100vw - 28px));
+  margin-inline-start: auto;
+  animation: none;
+  filter: none;
+  box-sizing: border-box;
+}
+.quick-reply-outside .quick-starter-item--float {
+  position: relative;
+  align-self: flex-end;
+  width: max-content;
+  max-width: 100%;
+  animation: none;
+}
+.quick-reply-outside__chips {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  width: 0;
+  min-width: 100%;
+  max-width: 100%;
+  overflow: visible;
+  padding: 0;
+  box-sizing: border-box;
+}
+.quick-reply-outside__chips .quick-starter-item--follow {
+  flex: 0 0 auto;
+}
+.quick-reply-outside__chips--rtl {
+  direction: rtl;
+  justify-content: flex-start;
+}
+.quick-reply-outside--measuring .quick-reply-outside__chips {
+  visibility: hidden;
+}
+.quick-reply-outside__more {
+  appearance: none;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: #ffffff;
+  color: #5b8ef5;
+  font-size: 15px;
+  font-weight: 300;
+  line-height: 1;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow:
+    0 10px 22px rgba(15, 23, 42, 0.1),
+    0 2px 8px rgba(15, 23, 42, 0.04);
+}
+.quick-reply-outside__more:hover {
+  color: #ffffff;
+  background: #1d6fee;
+  border-color: #1d6fee;
+  font-weight: 400;
+}
+.quick-reply-outside .quick-starter-item--float,
+.quick-reply-outside .quick-starter-item--follow {
+  position: relative !important;
+  flex: 0 0 auto;
+  width: fit-content;
+  max-width: min(260px, calc(100vw - 48px));
+  min-width: 0;
+  animation: assis-bubble-in 0.35s ease, assis-bubble-float 5.8s ease-in-out infinite;
+}
+.quick-reply-outside .quick-starter-item--follow {
+  animation-delay: 0s, 0.18s;
+  /* Chips stay one line; only the question wraps. */
+  max-width: none;
+}
+.quick-reply-outside .quick-starter-intro {
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  padding: 9px 12px;
+  border-radius: 18px 18px 6px 18px;
+  border: 1px solid rgba(29, 111, 238, 0.2);
+  background: #ffffff;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  filter: none;
+  box-shadow:
+    0 16px 36px rgba(15, 23, 42, 0.12),
+    0 4px 12px rgba(15, 23, 42, 0.05);
+  box-sizing: border-box;
+}
+.quick-reply-outside .quick-starter-title {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow: visible;
+  text-overflow: unset;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.4;
+  color: #334155;
+  text-shadow: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+.quick-reply-outside .quick-starter-btn {
+  max-width: none;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding-block: 3px;
+  padding-inline: 10px 11px;
+  font-size: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: #ffffff;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  filter: none;
+  box-shadow:
+    0 14px 30px rgba(15, 23, 42, 0.11),
+    0 3px 10px rgba(15, 23, 42, 0.05);
+  font-weight: 500;
+  text-align: center;
+  transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease, box-shadow 0.16s ease;
+}
+.quick-reply-outside .quick-starter-btn__label {
+  text-align: center;
+}
+.quick-reply-outside .quick-starter-btn:hover {
+  color: #ffffff;
+  background: #1d6fee;
+  border-color: #1d6fee;
+  translate: none;
+  box-shadow:
+    0 16px 34px rgba(29, 111, 238, 0.22),
+    0 4px 12px rgba(15, 23, 42, 0.08);
+}
+.quick-reply-outside .quick-starter-btn:hover .quick-starter-btn__icon {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+.quick-actions--reply-choices .quick-starter-close {
+  width: 16px;
+  height: 16px;
+  box-shadow: none;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+}
+.quick-actions--reply-choices .quick-starter-close:hover {
+  box-shadow: none;
+}
+.quick-actions--reply-choices .quick-starter-close svg {
+  width: 7px;
+  height: 7px;
+}
+.quick-reply-outside .quick-starter-btn__icon {
+  width: 18px;
+  height: 18px;
+  background: #f1f5f9;
+  color: #1d6fee;
+}
+.quick-reply-outside .quick-starter-btn__label {
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: unset;
+}
+.quick-reply-outside .quick-starter-btn[dir="rtl"] {
+  flex-direction: row-reverse;
+  text-align: center;
+}
+@keyframes quick-reply-outside-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes quick-reply-chip-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .quick-reply-outside,
+  .quick-reply-outside .quick-starter-item--follow {
+    animation: none;
+  }
 }
 
 .quick-starter-intro__copy {
@@ -20600,10 +25599,11 @@ span.assis-contact-submission-channel {
   display: flex;
   flex-direction: column;
   align-items: stretch;
+  gap: 0;
 }
 
 .quick-left .quick-starter-intro {
-  border-radius: 20px 20px 20px 7px;
+  border-radius: 18px 18px 18px 6px;
 }
 
 .quick-starter-intro[dir="rtl"],
@@ -20658,44 +25658,44 @@ span.assis-contact-submission-channel {
 
 .quick-starter-title {
   margin: 0;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 400;
   letter-spacing: -0.01em;
-  line-height: 1.35;
+  line-height: 1.25;
   color: #1f2937;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* The root star reset forces every child to weight 400, which flattens editor markup. */
-.quick-starter-title :deep(*) {
-  font-weight: inherit;
+/* Match the editor: only real <strong>/<b> are bold — never force the whole line.
+   Inline size/color from the editor beat these defaults. */
+.assis-plugin-root .quick-starter-title :deep(strong),
+.assis-plugin-root .quick-starter-title :deep(b),
+.assis-plugin-root .quick-starter-sub :deep(strong),
+.assis-plugin-root .quick-starter-sub :deep(b),
+.assis-plugin-root .quick-starter-intro :deep(strong),
+.assis-plugin-root .quick-starter-intro :deep(b) {
+  font-weight: 700 !important;
 }
 
 .quick-starter-sub {
-  margin: 2px 0 0;
-  font-size: 13px;
+  margin: 0;
+  font-size: 10.5px;
   font-weight: 400;
-  line-height: 1.35;
+  line-height: 1.25;
   color: #9aa1ad;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.quick-starter-sub :deep(*) {
-  font-weight: inherit;
-}
-
-/* HTML from plugin_outside_bubbles — respect payload styles (font-size, color, etc.).
-   Use :deep() so rules apply to v-html nodes (they don't get scoped data-v attrs).
-   The root `* { font-weight: 400 }` reset otherwise keeps <b> at 400. */
+/* HTML from plugin_outside_bubbles — respect payload bold/size (do not invent weight). */
 .quick-starter-intro--html {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 400;
   letter-spacing: -0.01em;
-  line-height: 1.35;
+  line-height: 1.25;
   color: #1f2937;
 }
 
@@ -20703,19 +25703,12 @@ span.assis-contact-submission-channel {
 .quick-starter-intro--html :deep(div),
 .quick-starter-intro--html :deep(span),
 .quick-starter-intro--html :deep(li) {
-  font-weight: 600;
-}
-
-.quick-starter-intro--html :deep(p + p),
-.quick-starter-intro--html :deep(div + div),
-.quick-starter-intro--html :deep(p + p span),
-.quick-starter-intro--html :deep(div + div span) {
   font-weight: 400;
 }
 
 .quick-starter-intro--html :deep(b),
 .quick-starter-intro--html :deep(strong) {
-  font-weight: 700 !important;
+  font-weight: 700;
   color: inherit;
 }
 
@@ -20740,8 +25733,8 @@ span.assis-contact-submission-channel {
   gap: 8px;
   border: 1px solid rgba(29, 111, 238, 0.18);
   background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(18px) saturate(1.15);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
   color: #374151;
   border-radius: 9999px;
   padding-block: 4px;
@@ -20755,12 +25748,20 @@ span.assis-contact-submission-channel {
   width: fit-content;
   max-width: 100%;
   white-space: nowrap;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  box-shadow:
+    0 18px 40px rgba(15, 23, 42, 0.12),
+    0 4px 12px rgba(15, 23, 42, 0.05);
   transition: translate 0.16s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.16s ease, color 0.16s ease, background 0.16s ease;
+}
+
+/* No icon: equal side padding so copy is not flush to the pill edge. */
+.quick-starter-btn--no-icon {
+  padding-inline: 14px;
 }
 
 .assis-plugin-root .quick-starter-btn__label {
   min-width: 0;
+  font-size: inherit;
   font-weight: inherit;
   white-space: nowrap;
   overflow: hidden;
@@ -20784,12 +25785,38 @@ span.assis-contact-submission-channel {
 .quick-starter-item {
   position: relative;
   max-width: 100%;
-  animation: assis-bubble-in 0.35s ease;
+  animation: assis-bubble-in 0.35s ease, assis-bubble-float 5.8s ease-in-out infinite;
+}
+
+.quick-starter-item--follow {
+  animation-delay: 0.12s, 0s;
 }
 
 .quick-starter-item--float,
 .quick-starter-intro--float {
-  animation: assis-bubble-in 0.35s ease, assis-bubble-float 5.6s ease-in-out infinite;
+  animation: assis-bubble-in 0.35s ease, assis-bubble-float 5.8s ease-in-out infinite;
+}
+
+/* Side: bob the whole stack (X + bubbles) together so absolute chips never climb the X. */
+.quick-actions.quick-layout-side_one .quick-actions-list,
+.quick-actions.quick-layout-side_two .quick-actions-list,
+.quick-actions.quick-layout-side_long .quick-actions-list {
+  animation: assis-bubble-float 5.8s ease-in-out infinite;
+}
+
+.quick-actions.quick-layout-side_one .quick-starter-item,
+.quick-actions.quick-layout-side_two .quick-starter-item,
+.quick-actions.quick-layout-side_long .quick-starter-item,
+.quick-actions.quick-layout-side_one .quick-starter-item--follow,
+.quick-actions.quick-layout-side_two .quick-starter-item--follow,
+.quick-actions.quick-layout-side_long .quick-starter-item--follow,
+.quick-actions.quick-layout-side_one .quick-starter-item--float,
+.quick-actions.quick-layout-side_two .quick-starter-item--float,
+.quick-actions.quick-layout-side_long .quick-starter-item--float,
+.quick-actions.quick-layout-side_one .quick-starter-intro--float,
+.quick-actions.quick-layout-side_two .quick-starter-intro--float,
+.quick-actions.quick-layout-side_long .quick-starter-intro--float {
+  animation: assis-bubble-in 0.35s ease;
 }
 
 @keyframes assis-bubble-in {
@@ -20804,8 +25831,14 @@ span.assis-contact-submission-channel {
 
 @media (prefers-reduced-motion: reduce) {
   .quick-starter-item,
+  .quick-starter-item--follow,
   .quick-starter-item--float,
-  .quick-starter-intro--float {
+  .quick-starter-intro--float,
+  .quick-reply-outside .quick-starter-item--float,
+  .quick-reply-outside .quick-starter-item--follow,
+  .quick-actions.quick-layout-side_one .quick-actions-list,
+  .quick-actions.quick-layout-side_two .quick-actions-list,
+  .quick-actions.quick-layout-side_long .quick-actions-list {
     animation: none;
   }
 }
@@ -20884,8 +25917,10 @@ span.assis-contact-submission-channel {
 .quick-starter-btn--static:hover {
   translate: none;
   color: #374151;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow:
+    0 18px 40px rgba(15, 23, 42, 0.12),
+    0 4px 12px rgba(15, 23, 42, 0.05);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -20900,8 +25935,18 @@ span.assis-contact-submission-channel {
     max-width: min(280px, calc(100vw - 80px));
   }
 
+  .quick-actions--starter:has(.cart-upsell-bubble) {
+    max-width: min(248px, calc(100vw - 28px));
+  }
+
   .quick-starter-intro {
-    padding: 9px 12px 8px;
+    /* Avoid shorthand so `--with-icon` keeps the chip-matched icon gap. */
+    padding-block: 8px 7px;
+    padding-inline: 12px;
+  }
+
+  .quick-starter-intro--with-icon {
+    padding-inline: 4px 12px;
   }
 
   .quick-starter-close {
@@ -20909,8 +25954,6 @@ span.assis-contact-submission-channel {
     height: 20px;
   }
 
-  .quick-starter-title,
-  .quick-starter-sub,
   .quick-starter-intro--html {
     font-size: 13px;
   }
@@ -20919,6 +25962,10 @@ span.assis-contact-submission-channel {
     font-size: 13px;
     padding-inline: 4px 12px;
     min-height: 0;
+  }
+
+  .quick-starter-btn--no-icon {
+    padding-inline: 12px;
   }
 
   .quick-starter-btn__icon {
@@ -21101,6 +26148,34 @@ span.assis-contact-submission-channel {
   width: 100%;
 }
 
+/* Enter/leave use @keyframes (forwards) so a stuck Vue enter-from class cannot leave
+   bubbles at opacity 0 forever when child transitions never get a transitionend. */
+@keyframes quick-actions-item-in {
+  from {
+    opacity: 0;
+    translate: 0 16px;
+    scale: 0.94;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+}
+
+@keyframes quick-actions-item-out {
+  from {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+  to {
+    opacity: 0;
+    translate: 0 16px;
+    scale: 0.94;
+  }
+}
+
 .quick-actions-enter-active .quick-actions-list .quick-action-btn,
 .quick-actions-appear-active .quick-actions-list .quick-action-btn,
 .quick-actions-enter-active .quick-actions-list .quick-starter-intro-wrap,
@@ -21108,33 +26183,15 @@ span.assis-contact-submission-channel {
 .quick-actions-enter-active .quick-actions-list .quick-starter-intro,
 .quick-actions-appear-active .quick-actions-list .quick-starter-intro,
 .quick-actions-enter-active .quick-actions-list .quick-starter-btn,
-.quick-actions-appear-active .quick-actions-list .quick-starter-btn,
+.quick-actions-appear-active .quick-actions-list .quick-starter-btn {
+  animation: quick-actions-item-in 0.65s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
 .quick-actions-leave-active .quick-actions-list .quick-starter-intro-wrap,
 .quick-actions-leave-active .quick-actions-list .quick-starter-intro,
 .quick-actions-leave-active .quick-actions-list .quick-starter-btn,
 .quick-actions-leave-active .quick-actions-list .quick-action-btn {
-  transition:
-    opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1),
-    translate 0.65s cubic-bezier(0.22, 1, 0.36, 1),
-    scale 0.65s cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: opacity, translate, scale;
-}
-
-.quick-actions-enter-from .quick-actions-list .quick-action-btn,
-.quick-actions-appear-from .quick-actions-list .quick-action-btn,
-.quick-actions-enter-from .quick-actions-list .quick-starter-intro-wrap,
-.quick-actions-appear-from .quick-actions-list .quick-starter-intro-wrap,
-.quick-actions-enter-from .quick-actions-list .quick-starter-intro,
-.quick-actions-appear-from .quick-actions-list .quick-starter-intro,
-.quick-actions-enter-from .quick-actions-list .quick-starter-btn,
-.quick-actions-appear-from .quick-actions-list .quick-starter-btn,
-.quick-actions-leave-to .quick-actions-list .quick-starter-intro-wrap,
-.quick-actions-leave-to .quick-actions-list .quick-starter-intro,
-.quick-actions-leave-to .quick-actions-list .quick-starter-btn,
-.quick-actions-leave-to .quick-actions-list .quick-action-btn {
-  opacity: 0;
-  translate: 0 16px;
-  scale: 0.94;
+  animation: quick-actions-item-out 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 /* Staggered entrance: intro then prompts */
@@ -21144,37 +26201,37 @@ span.assis-contact-submission-channel {
 .quick-actions-appear-active .quick-actions-list .quick-starter-intro,
 .quick-actions-enter-active .quick-actions-list .quick-action-btn:nth-child(1),
 .quick-actions-appear-active .quick-actions-list .quick-action-btn:nth-child(1) {
-  transition-delay: 0.06s;
+  animation-delay: 0.06s;
 }
 
 .quick-actions-enter-active .quick-actions-list .quick-starter-btn[data-quick-prompt-index="0"],
 .quick-actions-appear-active .quick-actions-list .quick-starter-btn[data-quick-prompt-index="0"],
 .quick-actions-enter-active .quick-actions-list .quick-action-btn:nth-child(2),
 .quick-actions-appear-active .quick-actions-list .quick-action-btn:nth-child(2) {
-  transition-delay: 0.16s;
+  animation-delay: 0.16s;
 }
 
 .quick-actions-enter-active .quick-actions-list .quick-starter-btn[data-quick-prompt-index="1"],
 .quick-actions-appear-active .quick-actions-list .quick-starter-btn[data-quick-prompt-index="1"],
 .quick-actions-enter-active .quick-actions-list .quick-action-btn:nth-child(3),
 .quick-actions-appear-active .quick-actions-list .quick-action-btn:nth-child(3) {
-  transition-delay: 0.26s;
+  animation-delay: 0.26s;
 }
 
 .quick-actions-leave-active .quick-actions-list .quick-starter-btn[data-quick-prompt-index="1"],
 .quick-actions-leave-active .quick-actions-list .quick-action-btn:nth-child(3) {
-  transition-delay: 0s;
+  animation-delay: 0s;
 }
 
 .quick-actions-leave-active .quick-actions-list .quick-starter-btn[data-quick-prompt-index="0"],
 .quick-actions-leave-active .quick-actions-list .quick-action-btn:nth-child(2) {
-  transition-delay: 0.05s;
+  animation-delay: 0.05s;
 }
 
 .quick-actions-leave-active .quick-actions-list .quick-starter-intro-wrap,
 .quick-actions-leave-active .quick-actions-list .quick-starter-intro,
 .quick-actions-leave-active .quick-actions-list .quick-action-btn:nth-child(1) {
-  transition-delay: 0.1s;
+  animation-delay: 0.1s;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -21190,7 +26247,10 @@ span.assis-contact-submission-channel {
   .quick-actions-leave-active .quick-actions-list .quick-starter-intro,
   .quick-actions-leave-active .quick-actions-list .quick-starter-btn,
   .quick-actions-leave-active .quick-actions-list .quick-action-btn {
-    transition: none;
+    animation: none;
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
   }
 }
 
@@ -21354,6 +26414,50 @@ span.assis-contact-submission-channel {
     transform: translateY(50%);
   }
 
+  .quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_one.plan-powered-by-assis.quick-small,
+  .quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_two.plan-powered-by-assis.quick-small,
+  .quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_long.plan-powered-by-assis.quick-small,
+  .quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_one.plan-powered-by-assis.quick-medium,
+  .quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_two.plan-powered-by-assis.quick-medium,
+  .quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_long.plan-powered-by-assis.quick-medium,
+  .quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_one.plan-powered-by-assis.quick-large,
+  .quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_two.plan-powered-by-assis.quick-large,
+  .quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_long.plan-powered-by-assis.quick-large {
+    bottom: calc(56px + max(16px, env(safe-area-inset-bottom, 0px)));
+    transform: none;
+  }
+
+  .quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_one.plan-powered-by-assis.quick-right,
+  .quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_two.plan-powered-by-assis.quick-right,
+  .quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_long.plan-powered-by-assis.quick-right {
+    right: max(16px, env(safe-area-inset-right, 0px));
+    left: auto;
+  }
+
+  .quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_one.plan-powered-by-assis.quick-left,
+  .quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_two.plan-powered-by-assis.quick-left,
+  .quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-layout-side_long.plan-powered-by-assis.quick-left {
+    left: max(16px, env(safe-area-inset-left, 0px));
+    right: auto;
+  }
+
+  /* Suggested replies: beside heart (JS aligns); no side translateY. */
+  .quick-actions.quick-actions--reply-choices.plan-powered-by-assis.quick-small,
+  .quick-actions.quick-actions--reply-choices.plan-powered-by-assis.quick-medium,
+  .quick-actions.quick-actions--reply-choices.plan-powered-by-assis.quick-large,
+  .quick-actions.quick-actions--reply-choices.quick-layout-side_one.plan-powered-by-assis.quick-small,
+  .quick-actions.quick-actions--reply-choices.quick-layout-side_two.plan-powered-by-assis.quick-small,
+  .quick-actions.quick-actions--reply-choices.quick-layout-side_long.plan-powered-by-assis.quick-small,
+  .quick-actions.quick-actions--reply-choices.quick-layout-side_one.plan-powered-by-assis.quick-medium,
+  .quick-actions.quick-actions--reply-choices.quick-layout-side_two.plan-powered-by-assis.quick-medium,
+  .quick-actions.quick-actions--reply-choices.quick-layout-side_long.plan-powered-by-assis.quick-medium,
+  .quick-actions.quick-actions--reply-choices.quick-layout-side_one.plan-powered-by-assis.quick-large,
+  .quick-actions.quick-actions--reply-choices.quick-layout-side_two.plan-powered-by-assis.quick-large,
+  .quick-actions.quick-actions--reply-choices.quick-layout-side_long.plan-powered-by-assis.quick-large {
+    bottom: calc(20px + max(16px, env(safe-area-inset-bottom, 0px)));
+    transform: none;
+  }
+
   .quick-actions.quick-layout-side_one.plan-powered-by-assis.quick-right,
   .quick-actions.quick-layout-side_two.plan-powered-by-assis.quick-right,
   .quick-actions.quick-layout-side_long.plan-powered-by-assis.quick-right {
@@ -21367,6 +26471,34 @@ span.assis-contact-submission-channel {
     left: calc(70px + env(safe-area-inset-left, 0px));
     right: auto;
   }
+
+  .quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-right,
+  .quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-left {
+    width: max-content;
+    max-width: min(292px, calc(100vw - 28px));
+    align-items: flex-end;
+  }
+
+  .quick-actions.quick-actions--starter:has(.cart-upsell-bubble).quick-left {
+    align-items: flex-start;
+  }
+
+  .quick-actions--starter:has(.cart-upsell-bubble) .quick-actions-list {
+    width: max-content;
+    max-width: 100%;
+  }
+
+  .cart-upsell-bubble {
+    width: max-content;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 7px 9px 7px;
+  }
+
+  .quick-actions--starter:has(.cart-upsell-bubble) {
+    max-width: min(292px, calc(100vw - 28px));
+  }
+
 }
 
 /* Position variants */
@@ -21716,6 +26848,139 @@ span.assis-contact-submission-channel {
   animation: none;
 }
 
+.heart-unread {
+  position: absolute;
+  z-index: 6;
+  top: -2px;
+  left: -3px;
+  display: grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #1d6fee;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  box-shadow: 0 0 0 2px #fff;
+  pointer-events: none;
+  animation:
+    heart-unread-enter 0.55s cubic-bezier(0.22, 1, 0.36, 1) both,
+    heart-unread-pulse 1.7s ease-in-out 0.55s infinite;
+}
+
+.heart-unread::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: #1d6fee;
+  z-index: -1;
+  pointer-events: none;
+  animation: heart-unread-echo 1.7s ease-out 0.55s infinite;
+}
+
+.button-right .heart-unread,
+.button-left .heart-unread {
+  left: -3px;
+  right: auto;
+}
+
+.button-right .heart-unread--on-hint,
+.button-left .heart-unread--on-hint {
+  top: -4px;
+  left: -4px;
+  right: auto;
+  min-width: 18px;
+  height: 18px;
+  font-size: 11px;
+}
+
+@keyframes heart-unread-enter {
+  0% { opacity: 0; transform: scale(0.2); }
+  55% { opacity: 1; transform: scale(1.28); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes heart-unread-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+@keyframes heart-unread-echo {
+  0% { transform: scale(1); opacity: 0.5; }
+  100% { transform: scale(2.35); opacity: 0; }
+}
+
+.heart-typing-dots {
+  position: absolute;
+  z-index: 6;
+  top: auto;
+  bottom: -14px;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.heart-typing-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #1d6fee;
+  opacity: 0.85;
+}
+
+.heart-typing-dots--active i {
+  opacity: 0.35;
+  animation: heart-typing-wave 1.05s ease-in-out infinite;
+}
+
+.heart-typing-dots--active i:nth-child(2) { animation-delay: 0.15s; }
+.heart-typing-dots--active i:nth-child(3) { animation-delay: 0.3s; }
+
+/* Idle (not waiting on AI): occasional soft bounce so the dots stay alive. */
+.heart-typing-dots--idle i {
+  animation: heart-typing-idle 5.8s ease-in-out infinite;
+}
+
+.heart-typing-dots--idle i:nth-child(2) { animation-delay: 0.12s; }
+.heart-typing-dots--idle i:nth-child(3) { animation-delay: 0.24s; }
+
+.heart-unread__count {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes heart-typing-wave {
+  0%, 100% { opacity: 0.35; transform: translate3d(0, 0, 0) scale(0.85); }
+  50% { opacity: 1; transform: translate3d(0, -4px, 0) scale(1); }
+}
+
+@keyframes heart-typing-idle {
+  0%, 10%, 100% { opacity: 0.75; transform: translate3d(0, 0, 0) scale(0.92); }
+  3% { opacity: 1; transform: translate3d(0, -3.5px, 0) scale(1.08); }
+  6% { opacity: 0.85; transform: translate3d(0, 0, 0) scale(1); }
+  14%, 100% { opacity: 0.75; transform: translate3d(0, 0, 0) scale(0.92); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heart-unread,
+  .heart-unread::before {
+    animation: none;
+  }
+  .heart-typing-dots--active i,
+  .heart-typing-dots--idle i {
+    animation: none;
+    opacity: 0.85;
+  }
+}
+
 .heart-image:hover {
   animation-play-state: paused;
 }
@@ -21995,11 +27260,38 @@ span.assis-contact-submission-channel {
   padding-left: 16px;
 }
 
+.chat-turn {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+  margin: 0 0 16px;
+}
+.chat-turn > .message,
+.chat-turn > .assis-products-container,
+.chat-turn > .assis-checkout-slot,
+.chat-container .chat-turn > .assis-message-question,
+.chat-container.assis-chat-v2 .chat-turn > .assis-message-question,
+.chat-container.assis-chat-v2.assis-chat-he-flip .chat-turn > .assis-message-question,
+.chat-turn > .assis-follow-replies,
+.chat-turn > .assis-message-question + .assis-follow-replies {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.chat-turn > .assis-products-container {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.chat-turn > .assis-products-container.assis-products-container--carousel .assis-products-track {
+  padding-bottom: 4px;
+}
+
 .message {
   display: flex;
   margin-bottom: 15px;
   width: 100%;
-  animation: slideUpMessage 0.46s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: slideUpMessage 0.72s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .message.message-no-animation {
@@ -22193,6 +27485,47 @@ span.assis-contact-submission-channel {
   margin-left: 0;
 }
 
+.chat-container.assis-chat-v2.assis-chat-he-flip .message:has(.assis-message-question),
+.chat-container.assis-chat-v2 .message:has(.assis-message-question) {
+  justify-content: stretch;
+}
+.chat-container.assis-chat-v2.assis-chat-he-flip .message:has(.assis-message-question) .message-content,
+.chat-container.assis-chat-v2 .message:has(.assis-message-question) .message-content {
+  width: 100%;
+  max-width: 100%;
+  margin-inline-start: 0;
+}
+.chat-container.assis-chat-v2 .message .assis-message-question {
+  flex-direction: row;
+  justify-content: flex-start;
+  width: 100%;
+  margin-inline-start: 0;
+  margin-inline-end: 0;
+}
+/* Hebrew AI: row-reverse + flex-start packs heart+question to physical right (same as bubbles). */
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.sender-ai .assis-message-question,
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.sender-agent .assis-message-question,
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.sender-assis .assis-message-question,
+.chat-container.assis-chat-v2.assis-chat-he-flip .message.sender-business .assis-message-question {
+  direction: ltr;
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+  width: 100%;
+  margin-inline-start: 0;
+  margin-inline-end: 0;
+}
+.chat-container.assis-chat-v2 .message .assis-message-question .message-bubble,
+.chat-container.assis-chat-v2 .message .assis-message-question .message-bubble[dir="rtl"] {
+  margin-left: 0;
+  margin-right: 0;
+}
+.chat-container.assis-chat-v2.assis-chat-he-flip .message .assis-message-question .message-bubble,
+.chat-container.assis-chat-v2.assis-chat-he-flip .message .assis-message-question .message-bubble[dir="rtl"] {
+  margin-left: auto;
+  margin-right: 0;
+  text-align: right;
+}
+
 .sender-client {
   justify-content: flex-end;
 
@@ -22294,10 +27627,252 @@ span.assis-contact-submission-channel {
   justify-content: flex-start;
   width: 100%;
   margin: 8px 0 12px;
+  container-type: inline-size;
+}
+
+.assis-checkout-slot > .assis-checkout-card,
+.assis-checkout-slot > .assis-checkout-inline,
+.assis-checkout-slot > .cart-upsell-chat-arrive {
+  position: relative;
+}
+
+.assis-checkout-slot > .assis-checkout-card:first-child,
+.assis-checkout-slot > .assis-checkout-inline:first-child,
+.assis-checkout-slot > .cart-upsell-chat-arrive:first-child {
+  margin-top: 10px;
 }
 
 .assis-checkout-slot.assis-checkout--end {
   justify-content: flex-end;
+}
+
+.assis-checkout-slot:has(.cart-upsell-chat-lead),
+.assis-checkout-slot:has(.assis-checkout-card),
+.assis-checkout-slot:has(.assis-checkout-inline--moment),
+.assis-checkout-slot:has(.cart-upsell-chat-arrive) {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 16px;
+}
+
+.assis-checkout-slot.assis-checkout--end:has(.cart-upsell-chat-lead),
+.assis-checkout-slot.assis-checkout--end:has(.assis-checkout-card),
+.assis-checkout-slot.assis-checkout--end:has(.assis-checkout-inline--moment),
+.assis-checkout-slot.assis-checkout--end:has(.cart-upsell-chat-arrive) {
+  align-items: flex-end;
+}
+
+.cart-upsell-chat-lead {
+  align-self: stretch;
+  width: 100%;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #1f2937;
+  white-space: pre-line;
+}
+
+.cart-upsell-chat-lead.is-typing::after {
+  content: '';
+  display: inline-block;
+  width: 1px;
+  height: 0.9em;
+  margin-inline-start: 2px;
+  background: currentColor;
+  vertical-align: text-bottom;
+  animation: cart-upsell-caret 0.8s steps(1) infinite;
+}
+
+.cart-upsell-chat-intro {
+  align-self: flex-start;
+  width: max-content;
+  max-width: min(100%, 420px);
+  margin: 10px 0 2px;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: #1e293b;
+}
+.cart-upsell-chat-question {
+  align-self: stretch;
+  width: 100%;
+  max-width: 100%;
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: #1f2937;
+  text-align: start;
+}
+.assis-checkout--end .cart-upsell-chat-question {
+  text-align: right;
+}
+.assis-checkout--end .cart-upsell-chat-intro {
+  align-self: flex-end;
+  text-align: right;
+}
+.cart-upsell-chat-intro--play {
+  animation: assis-checkout-arrive 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.cart-upsell-chat-intro + .cart-upsell-chat-arrive {
+  margin-top: 0;
+}
+
+.chat-input-area:has(.cart-upsell-more) {
+  position: relative;
+  overflow: visible;
+  z-index: 6;
+}
+.cart-upsell-more {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  top: auto;
+  z-index: 6;
+  transform: translateX(-50%);
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 26px;
+  margin: 0;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(232, 243, 255, 0.42);
+  color: #1d6fee;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+  backdrop-filter: blur(8px);
+}
+.cart-upsell-more-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+.cart-upsell-more-dots i {
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: #1d6fee;
+  opacity: 0.35;
+  animation: cart-upsell-more-dots 1.05s infinite ease-in-out;
+}
+.cart-upsell-more-dots i:nth-child(2) { animation-delay: 0.16s; }
+.cart-upsell-more-dots i:nth-child(3) { animation-delay: 0.32s; }
+@keyframes cart-upsell-more-dots {
+  0%, 80%, 100% { opacity: 0.28; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-2px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cart-upsell-more-dots i { animation: none; opacity: 0.7; }
+}
+.cart-upsell-more svg {
+  width: 11px;
+  height: 11px;
+}
+.cart-upsell-more:hover {
+  background: rgba(215, 233, 255, 0.78);
+}
+.chat-container.assis-cart-focus .cart-upsell-more {
+  position: absolute;
+  z-index: 6;
+}
+
+@keyframes cart-upsell-caret {
+  50% { opacity: 0; }
+}
+
+.assis-checkout-card.assis-checkout-card--still {
+  animation: none;
+}
+.assis-checkout-card.assis-checkout-card--arrive:not(.is-closing) {
+  animation: assis-checkout-arrive 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.assis-checkout-slot:has(.cart-upsell-chat-arrive) {
+  overflow: visible;
+  max-width: 100%;
+}
+.cart-upsell-chat-arrive {
+  width: max-content;
+  max-width: 100%;
+  align-self: flex-end;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.cart-upsell-chat-arrive .cart-upsell-card {
+  padding: 10px 12px 10px 16px;
+  border-radius: 16px;
+  background: #ffffff;
+  border: 1px solid rgba(29, 111, 238, 0.22);
+  box-shadow: 0 0 0 3px rgba(29, 111, 238, 0.06), 0 8px 22px rgba(15, 23, 42, 0.08);
+  transform: translate3d(0, 0, 0) scale(1);
+  transition:
+    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.28s ease,
+    border-color 0.28s ease;
+}
+.chat-container.assis-chat-he-flip .cart-upsell-chat-arrive .cart-upsell-card {
+  padding: 10px 16px 10px 12px;
+}
+@media (hover: hover) and (pointer: fine) {
+  @media (prefers-reduced-motion: no-preference) {
+    .cart-upsell-chat-arrive .cart-upsell-card:hover {
+      z-index: 5;
+      transform: translate3d(0, -7px, 0) scale(1.025);
+      border-color: rgba(29, 111, 238, 0.38);
+      box-shadow:
+        0 0 0 3px rgba(29, 111, 238, 0.1),
+        0 16px 30px rgba(15, 23, 42, 0.16);
+    }
+    .chat-container.assis-chat-he-flip .cart-upsell-chat-arrive .cart-upsell-card:hover {
+      transform: translate3d(-4px, -7px, 0) scale(1.025);
+    }
+  }
+}
+.cart-upsell-more {
+  animation: assis-checkout-arrive 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.assis-checkout-slot.assis-checkout--end:has(.cart-upsell-chat-arrive) > .cart-upsell-chat-arrive {
+  width: max-content;
+  align-self: flex-end;
+}
+
+@keyframes assis-checkout-arrive {
+  from {
+    opacity: 0;
+    translate: 0 16px;
+    scale: 0.96;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assis-checkout-card.assis-checkout-card--arrive:not(.is-closing),
+.cart-upsell-chat-intro--play,
+  .cart-upsell-more,
+  .cart-upsell-chat-arrive {
+    animation: none;
+  }
 }
 
 .assis-checkout-card {
@@ -22321,6 +27896,26 @@ span.assis-contact-submission-channel {
 
 .chat-container.assis-chat-he-flip .assis-checkout-card {
   padding: 10px 16px 10px 12px;
+}
+
+.assis-checkout-card--quiet {
+  gap: 6px;
+  padding: 8px 10px 8px 12px;
+  border-radius: 18px;
+  background: #f7faff;
+  border-color: rgba(29, 111, 238, 0.12);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.05);
+}
+
+.chat-container.assis-chat-he-flip .assis-checkout-card--quiet {
+  padding: 8px 12px 8px 10px;
+}
+
+.assis-checkout-card--quiet .assis-go-checkout {
+  height: 28px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
 }
 
 .assis-checkout-card.is-closing {
@@ -23202,103 +28797,672 @@ span.assis-contact-submission-channel {
   position: fixed;
 }
 
-.upload-progress {
-  padding: 10px 20px;
-  background: #f3f4f6;
-  border-top: 1px solid #e5e7eb;
+.assis-attach-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  /* Room for the remove badge that sits outside each thumb (otherwise overflow clips it). */
+  padding: 6px 12px 8px;
+  margin: 0;
+  background: transparent;
+  border: none;
+  max-width: 100%;
+  overflow: visible;
 }
 
-.progress-bar {
+.assis-attach-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 6px;
+  width: max-content;
+  max-width: 100%;
+  padding: 4px 2px 2px;
+  box-sizing: border-box;
+  margin-left: auto;
+  margin-right: 0;
+}
+
+.assis-attach-item--image,
+.assis-attach-item--file {
+  position: relative;
+  height: 42px;
+  width: 42px;
+  box-sizing: border-box;
+  margin: 0;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  overflow: visible;
+  background: transparent;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.1);
+}
+
+.assis-attach-item--image {
+  padding: 0;
+  background: transparent;
+  border: none;
+  overflow: visible;
+}
+
+.assis-attach-item--image .assis-attach-thumb,
+.assis-attach-item--image .assis-attach-loading {
+  border-radius: 10px;
+}
+
+.assis-attach-thumb-btn {
+  appearance: none;
+  display: block;
   width: 100%;
-  height: 4px;
-  background: #e5e7eb;
-  border-radius: 2px;
-  overflow: hidden;
-  margin-bottom: 8px;
-}
-
-.progress-fill {
   height: 100%;
-  background: #3b82f6;
-  transition: width 0.3s ease;
-}
-
-.progress-text {
-  font-size: 12px;
-  color: #6b7280;
-}
-
-.selected-files {
-  padding: 10px 20px;
-  background: #f9fafb;
-  border-top: 1px solid #e5e7eb;
-  max-height: 120px;
-  overflow-y: auto;
-}
-
-.selected-file {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  margin-bottom: 8px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: inherit;
+  background: transparent;
+  cursor: zoom-in;
   overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.selected-file:last-child {
-  margin-bottom: 0;
+.assis-attach-thumb {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 10px;
+  background: transparent;
+  pointer-events: none;
 }
 
-.file-preview {
-  display: flex;
+.assis-attach-remove {
+  position: absolute;
+  top: -4px;
+  inset-inline-end: -4px;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  margin: 0;
+  border: 1.5px solid #fff;
+  border-radius: 50%;
+  background: #4b5563;
+  color: #fff;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  flex: 1;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.18);
+  line-height: 1;
+  z-index: 1;
+}
+
+.assis-attach-remove:hover {
+  background: #374151;
+}
+
+.assis-attach-remove--inline {
+  /* Same overlay corner as image remove — keeps every chip the same height. */
+  position: absolute;
+  top: -4px;
+  inset-inline-end: -4px;
+  width: 14px;
+  height: 14px;
+  border-width: 1.5px;
+  background: #4b5563;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.18);
+}
+
+.assis-attach-remove svg {
+  width: 7px;
+  height: 7px;
+}
+
+.assis-attach-item--file {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-direction: row;
+  gap: 5px;
+  width: auto;
+  height: 34px;
+  max-width: 118px;
   min-width: 0;
-  overflow: hidden;
+  padding: 0 7px 0 3px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  overflow: visible;
 }
 
-.file-icon {
-  font-size: 16px;
+.assis-attach-file-glyph {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  background: rgba(243, 241, 236, 0.9);
+  flex-shrink: 0;
 }
 
-.file-name {
-  font-size: 14px;
-  color: #374151;
+.assis-attach-file-meta {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  min-width: 0;
   flex: 1;
+  height: auto;
+}
+
+.assis-attach-file-name {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: #374151;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.file-size {
-  font-size: 12px;
-  color: #6b7280;
+.assis-attach-file-size {
+  font-size: 10px;
+  line-height: 1.2;
+  color: #9ca3af;
 }
 
-.remove-file-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #dc2626;
-  font-size: 18px;
-  padding: 4px;
-  border-radius: 50%;
-  width: 24px;
-  min-width: 24px;
-  height: 24px;
+.assis-attach-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
+  border-radius: inherit;
+  background: rgba(15, 23, 42, 0.38);
+  pointer-events: none;
 }
 
-.remove-file-btn:hover {
-  background: #fef2f2;
+.assis-attach-item--file .assis-attach-loading {
+  border-radius: 12px;
+}
+
+.assis-attach-loading-ring {
+  width: 14px;
+  height: 14px;
+}
+
+.assis-attach-loading.is-active .assis-attach-loading-ring {
+  animation: assis-attach-ring-spin 0.85s linear infinite;
+}
+
+.assis-attach-loading-track {
+  stroke: rgba(255, 255, 255, 0.28);
+}
+
+.assis-attach-loading-arc {
+  stroke: #ffffff;
+  stroke-linecap: round;
+  stroke-dasharray: 28 60;
+  stroke-dashoffset: 8;
+  opacity: 0.55;
+}
+
+.assis-attach-loading.is-active .assis-attach-loading-arc {
+  opacity: 1;
+}
+
+.assis-attach-item.is-upload-pending,
+.assis-attach-item.is-upload-uploading {
+  pointer-events: none;
+}
+
+@keyframes assis-attach-ring-spin {
+  to { transform: rotate(360deg); }
+}
+
+.assis-file-attach-error {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  margin: 0 0 0 auto;
+  padding: 0 2px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  text-align: right;
+  white-space: normal;
+  box-shadow: none;
+  width: max-content;
+  max-width: 100%;
+}
+
+.chat-container.assis-chat-v2 .assis-attach-preview {
+  padding: 6px 12px 8px;
+}
+
+.assis-attach-preview--home {
+  width: 100%;
+  padding: 4px 10px 8px;
+  box-sizing: border-box;
+}
+
+@media (max-width: 767px) {
+  .assis-media-collage-carousel {
+    gap: 4px;
+    max-width: 100%;
+  }
+
+  .assis-attach-row {
+    gap: 5px;
+  }
+
+  .assis-attach-item--image {
+    width: 40px;
+    height: 40px;
+  }
+
+  .assis-media-collage-card {
+    width: 88px;
+    height: 88px;
+  }
+
+  .assis-media-collage {
+    width: min(168px, calc(100vw - 88px));
+    height: 132px;
+  }
+
+  .assis-media-collage--n3 {
+    width: min(188px, calc(100vw - 72px));
+    height: 144px;
+  }
+
+  .assis-media-collage-frame {
+    height: 88px;
+  }
+
+  .assis-media-collage-nav-btn--side {
+    width: 28px;
+    height: 28px;
+  }
+
+  .assis-media-collage-wrap {
+    touch-action: pan-y;
+    margin: 10px 8px 14px;
+    max-width: calc(100% - 12px);
+  }
+}
+
+.chat-content.is-file-drag,
+.assis-home.is-file-drag,
+.assis-home-composer.is-file-drag {
+  outline: none;
+}
+
+.assis-file-drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  background: rgba(248, 250, 252, 0.88);
+  border: 2px dashed #94a3b8;
+  border-radius: 16px;
+  margin: 8px;
+}
+
+.assis-file-drop-overlay span {
+  font-size: 14px;
+  font-weight: 600;
+  color: #334155;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+}
+
+.assis-home-composer.is-file-drag {
+  box-shadow: inset 0 0 0 2px #94a3b8;
+}
+
+/* Grouped chat images — same fan + hover language as home product cards */
+.chat-container.assis-chat-v2 .message:has(.assis-media-collage),
+.chat-container.assis-chat-v2 .message:has(.assis-media-collage) .message-content,
+.chat-container.assis-chat-v2 .message:has(.assis-media-collage) .message-content-container {
+  overflow: visible;
+}
+
+.chat-container.assis-chat-v2 .chat-turn--client:has(.assis-media-collage) {
+  padding-inline: 10px 6px;
+  box-sizing: border-box;
+}
+
+.chat-container.assis-chat-v2 .message.sender-client:has(.assis-media-collage) .message-content {
+  max-width: min(78%, calc(100% - 8px));
+}
+
+.assis-media-collage-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 14px 12px 18px;
+  max-width: calc(100% - 20px);
+}
+
+.assis-media-collage-carousel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.assis-media-collage {
+  position: relative;
+  width: 220px;
+  height: 168px;
+  margin: 0;
+  padding: 10px 8px 12px;
+  box-sizing: content-box;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.assis-media-collage--n3 {
+  width: 250px;
+  height: 184px;
+}
+
+.assis-media-collage-card {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  width: 112px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px #ffffff, 0 0 0 4px rgba(15, 23, 42, 0.05), 0 14px 30px rgba(15, 23, 42, 0.16);
+  overflow: hidden;
+  color: inherit;
+  pointer-events: auto;
+  transform-origin: center center;
+  isolation: isolate;
+  transition: rotate 0.34s cubic-bezier(0.22, 1, 0.36, 1), translate 0.34s cubic-bezier(0.22, 1, 0.36, 1), scale 0.34s cubic-bezier(0.22, 1, 0.36, 1), top 0.34s cubic-bezier(0.22, 1, 0.36, 1), left 0.34s cubic-bezier(0.22, 1, 0.36, 1), right 0.34s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.32s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.assis-media-collage-open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.assis-media-collage-download {
+  position: absolute;
+  top: 6px;
+  inset-inline-end: 6px;
+  z-index: 3;
+  opacity: 1;
+}
+
+.assis-media-collage-download .download-btn {
+  width: 22px;
+  height: 22px;
+  opacity: 0.72;
+  transform: none;
+  background: rgba(255, 255, 255, 0.72);
+  color: #64748b;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(6px);
+}
+
+.assis-media-collage-download .download-btn svg {
+  width: 11px;
+  height: 11px;
+}
+
+.assis-media-collage-download .download-btn:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.95);
+  color: #1d6fee;
+  transform: none;
+}
+
+@media (hover: hover) {
+  .assis-media-collage-card:hover {
+    rotate: 0deg;
+    translate: 0 -8px;
+    scale: 1.06;
+    z-index: 8;
+    box-shadow: 0 0 0 3px #ffffff, 0 0 0 4px rgba(29, 111, 238, 0.16), 0 22px 44px rgba(15, 23, 42, 0.2);
+  }
+
+  /* Keep X centered (-50%) so the middle card lifts/grows instead of jumping sideways. */
+  .assis-media-collage-card--center:hover,
+  .assis-media-collage-card--center.is-focused:hover {
+    translate: -50% -14px;
+    scale: 1.1;
+  }
+}
+
+.assis-media-collage-card:focus-within {
+  z-index: 8;
+}
+
+/* Coverflow slots — center is always the active image (home fan language) */
+.assis-media-collage-card--center {
+  top: 8px;
+  left: 50%;
+  right: auto;
+  translate: -50% 0;
+  rotate: 0deg;
+  z-index: 5;
+  scale: 1.02;
+}
+
+.assis-media-collage-card--left {
+  top: 30px;
+  left: 4px;
+  right: auto;
+  translate: 0 0;
+  rotate: -14deg;
+  z-index: 2;
+}
+
+.assis-media-collage-card--right {
+  top: 30px;
+  left: auto;
+  right: 4px;
+  translate: 0 0;
+  rotate: 14deg;
+  z-index: 2;
+}
+
+.assis-media-collage-card.is-focused {
+  z-index: 8;
+  box-shadow: 0 0 0 3px #ffffff, 0 0 0 4px rgba(29, 111, 238, 0.16), 0 22px 44px rgba(15, 23, 42, 0.2);
+}
+
+.assis-media-collage-card--center.is-focused {
+  translate: -50% -8px;
+  scale: 1.06;
+}
+
+.assis-media-collage-nav-btn {
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #64748b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
+  transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+  flex: 0 0 auto;
+  pointer-events: auto;
+}
+
+.assis-media-collage-nav-btn--side {
+  z-index: 4;
+}
+
+.assis-media-collage-nav-btn:hover {
+  background: #fff;
+  color: #1d6fee;
+  box-shadow: 0 2px 8px rgba(29, 111, 238, 0.16);
+}
+
+
+.assis-media-collage-frame {
+  display: block;
+  width: 100%;
+  height: 112px;
+  background: #f3f1ec;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.assis-media-collage-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  background: #f3f1ec;
+}
+
+/* EN: client on the right — mirror fan inward */
+.chat-container.assis-chat-he-flip .chat-turn--client .assis-media-collage-wrap {
+  align-items: flex-start;
+}
+
+.chat-container.assis-chat-v2:not(.assis-chat-he-flip) .chat-turn--client .assis-media-collage-wrap {
+  align-items: flex-end;
+}
+
+/* Single image — framed like a product card, with edge room */
+.chat-container.assis-chat-v2 .message.sender-client .media-files {
+  margin: 12px 18px 16px;
+  width: auto;
+  max-width: 200px;
+}
+
+.chat-container.assis-chat-v2 .message.sender-client .image-container {
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px #ffffff, 0 0 0 4px rgba(15, 23, 42, 0.05), 0 14px 30px rgba(15, 23, 42, 0.16);
+  overflow: hidden;
+}
+
+.chat-container.assis-chat-v2 .message.sender-client .image-container .download-btn {
+  width: 22px;
+  height: 22px;
+  opacity: 0.72;
+  transform: none;
+  background: rgba(255, 255, 255, 0.72);
+  color: #64748b;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(6px);
+}
+
+.chat-container.assis-chat-v2 .message.sender-client .image-container .download-btn svg {
+  width: 11px;
+  height: 11px;
+}
+
+.chat-container.assis-chat-v2 .message.sender-client .image-container .download-btn:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.95);
+  color: #1d6fee;
+  transform: none;
+}
+
+.chat-container.assis-chat-v2 .message.sender-client .media-image {
+  display: block;
+  width: 100%;
+  height: 148px;
+  max-height: none;
+  object-fit: cover;
+  background: #f3f1ec;
+  transform: none;
+}
+
+@media (hover: hover) {
+  .chat-container.assis-chat-v2 .message.sender-client .image-container:hover {
+    translate: 0 -4px;
+    box-shadow: 0 0 0 3px #ffffff, 0 0 0 4px rgba(29, 111, 238, 0.16), 0 18px 36px rgba(15, 23, 42, 0.18);
+    transition: translate 0.28s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.28s ease;
+  }
+}
+
+@media (max-width: 767px) {
+  .chat-container.assis-chat-v2 .chat-turn--client:has(.assis-media-collage) {
+    padding-inline: 12px 10px;
+  }
+
+  .chat-container.assis-chat-v2 .message.sender-client:has(.assis-media-collage) .message-content {
+    max-width: min(92%, calc(100% - 4px));
+  }
+
+  .assis-media-collage-wrap {
+    margin: 10px 8px 14px;
+    max-width: calc(100% - 12px);
+  }
+
+  .assis-media-collage-frame {
+    height: 88px;
+  }
+
+  .assis-media-collage-download .download-btn,
+  .chat-container.assis-chat-v2 .message.sender-client .image-container .download-btn {
+    width: 24px;
+    height: 24px;
+    opacity: 0.8;
+  }
+
+  /* Tap: bring card forward like desktop hover */
+  .assis-media-collage-card:active {
+    rotate: 0deg;
+    translate: 0 -6px;
+    scale: 1.04;
+    z-index: 8;
+    box-shadow: 0 0 0 3px #ffffff, 0 0 0 4px rgba(29, 111, 238, 0.16), 0 18px 36px rgba(15, 23, 42, 0.2);
+  }
+
+  .chat-container.assis-chat-v2 .message.sender-client .media-files {
+    margin: 12px 16px 16px;
+    max-width: min(220px, calc(100vw - 56px));
+  }
+
+  .chat-container.assis-chat-v2 .message.sender-client .media-image {
+    height: 160px;
+  }
+
+  .chat-container.assis-chat-v2 .assis-attach-preview {
+    padding-inline: 10px;
+  }
 }
 
 /* Media Files Display */
@@ -23833,20 +29997,19 @@ span.assis-contact-submission-channel {
   flex-direction: column;
   gap: 6px;
   width: 100%;
-  padding: 10px 0 4px;
-  margin-top: 8px;
-  margin-bottom: 4px;
+  padding: 10px 0 0;
+  margin-top: 2px;
+  margin-bottom: 0;
   box-sizing: border-box;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   overflow: visible;
-  border-top: 1px solid rgba(15, 23, 42, 0.06);
 }
 
 .assis-products-container--carousel {
   position: relative;
   display: block;
   padding-inline: 0;
-  padding-bottom: 10px;
+  padding-bottom: 0;
   overflow: visible;
 }
 
@@ -23890,23 +30053,24 @@ span.assis-contact-submission-channel {
 }
 
 .assis-product-card-slot {
-  width: clamp(156px, calc((100cqi - 30px) / 4), 210px);
+  width: clamp(140px, calc((100cqi - 28px) / 4.35), 186px);
   max-width: 100%;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  animation: assis-product-card-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
-  animation-delay: calc(0.06s + (var(--assis-product-i, 0) * 0.09s));
+  animation: assis-product-card-in 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation-delay: calc(0.1s + (var(--assis-product-i, 0) * 0.14s));
 }
 
 .assis-products-container .assis-lh-section-title {
-  animation: assis-product-card-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: assis-product-card-in 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation-delay: 0.04s;
 }
 
 @keyframes assis-product-card-in {
   from {
     opacity: 0;
-    translate: 0 12px;
+    translate: 0 5px;
   }
   to {
     opacity: 1;
@@ -23926,6 +30090,7 @@ span.assis-contact-submission-channel {
   .ai-human-contact-sheet--v2,
   .assis-suggest-chips button,
   .assis-home-chips button,
+  .assis-follow-reply,
   .slide-up-animation,
   .message {
     animation: none;
@@ -23945,16 +30110,6 @@ span.assis-contact-submission-channel {
   container-type: inline-size;
 }
 
-/* Let the card option menu paint above the trigger (viewport clips y by default). */
-.assis-products-container--carousel .assis-products-viewport:has(.lh-variant-select-wrap.is-open) {
-  overflow: visible;
-}
-
-.assis-products-container--carousel .assis-product-card-slot:has(.lh-variant-select-wrap.is-open) {
-  position: relative;
-  z-index: 8;
-}
-
 .assis-products-container--carousel .assis-products-viewport::-webkit-scrollbar {
   display: none;
 }
@@ -23964,14 +30119,14 @@ span.assis-contact-submission-channel {
   align-items: stretch;
   gap: 10px;
   width: max-content;
-  padding: 4px 4px 10px 4px;
+  padding: 2px 4px 2px 4px;
 }
 
 .assis-products-container--carousel .assis-product-card-slot {
-  flex: 0 0 clamp(156px, calc((100cqi - 30px) / 4), 210px);
-  width: clamp(156px, calc((100cqi - 30px) / 4), 210px);
-  min-width: clamp(156px, calc((100cqi - 30px) / 4), 210px);
-  max-width: clamp(156px, calc((100cqi - 30px) / 4), 210px);
+  flex: 0 0 clamp(140px, calc((100cqi - 28px) / 4.35), 186px);
+  width: clamp(140px, calc((100cqi - 28px) / 4.35), 186px);
+  min-width: clamp(140px, calc((100cqi - 28px) / 4.35), 186px);
+  max-width: clamp(140px, calc((100cqi - 28px) / 4.35), 186px);
   display: flex;
   flex-direction: column;
   align-self: stretch;
@@ -23979,8 +30134,8 @@ span.assis-contact-submission-channel {
 }
 
 .assis-products-container:not(.assis-products-container--carousel) .assis-product-card-slot {
-  width: min(210px, 100%);
-  padding-bottom: 10px;
+  width: min(186px, 100%);
+  padding-bottom: 0;
 }
 
 .assis-products-container--carousel .assis-products-carousel-arrow {
@@ -24071,6 +30226,15 @@ span.assis-contact-submission-channel {
       translate: 0 -2px;
       box-shadow: 0 0 0 1px rgba(29, 111, 238, 0.14), 0 14px 28px rgba(15, 23, 42, 0.14);
     }
+    .assis-checkout-card,
+    .assis-order-card {
+      transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.3s ease;
+    }
+    .assis-checkout-card:hover,
+    .assis-order-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0 0 1px rgba(29, 111, 238, 0.14), 0 14px 28px rgba(15, 23, 42, 0.14);
+    }
   }
 }
 
@@ -24078,8 +30242,8 @@ span.assis-contact-submission-channel {
   position: relative;
   flex: 0 0 auto;
   width: 100%;
-  height: 108px;
-  padding: 8px;
+  height: 96px;
+  padding: 6px;
   margin: 0;
   border: none;
   border-radius: 12px 12px 0 0;
@@ -24263,8 +30427,8 @@ span.assis-contact-submission-channel {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 6px;
-  padding: 8px 8px 10px;
+  gap: 4px;
+  padding: 6px 6px 8px;
   background: #ffffff;
   overflow: visible;
   text-align: center;
@@ -24459,7 +30623,7 @@ span.assis-contact-submission-channel {
   justify-content: center;
   gap: 4px;
   width: 100%;
-  height: 30px;
+  height: 28px;
   padding: 0 8px;
   border: none;
   border-radius: 9999px;
@@ -24508,11 +30672,6 @@ span.assis-contact-submission-channel {
   overflow: visible;
 }
 
-.assis-plugin-root .assis-product-card.assis-lh-tile-card:has(.lh-variant-select-wrap.is-open) {
-  overflow: visible;
-  z-index: 5;
-}
-
 .assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-variant-select-wrap {
   position: relative;
   z-index: 2;
@@ -24528,41 +30687,33 @@ span.assis-contact-submission-channel {
 
 .assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-variant-select-wrap.is-open {
   z-index: 40;
-  overflow: visible;
 }
 
 .assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-variant-select-wrap--empty {
   pointer-events: none;
 }
 
-/* Absolute above the trigger - overlays the card body, never grows lh-actions. */
-.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-card-option-menu {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: auto;
-  bottom: calc(100% + 4px);
-  z-index: 50;
-  width: 100%;
-  max-height: 168px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+.lh-card-option-menu-portal {
+  max-height: 156px;
   padding: 4px;
-  border-radius: 12px;
-  background: #ffffff;
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
-  box-sizing: border-box;
-  -webkit-overflow-scrolling: touch;
-  touch-action: pan-y;
+  border-radius: 10px;
 }
 
-.assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-card-option-menu .lh-option-menu-item {
-  min-height: 28px;
-  padding: 6px 8px;
+.lh-card-option-menu-portal .lh-option-menu-item {
+  min-height: 24px;
+  padding: 5px 22px 5px 8px;
   font-size: 10px;
-  border-radius: 8px;
+  border-radius: 7px;
+}
+
+.lh-card-option-menu-portal .lh-option-menu-item[dir="rtl"] {
+  padding: 5px 8px 5px 22px;
+}
+
+.lh-card-option-menu-portal .lh-option-menu-check {
+  inset-inline-end: 7px;
+  width: 11px;
+  height: 11px;
 }
 
 .assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-price-was {
@@ -24612,7 +30763,7 @@ span.assis-contact-submission-channel {
   background-size: 10px;
   color: #374151;
   font-size: 10px;
-  font-weight: 500;
+  font-weight: 400;
   font-family: inherit;
   line-height: 1;
   cursor: pointer;
@@ -24635,6 +30786,7 @@ span.assis-contact-submission-channel {
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: center;
+  font-weight: 400;
 }
 
 /* High enough to win over the chat shell when portaled; host sites often use huge z-index. */
@@ -24652,43 +30804,65 @@ span.assis-contact-submission-channel {
 .lh-option-menu-portal {
   position: fixed;
   z-index: 2147483646;
-  max-height: 220px;
+  max-height: 180px;
+  overflow-x: hidden;
   overflow-y: auto;
-  padding: 6px;
-  border-radius: 14px;
+  padding: 4px;
+  border-radius: 12px;
   background: #ffffff;
   border: 1px solid rgba(15, 23, 42, 0.08);
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.14);
   box-sizing: border-box;
   pointer-events: auto;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.55) transparent;
+}
+
+.lh-option-menu-portal::-webkit-scrollbar {
+  width: 6px;
+}
+
+.lh-option-menu-portal::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.55);
 }
 
 .lh-option-menu-item {
   appearance: none;
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   flex-direction: row;
-  gap: 8px;
+  gap: 0;
   width: 100%;
-  min-height: 34px;
-  padding: 8px 10px;
+  min-height: 28px;
+  padding: 6px 24px 6px 8px;
   border: none;
-  border-radius: 10px;
+  border-radius: 8px;
   background: transparent;
   color: #1f2937;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 400;
   font-family: inherit;
-  line-height: 1.2;
+  line-height: 1.25;
   text-align: start;
   cursor: pointer;
 }
 
+.lh-option-menu-item[dir="rtl"] {
+  padding: 6px 8px 6px 24px;
+}
+
 .lh-option-menu-item > span {
   flex: 1 1 auto;
+  max-width: 100%;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: start;
 }
 
 .lh-option-menu-item[data-selected="true"] {
@@ -24702,14 +30876,23 @@ span.assis-contact-submission-channel {
   cursor: not-allowed;
 }
 
+.lh-option-menu-item[data-selected="true"][data-unavailable="true"] {
+  color: #ffffff;
+}
+
 .lh-option-menu-item:disabled {
   cursor: not-allowed;
 }
 
 .lh-option-menu-check {
-  width: 14px;
-  height: 14px;
+  position: absolute;
+  top: 50%;
+  inset-inline-end: 8px;
+  width: 12px;
+  height: 12px;
   flex-shrink: 0;
+  transform: translateY(-50%);
+  pointer-events: none;
 }
 
 .assis-plugin-root .assis-product-card.assis-lh-tile-card .lh-price {
@@ -24894,8 +31077,8 @@ span.assis-contact-submission-channel {
   border: 1px dashed rgba(29, 111, 238, 0.28);
   box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.03), 0 4px 12px rgba(15, 23, 42, 0.05);
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  animation: assis-agent-card-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
-  animation-delay: calc(0.05s + (var(--assis-coupon-i, 0) * 0.08s));
+  animation: assis-agent-card-in 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+  animation-delay: calc(0.1s + (var(--assis-coupon-i, 0) * 0.14s));
   transition: translate 0.3s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.3s ease;
 }
 
@@ -25507,7 +31690,7 @@ span.assis-contact-submission-channel {
 }
 
 @keyframes assis-agent-card-in {
-  from { opacity: 0; translate: 0 10px; }
+  from { opacity: 0; translate: 0 5px; }
   to { opacity: 1; translate: 0 0; }
 }
 
@@ -26844,7 +33027,8 @@ span.assis-contact-submission-channel {
   }
 }
 
-/* Match the Cursor composer: workbench text is 13px. Inputs stay 16px on phones so iOS does not zoom. */
+/* Match the Cursor composer: workbench text is 13px. Inputs stay 16px on phones so iOS does not zoom.
+   Do not force outside bubbles/chips here — their size comes from the editor via inline styles. */
 .assis-plugin-root {
   font-size: 13px;
 }
@@ -26854,12 +33038,6 @@ span.assis-contact-submission-channel {
 .chat-container.assis-chat-v2 .chat-input::placeholder,
 .assis-home-input,
 .assis-home-body,
-.quick-starter-title,
-.quick-starter-sub,
-.quick-starter-intro,
-.quick-starter-intro--html,
-.quick-starter-btn,
-.quick-starter-btn__label,
 .assis-plugin-root .lh-title,
 .assis-plugin-root .lh-desc,
 .assis-plugin-root .lh-price,
@@ -26954,65 +33132,49 @@ span.assis-contact-submission-channel {
   transform: none;
 }
 
+/* Unread "1" is allowed on Powered too (e.g. with outside bubbles). Vue gates visibility. */
+
 .heart-chat-hint {
   position: absolute;
-  top: -5px;
-  z-index: 3;
-  width: 19px;
-  height: 19px;
-  display: grid;
-  place-items: center;
-  background: transparent;
+  top: -18px;
+  left: -10px;
+  right: auto;
+  z-index: 6;
+  width: 32px;
+  height: 30px;
+  display: block;
+  background: none;
   pointer-events: none;
-  filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.22));
+  transform-origin: 78% 70%;
+  filter: drop-shadow(0 1px 1.5px rgba(29, 111, 238, 0.22));
   animation: assis-chat-nudge 5.6s ease-in-out infinite;
 }
 
 .heart-chat-hint__glyph {
   position: relative;
-  width: 19px;
-  height: 19px;
-  transform: rotate(-18deg);
-  background: #3d8ef5;
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='2.8 3.8 18.4 16.4'%3E%3Cpath fill='black' d='M7.2 4.4h9.6a3.8 3.8 0 0 1 3.8 3.8v5a3.8 3.8 0 0 1-3.8 3.8H13.4l-2.3 2.5a.9.9 0 0 1-1.4-.6V17H7.2a3.8 3.8 0 0 1-3.8-3.8v-5a3.8 3.8 0 0 1 3.8-3.8z'/%3E%3C/svg%3E") center / contain no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='2.8 3.8 18.4 16.4'%3E%3Cpath fill='black' d='M7.2 4.4h9.6a3.8 3.8 0 0 1 3.8 3.8v5a3.8 3.8 0 0 1-3.8 3.8H13.4l-2.3 2.5a.9.9 0 0 1-1.4-.6V17H7.2a3.8 3.8 0 0 1-3.8-3.8v-5a3.8 3.8 0 0 1 3.8-3.8z'/%3E%3C/svg%3E") center / contain no-repeat;
+  display: block;
+  width: 32px;
+  height: 30px;
+  background: none;
 }
 
-.heart-chat-hint__dots {
-  position: absolute;
-  left: 50%;
-  top: 42%;
-  display: flex;
-  gap: 2px;
-  transform: translate(-50%, -50%);
-}
-
-.heart-chat-hint__dots span {
-  width: 2px;
-  height: 2px;
-  border-radius: 999px;
-  background: #ffffff;
-}
-
-.fixed-heart-btn.button-right .heart-chat-hint {
-  left: -5px;
-}
-
-.fixed-heart-btn.button-left .heart-chat-hint {
-  right: -5px;
-  left: auto;
+.heart-chat-hint__glyph svg {
+  display: block;
+  width: 32px;
+  height: 30px;
 }
 
 @keyframes assis-chat-nudge {
-  0%, 74%, 100% { transform: translate(0, 0) rotate(0deg); }
-  80% { transform: translate(-2px, -5px) rotate(-8deg); }
-  86% { transform: translate(1px, -1px) rotate(6deg); }
-  92% { transform: translate(0, 0) rotate(0deg); }
+  0%, 74%, 100% { transform: rotate(-28deg) scale(0.70); }
+  80% { transform: translate(-1px, -2px) rotate(-34deg) scale(0.70); }
+  86% { transform: translate(1px, 0) rotate(-22deg) scale(0.70); }
+  92% { transform: rotate(-28deg) scale(0.70); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .heart-chat-hint {
     animation: none;
+    transform: rotate(-28deg) scale(0.70);
   }
 }
 
@@ -27046,4 +33208,61 @@ span.assis-contact-submission-channel {
   }
 }
 /* } */
+.cart-upsell-bubble {
+  position: relative;
+  z-index: 2;
+  width: max-content;
+  max-width: 100%;
+  pointer-events: auto;
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(18px) saturate(1.15);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+  /* Same corner language as .quick-starter-intro (sharp corner toward the heart). */
+  border-radius: 20px 20px 7px 20px;
+  padding: 14px 16px 13px;
+  border: 0;
+  box-shadow:
+    0 18px 40px rgba(15, 23, 42, 0.12),
+    0 4px 12px rgba(15, 23, 42, 0.05);
+  transform-origin: 100% 100%;
+  animation:
+    cart-upsell-bubble-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both,
+    assis-bubble-float 5.8s ease-in-out 0.3s infinite;
+  transition: box-shadow 0.22s ease, transform 0.22s ease;
+}
+.cart-upsell-bubble .cart-upsell,
+.cart-upsell-bubble .cart-upsell-sheet,
+.cart-upsell-bubble button,
+.cart-upsell-bubble a {
+  pointer-events: auto;
+}
+.cart-upsell-bubble:hover {
+  box-shadow:
+    0 22px 46px rgba(15, 23, 42, 0.14),
+    0 6px 16px rgba(29, 111, 238, 0.08);
+}
+.cart-upsell-bubble:has([dir='rtl']) {
+  padding: 14px 16px 13px;
+}
+.quick-left .cart-upsell-bubble {
+  border-radius: 20px 20px 20px 7px;
+  transform-origin: 0% 100%;
+}
+@keyframes cart-upsell-bubble-in {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+    scale: 0.94;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cart-upsell-bubble {
+    animation: none;
+  }
+}
 </style>

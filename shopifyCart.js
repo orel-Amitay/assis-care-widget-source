@@ -399,7 +399,12 @@ export default {
         0
       );
       this.shopifyCartCurrency = String(cart?.currency || this.shopifyCartCurrency || '').trim();
-      if (prevCount >= 0 && nextCount > prevCount) this.bumpShopifyCartBadge();
+      if (prevCount >= 0 && nextCount > prevCount) {
+        this.bumpShopifyCartBadge();
+        if (this.checkoutChatSnapshot && typeof this.freezeCheckoutChatSnapshot === 'function') {
+          this.freezeCheckoutChatSnapshot();
+        }
+      }
       this._lastShopifyCartCount = nextCount;
       this.pruneAddedProductsNotInCart();
       const appliedCode = this.getAppliedDiscountCodeFromCart(cart);
@@ -461,8 +466,21 @@ export default {
       if (!wasShown) {
         this.trackPluginEvent('checkout_card_shown', {}, { onceKey: 'checkout_card' });
       }
-      this.showShopifyCartPanel = false;
+      // Keep the bag drawer available for the add-to-cart open sequence; only close
+      // it later if the plugin cart focus overlay is not about to run.
+      if (!this.cartUpsellHold && this.cartUpsell?.source !== 'plugin') {
+        this.showShopifyCartPanel = false;
+      }
       this.$nextTick(() => {
+        // During bag choreography the park/scroll is owned by cartUpsell — do not yank here.
+        if (this._pluginCartChoreographyRunning || this.cartUpsellHold || this._cartUpsellAwaitReply) return;
+        // First time only — jumping to checkout on every extra add feels broken.
+        if (!wasShown && this.cartUpsellInChat && typeof this.scrollCheckoutCardIntoView === 'function') {
+          this.scrollCheckoutCardIntoView();
+          return;
+        }
+        // Later adds: stay put (second bag is slim at the bottom; scrolling up to the first card is wrong).
+        if (wasShown && this.cartUpsellInChat) return;
         if (typeof this.scrollToBottom === 'function') this.scrollToBottom();
       });
     },
@@ -519,43 +537,8 @@ export default {
       }
     },
     seedLocalShopifyPreview() {
-      this.publishLocalShopifyCart({
-        items: [
-          {
-            key: 'local:preview-1',
-            id: 'preview-1',
-            variant_id: 'preview-1',
-            product_id: 'preview-1',
-            title: this.language === 'he' ? 'קרם לחות' : 'Moisturizer',
-            product_title: this.language === 'he' ? 'קרם לחות' : 'Moisturizer',
-            quantity: 1,
-            price: 8990,
-            final_price: 8990,
-            line_price: 8990,
-            final_line_price: 8990,
-            image: '',
-            handle: 'sample-1',
-          },
-          {
-            key: 'local:preview-2',
-            id: 'preview-2',
-            variant_id: 'preview-2',
-            product_id: 'preview-2',
-            title: this.language === 'he' ? 'סרום' : 'Serum',
-            product_title: this.language === 'he' ? 'סרום' : 'Serum',
-            quantity: 1,
-            price: 12900,
-            final_price: 12900,
-            line_price: 12900,
-            final_line_price: 12900,
-            image: '',
-            handle: 'sample-2',
-          },
-        ],
-        currency: 'ILS',
-        discount_codes: [],
-      });
-      this.poweredByAssisHomeDismissed = true;
+      // Localhost Shopify preview: start with an empty bag (no demo line items).
+      this.publishLocalShopifyCart(this.emptyLocalShopifyCart());
     },
     emptyLocalShopifyCart() {
       return { items: [], item_count: 0, total_price: 0, currency: 'ILS', discount_codes: [], token: '' };
@@ -663,15 +646,22 @@ export default {
       }
       if (typeof this.persistChatSession === 'function') this.persistChatSession();
     },
-    async openShopifyCheckout() {
+    async openShopifyCheckout(options = {}) {
       const lines = Array.isArray(this.shopifyCartItems) ? this.shopifyCartItems : [];
       const cartToken = this.recordedCartToken();
       const wooCart = Boolean(cartToken && this.isWooCommerceWebsite());
+      const fromChat = Boolean(
+        options?.fromChat
+        || options?.surface === 'chat'
+        || this.checkoutChatAnchorId
+        || this.isChatOpen
+      );
       this.trackPluginEvent('checkout_clicked', {
         item_count: lines.length,
         product_ids: lines.slice(0, 12).map((item) => String(item?.product_id || item?.id || '')).filter(Boolean),
         ...(cartToken ? { cart_token: cartToken } : {}),
         ...(wooCart ? { cart_channel: 'woo' } : {}),
+        ...(fromChat ? { surface: 'chat', from_chat: true } : { surface: 'cart' }),
       });
       // Close widget before leaving so mobile/desktop do not keep an open overlay,
       // and so a restored session does not reopen the chat on the checkout page.
@@ -688,7 +678,23 @@ export default {
         (window.top || window).location.assign(this.wooCheckoutUrl());
         return;
       }
-      if (this.isLocalShopifyPreview()) return;
+      // Local widget preview: jump to the real storefront checkout when we know it.
+      if (this.isLocalShopifyPreview()) {
+        const remote = String(this.pluginStorefrontUrl || '').trim();
+        if (!remote) return;
+        try {
+          const base = new URL(remote.includes('://') ? remote : `https://${remote}`);
+          const code = this.normalizeDiscountCode(this.appliedDiscountCode);
+          const checkoutPath = '/checkout';
+          const url = code
+            ? `${base.origin}/discount/${encodeURIComponent(code)}?redirect=${encodeURIComponent(checkoutPath)}`
+            : `${base.origin}${checkoutPath}`;
+          (window.top || window).location.assign(url);
+        } catch {
+          /* no remote checkout */
+        }
+        return;
+      }
       try {
         await Promise.race([
           this.stampAssisCartVisitor(),
@@ -1246,7 +1252,10 @@ export default {
         if (matchedId) return matchedId;
       }
 
-      const firstAvailable = variants.find((variant) => variant?.available !== false && variant?.availableForSale !== false) || variants[0];
+      const preferPreorder = this.isAssisPreOrderProduct(item);
+      const firstAvailable = preferPreorder
+        ? variants[0]
+        : (variants.find((variant) => variant?.available !== false && variant?.availableForSale !== false) || variants[0]);
       const fallbackCandidates = [
         item.variant,
         firstAvailable,
@@ -1259,6 +1268,87 @@ export default {
       }
       return null;
     },
+    isAssisPreOrderProduct(product) {
+      const flag = (value) => value === true || value === 'true' || value === 1 || value === '1';
+      if (!product || typeof product !== 'object') return false;
+      if (flag(product.isPreOrder) || flag(product.is_pre_order) || flag(product.preorder)) return true;
+      const selected = product.selectedVariant || product.selected_variant || null;
+      return flag(selected?.isPreOrder) || flag(selected?.is_pre_order);
+    },
+    isShopifyPreorderPlanName(name) {
+      return /pre-?\s*order|הזמנה\s*מוקדמת/i.test(String(name || '').trim());
+    },
+    pickShopifyPreorderSellingPlanId(productJson, variantId) {
+      if (!productJson || typeof productJson !== 'object') return null;
+      const groups = Array.isArray(productJson.selling_plan_groups) ? productJson.selling_plan_groups : [];
+      const planById = new Map();
+      groups.forEach((group) => {
+        (Array.isArray(group?.selling_plans) ? group.selling_plans : []).forEach((plan) => {
+          const id = this.shopifyNumericId(plan?.id);
+          if (id) planById.set(id, { ...plan, groupName: group?.name });
+        });
+      });
+
+      const variants = Array.isArray(productJson.variants) ? productJson.variants : [];
+      const variant = variants.find((item) => this.shopifyNumericId(item?.id) === Number(variantId)) || variants[0];
+      const allocations = Array.isArray(variant?.selling_plan_allocations)
+        ? variant.selling_plan_allocations
+        : [];
+      if (allocations.length) {
+        const preorderAlloc = allocations.find((allocation) => {
+          const plan = planById.get(this.shopifyNumericId(allocation?.selling_plan_id));
+          return plan && (
+            this.isShopifyPreorderPlanName(plan.name)
+            || this.isShopifyPreorderPlanName(plan.groupName)
+          );
+        });
+        const chosen = preorderAlloc || allocations[0];
+        return this.shopifyNumericId(chosen?.selling_plan_id);
+      }
+
+      for (const group of groups) {
+        for (const plan of (Array.isArray(group?.selling_plans) ? group.selling_plans : [])) {
+          if (
+            this.isShopifyPreorderPlanName(plan?.name)
+            || this.isShopifyPreorderPlanName(group?.name)
+          ) {
+            const id = this.shopifyNumericId(plan?.id);
+            if (id) return id;
+          }
+        }
+      }
+      const firstPlan = groups[0]?.selling_plans?.[0];
+      return this.shopifyNumericId(firstPlan?.id);
+    },
+    async fetchShopifyProductJson(handle) {
+      const slug = String(handle || '').trim();
+      if (!slug) return null;
+      const response = await fetch(`${this.shopifyStoreRoot()}products/${encodeURIComponent(slug)}.js`, {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) return null;
+      try {
+        return await response.json();
+      } catch {
+        return null;
+      }
+    },
+    async resolveShopifyPreorderSellingPlanId(product, variantId) {
+      const fromPayload = this.shopifyNumericId(
+        product?.selling_plan
+        || product?.sellingPlanId
+        || product?.selling_plan_id
+        || product?.selectedVariant?.selling_plan
+        || product?.selectedVariant?.sellingPlanId
+      );
+      if (fromPayload) return fromPayload;
+
+      const handle = this.getShopifyProductHandle(product);
+      if (!handle) return null;
+      const data = await this.fetchShopifyProductJson(handle);
+      return this.pickShopifyPreorderSellingPlanId(data, variantId);
+    },
     async resolveShopifyVariantId(product) {
       const fromProduct = this.getShopifyVariantIdFromProduct(product);
       if (fromProduct) return fromProduct;
@@ -1266,12 +1356,8 @@ export default {
       const handle = this.getShopifyProductHandle(product);
       if (!handle) return null;
 
-      const response = await fetch(`${this.shopifyStoreRoot()}products/${encodeURIComponent(handle)}.js`, {
-        credentials: 'same-origin',
-        headers: { Accept: 'application/json' },
-      });
-      if (!response.ok) return null;
-      const data = await response.json();
+      const data = await this.fetchShopifyProductJson(handle);
+      if (!data) return null;
       const variants = Array.isArray(data?.variants) ? data.variants : [];
 
       const selectedTitle = String(
@@ -1291,7 +1377,10 @@ export default {
         if (matchedById) return selectedIdHint;
       }
 
-      const variant = variants.find((item) => item?.available !== false) || variants[0];
+      const preferPreorder = this.isAssisPreOrderProduct(product);
+      const variant = preferPreorder
+        ? variants[0]
+        : (variants.find((item) => item?.available !== false) || variants[0]);
       return this.shopifyNumericId(variant?.id);
     },
     shopifyCartSectionPath() {
@@ -1569,35 +1658,43 @@ export default {
         document.body.appendChild(iframe);
       });
     },
-    async addShopifyVariantToCart(variantId, quantity = 1) {
+    async addShopifyVariantToCart(variantId, quantity = 1, sellingPlanId = null) {
+      // Any caller (upsell, AI fallback, etc.) must not hit /cart/add.js on the local harness.
+      if (this.isLocalShopifyPreview()) {
+        this.addLocalShopifyPreviewProduct({
+          id: variantId,
+          selectedVariantId: variantId,
+          variant_id: variantId,
+          quantity,
+        });
+        return null;
+      }
       this._assisShopifyCartMutating = true;
       try {
       const sectionIds = this.getShopifyCartSectionIds();
+      const planId = this.shopifyNumericId(sellingPlanId);
       const payload = { id: Number(variantId), quantity };
+      if (planId) payload.selling_plan = planId;
       if (sectionIds.length) {
         payload.sections = sectionIds;
         payload.sections_url = this.shopifyCartSectionPath();
       }
 
-      let response = await fetch(`${this.shopifyStoreRoot()}cart/add.js`, {
+      const postAdd = (body) => fetch(`${this.shopifyStoreRoot()}cart/add.js`, {
         method: 'POST',
         credentials: 'same-origin',
         headers: {
           Accept: 'application/json',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(body),
       });
+
+      let response = await postAdd(payload);
       if (!response.ok && sectionIds.length) {
-        response = await fetch(`${this.shopifyStoreRoot()}cart/add.js`, {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ id: Number(variantId), quantity }),
-        });
+        const retryBody = { id: Number(variantId), quantity };
+        if (planId) retryBody.selling_plan = planId;
+        response = await postAdd(retryBody);
       }
       if (!response.ok) {
         let description = `Shopify cart add failed (${response.status})`;
@@ -1842,15 +1939,31 @@ export default {
           product_id: line?.product_id || '',
           variant_id: line?.variant_id || '',
           title: line?.product_title || line?.title || '',
+          image: line?.image || '',
           quantity: added,
           price: cents / 100,
         }, 'store', cartStatus);
       });
     },
-    noteCartAdded(product, source = 'plugin', cartStatus = '') {
+    cartActionPinTitle(product) {
+      const title = String(product?.title || product?.name || '').trim();
+      const variant = String(
+        product?.selectedVariantTitle
+        || product?.variant_title
+        || product?.selectedVariant?.title
+        || product?.selectedVariant?.name
+        || ''
+      ).trim();
+      if (!variant || /^default\s*title$/i.test(variant)) return title;
+      if (!title) return variant;
+      if (title.includes(variant)) return title;
+      return `${title} ${variant}`.trim();
+    },
+    async noteCartAdded(product, source = 'plugin', cartStatus = '', options = {}) {
       const quantity = Math.max(1, Number(product?.quantity) || 1);
       const unit = Number(product?.price ?? product?.final_price);
-      const title = this.clipPluginEventText?.(product?.title || product?.name || '') || '';
+      const pinTitle = this.cartActionPinTitle(product);
+      const title = this.clipPluginEventText?.(pinTitle || product?.title || product?.name || '') || '';
       const cartToken = this.recordedCartToken();
       const wooCart = Boolean(cartToken && this.isWooCommerceWebsite());
       this.trackPluginEvent('cart_added', {
@@ -1865,9 +1978,42 @@ export default {
         ...(cartStatus === 'new' || cartStatus === 'existing' ? { cart_status: cartStatus } : {}),
       });
       if (typeof this.stampAssisCartVisitor === 'function') this.stampAssisCartVisitor();
+      // Button / upsell reco / home / product_sheet own the AI reply via the pin (withAi).
+      // Chat affirm / AI cartActions pass withAi:false — pin is persist-only.
+      // Upsell (2nd add) still pins + asks AI; choreography stamps the slim checkout card under that reply.
+      const withAi = options.withAi === true
+        || (options.withAi !== false && (
+          source === 'home'
+          || source === 'product_sheet'
+          || source === 'upsell'
+        ));
+      if (source !== 'store' && typeof this.pushCartActionMessage === 'function') {
+        if (typeof this.ensureChatReadyForCartAction === 'function') {
+          await this.ensureChatReadyForCartAction();
+        }
+        await this.pushCartActionMessage(pinTitle || product?.title || product?.name, {
+          withAi,
+          beforeMessage: options.beforeMessage || null,
+        });
+      }
+      // Store/site adds: optional theme drawer (Plugin Settings → open_cart_drawer_on_site_add).
+      // Never opens chat. Plugin adds open the drawer via openPluginCartFocusNow instead.
+      if (source === 'store' && typeof this.maybeOpenCartDrawerOnSiteAdd === 'function') {
+        this.maybeOpenCartDrawerOnSiteAdd();
+      }
+      // Pre-order from the storefront: quiet (no outside upsell bubble).
+      // In-plugin adds still stamp הסל שלך / slim checkout under the AI reply.
+      if (this.isAssisPreOrderProduct(product) && (source === 'store' || typeof this.presentCartUpsell !== 'function')) {
+        this.cartUpsellHold = false;
+        if (typeof this.bumpShopifyCartBadge === 'function') this.bumpShopifyCartBadge();
+        return;
+      }
+      if (typeof this.presentCartUpsell !== 'function') return;
+      await this.presentCartUpsell(product, source === 'store' ? 'site' : 'plugin');
     },
-    async addPoweredByAssisHomeProduct(product, source = 'home') {
+    async addPoweredByAssisHomeProduct(product, source = 'home', options = {}) {
       if (!product?.id || this.isProductInBag(product)) return;
+      this.cartUpsellHold = true;
 
       const event = new CustomEvent('assis-add-to-cart', {
         bubbles: true,
@@ -1880,7 +2026,10 @@ export default {
         },
       });
       window.dispatchEvent(event);
-      if (event.defaultPrevented) return;
+      if (event.defaultPrevented) {
+        this.cartUpsellHold = false;
+        return;
+      }
 
       const cartStatus = (Number(this.shopifyCartItemCount) || 0) > 0 ? 'existing' : 'new';
       const bagKey = this.getProductBagStateKey(product);
@@ -1889,13 +2038,17 @@ export default {
         ...this.poweredByAssisAddedProductIds,
         ...(bagKey ? { [bagKey]: true } : (product.id ? { [product.id]: true } : {})),
       };
+      const noteOpts = {
+        withAi: options.withAi,
+        beforeMessage: options.beforeMessage || null,
+      };
 
       if (this.isWooCommerceWebsite()) {
         try {
           const productId = this.getShopifyVariantIdFromProduct(product) || this.shopifyNumericId(product.id);
           if (!productId) throw new Error('Could not resolve a Woo product to add');
           await this.addWooProductToCart(productId, Math.max(1, Number(product.quantity) || 1));
-          this.noteCartAdded(product, source, cartStatus);
+          await this.noteCartAdded(product, source, cartStatus, noteOpts);
         } catch (error) {
           if (!alreadyInBag) {
             const next = { ...this.poweredByAssisAddedProductIds };
@@ -1905,17 +2058,21 @@ export default {
           }
           console.error('Assis: add to Woo cart failed', error);
           this.showShopifyActionError('cart', error);
+          this.cartUpsellHold = false;
         }
         return;
       }
 
-      if (!this.isShopifyCartStore()) return;
+      if (!this.isShopifyCartStore()) {
+        this.cartUpsellHold = false;
+        return;
+      }
 
       if (this.isLocalShopifyPreview()) {
         this._assisShopifyCartMutating = true;
         try {
           this.addLocalShopifyPreviewProduct(product);
-          this.noteCartAdded(product, source, cartStatus);
+          await this.noteCartAdded(product, source, cartStatus, noteOpts);
         } finally {
           this._assisShopifyCartMutating = false;
         }
@@ -1929,8 +2086,24 @@ export default {
         if (!variantId) {
           throw new Error('Could not resolve a Shopify variant to add');
         }
-        await this.addShopifyVariantToCart(variantId, Math.max(1, Number(product.quantity) || 1));
-          this.noteCartAdded(product, source, cartStatus);
+        const qty = Math.max(1, Number(product.quantity) || 1);
+        let sellingPlanId = null;
+        if (this.isAssisPreOrderProduct(product)) {
+          sellingPlanId = await this.resolveShopifyPreorderSellingPlanId(product, variantId);
+        }
+        try {
+          await this.addShopifyVariantToCart(variantId, qty, sellingPlanId);
+        } catch (firstError) {
+          // Pre-order on Shopify often requires a selling_plan; retry once if the first add omitted it.
+          const message = String(firstError?.message || firstError || '');
+          const needsPlan = !sellingPlanId && this.isAssisPreOrderProduct(product)
+            && /(sold out|cannot be sold|selling plan|unavailable|אזל|לא זמין)/i.test(message);
+          if (!needsPlan) throw firstError;
+          sellingPlanId = await this.resolveShopifyPreorderSellingPlanId(product, variantId);
+          if (!sellingPlanId) throw firstError;
+          await this.addShopifyVariantToCart(variantId, qty, sellingPlanId);
+        }
+        await this.noteCartAdded(product, source, cartStatus, noteOpts);
       } catch (error) {
         if (!alreadyInBag) {
           const next = { ...this.poweredByAssisAddedProductIds };
@@ -1940,16 +2113,190 @@ export default {
         }
         console.error('Assis: add to Shopify cart failed', error);
         this.showShopifyActionError('cart', error);
+        this.cartUpsellHold = false;
       }
     },
     isAddToCartChatRequest(text) {
       const raw = String(text || '').trim();
       if (!raw) return false;
-      if (/(תוסיפ[היו]?|הוסיפ[היו]?|להוסיף|תשימ[הי]|שימ[הי]|שים|לשים).{0,40}(לסל|לעגלה|עגלה)/.test(raw)) return true;
-      return /\b(add|put)\b.{0,40}\b(cart|bag)\b/i.test(raw);
+      // Explicit add-to-cart only. Note: Hebrew "תוסיף"/"הוסיף" end with final pe ף, not פ.
+      if (/(הוספ(?:ה|ים)?|תוסיף|תוסיפ[היו]|הוסיף|הוסיפ[היו]|הוסף|להוסיף|תשימ[היו]|שימ[הי]|שים|לשים).{0,48}(לסל|לעגלה|בסל|בעגלה|עגלה)/.test(raw)) {
+        return true;
+      }
+      if (/^(?:כן(?:\s+בבקשה)?|בבקשה)?\s*(?:תוסיף|תוסיפ[היו]|הוסיף|הוסיפ[היו]|הוסף|הוספה).{0,32}(לסל|לעגלה|בסל|בעגלה|עגלה)\??\.?$/u.test(raw)) {
+        return true;
+      }
+      if (/\b(add|put)\b.{0,40}\b(cart|bag)\b/i.test(raw)) return true;
+      // Short "כן" / "yes" only counts when the previous assistant message offered to add.
+      if (this.isAffirmativeCartReply(raw) && this.assistantOfferedAddToCart(this.lastAssistantOfferText())) {
+        return true;
+      }
+      return false;
     },
-    async addProductFromChatRequest(text) {
-      if (!this.isStoreCart || !this.isAddToCartChatRequest(text)) return;
+    isAffirmativeCartReply(text) {
+      return /^(?:כן(?:\s*,?\s*(?:בבקשה|תוסיף(?:י|ו)?(?:\s+לסל)?)?)?|בבקשה|yes(?:\s*please)?|sure|ok(?:ay)?)\.?$/iu.test(
+        String(text || '').trim()
+      );
+    },
+    lastAssistantOfferText() {
+      const messages = Array.isArray(this.chatMessages) ? this.chatMessages : [];
+      for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const message = messages[i];
+        const sender = String(message?.sender || '').toLowerCase();
+        if (sender === 'client') continue;
+        if (sender === 'ai' || sender === 'assis' || sender === 'agent' || sender === 'business') {
+          return String(message?.message || message?.text || '').trim();
+        }
+      }
+      return '';
+    },
+    assistantOfferedAddToCart(text) {
+      const raw = String(text || '');
+      if (!raw) return false;
+      return /(אוסיף|נוסיף|להוסיף|תוסיף|הוסיף|add(?:ing)?\s+(?:it\s+|this\s+|them\s+)?to).{0,48}(לסל|לעגלה|cart|bag)|(לסל|לעגלה|cart|bag).{0,32}\?/i.test(raw);
+    },
+    lastClientCartRequestText() {
+      const messages = Array.isArray(this.chatMessages) ? this.chatMessages : [];
+      for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const message = messages[i];
+        if (String(message?.sender || '').toLowerCase() !== 'client') continue;
+        return String(message?.message || message?.text || '').trim();
+      }
+      return '';
+    },
+    isGoToCheckoutChatRequest(text) {
+      const raw = String(text || '').trim();
+      if (!raw) return false;
+      // Policy / how-to-pay questions — do not navigate.
+      if (/(אפשרויות\s+תשלום|אמצעי\s+תשלום|payment\s+options|methods?\s+of\s+payment|איך\s+(?:אפשר\s+)?לשלם|what\s+payment\s+methods)/i.test(raw)) {
+        return false;
+      }
+      // Customer says the redirect failed — retry checkout.
+      if (/לא\s+הועבר(?:תי|נו)|לא\s+עבר(?:תי|נו)|לא\s+נפתח|didn't\s+(get\s+)?redirect|not\s+redirected/i.test(raw)) {
+        return true;
+      }
+      if (/(מעבר\s+לתשלום|לעמוד\s+התשלום|השלמ(?:ת|ה)\s+(?:את\s+)?ההזמנה|לקופה)/i.test(raw)) return true;
+      if (/(לעבור|ללכת|קח(?:י|ו)?\s+אות[יך]|תעביר(?:י|ו)?(?:\s+אות[יך])?).{0,32}(תשלום|קופה|checkout)/i.test(raw)) return true;
+      // Short chips / intent: "אפשר לשלם?", "רוצה לשלם", "לתשלום", "checkout"
+      if (/^(?:כן(?:\s+בבקשה)?|בבקשה)?\s*(?:לתשלום|לקופה|checkout|לשלם|אפשר\s+לשלם)\??\.?$/iu.test(raw)) return true;
+      if (/(?:^|[\s,])(?:אפשר\s+)?לשלם\??\.?$/u.test(raw) || /\bpay\s+now\b/i.test(raw)) return true;
+      if (/(?:רוצה|בא\s+לי|בוא(?:י|ו)?)\s+לשלם|(?:לשלם|תשלום)\s+עכשיו|אפשר\s+(?:כבר\s+)?לשלם/i.test(raw)) return true;
+      if (/\b(i\s+)?(want\s+to\s+|ready\s+to\s+|can\s+i\s+)?pay\b|\blet'?s\s+pay\b|\bgo\s+pay\b/i.test(raw)) return true;
+      return /\b((go|proceed)\s+to\s+)?(checkout|payment)\b|\bcomplete\s+(the\s+)?(order|purchase)\b/i.test(raw);
+    },
+    isOpenCartChatRequest(text) {
+      const raw = String(text || '').trim();
+      if (!raw) return false;
+      if (this.isAddToCartChatRequest(raw)) return false;
+      if (this.isGoToCartPageChatRequest(raw)) return false;
+      if (/(צפי[הי]ה\s+בסל|לפתוח\s+את\s+(?:ה)?סל|פתח(?:י|ו)?\s+את\s+(?:ה)?סל|תרא[הי]\s+את\s+(?:ה)?סל|לעגל[הת])/i.test(raw)) return true;
+      return /\b(open|show|view)\b.{0,24}\b(cart|bag)\b/i.test(raw);
+    },
+    /** Navigate to the store cart page (not the in-widget Assis bag). */
+    isGoToCartPageChatRequest(text) {
+      const raw = String(text || '').trim();
+      if (!raw) return false;
+      if (this.isAddToCartChatRequest(raw)) return false;
+      if (this.isGoToCheckoutChatRequest(raw)) return false;
+      // Short suggested-reply chips: "לסל הקניות", "לעגלה", "Cart"
+      if (/^(?:ל(?:ה)?סל(?:\s+הקניות)?|לעגל[הת]|cart|bag|shopping\s+cart)\.?$/iu.test(raw)) return true;
+      // Hebrew: go / transfer / take me to the shopping cart page.
+      if (/(?:לעבור|ללכת|קח(?:י|ו)?\s+אות[יך]|תעביר(?:י|ו)?(?:\s+אות[יך])?|אפשר\s+לעבור).{0,40}(?:ל(?:ה)?סל(?:\s+הקניות)?|לעמוד\s+(?:ה)?סל|לעגל[הת])/i.test(raw)) {
+        return true;
+      }
+      if (/(?:עמוד\s+(?:ה)?סל|סל\s+הקניות(?:\s+שלי)?|לסל\s+הקניות)/i.test(raw)
+        && /(לעבור|ללכת|קח|תעביר|אפשר|רוצה|תפתח|תרא)/i.test(raw)) {
+        return true;
+      }
+      // English: go / take me to (my) (shopping) cart / cart page.
+      if (/\b((go|take\s+me|bring\s+me|send\s+me|navigate|redirect)\s+(to\s+)?)(my\s+)?(shopping\s+)?cart(\s+page)?\b/i.test(raw)) {
+        return true;
+      }
+      if (/\b(shopping\s+)?cart\s+page\b/i.test(raw)) return true;
+      return false;
+    },
+    storeCartPageUrl() {
+      if (typeof this.isWooCommerceWebsite === 'function' && this.isWooCommerceWebsite()) {
+        if (typeof this.wooCartUrl === 'function') return this.wooCartUrl();
+        return `${this.shopifyStoreRoot()}cart/`;
+      }
+      // Local widget preview: jump to the real storefront cart when we know it.
+      const remote = String(this.pluginStorefrontUrl || '').trim();
+      if (remote && this.isLocalShopifyPreview?.()) {
+        try {
+          const base = new URL(remote.includes('://') ? remote : `https://${remote}`);
+          base.pathname = '/cart';
+          base.search = '';
+          base.hash = '';
+          return base.toString();
+        } catch {
+          /* fall through */
+        }
+      }
+      return `${this.shopifyStoreRoot()}cart`;
+    },
+    async openStoreCartPage(options = {}) {
+      if (!this.isStoreCart) return;
+      const url = this.storeCartPageUrl();
+      const onLocalHost = (() => {
+        try {
+          const host = String(window.location.hostname || '').toLowerCase();
+          return host === 'localhost' || host === '127.0.0.1' || host === '::1';
+        } catch {
+          return false;
+        }
+      })();
+      // Only fall back to Assis bag when we would navigate to this same local preview origin.
+      let staysOnLocalPreview = false;
+      if (onLocalHost) {
+        try {
+          staysOnLocalPreview = new URL(url, window.location.origin).origin === window.location.origin;
+        } catch {
+          staysOnLocalPreview = true;
+        }
+      }
+      if (staysOnLocalPreview) {
+        this.showShopifyCartPanel = true;
+        if (typeof this.noteHeaderButton === 'function') this.noteHeaderButton('cart');
+        return;
+      }
+      const fromChat = Boolean(
+        options?.fromChat
+        || options?.surface === 'chat'
+        || this.isChatOpen
+      );
+      if (typeof this.trackPluginEvent === 'function') {
+        this.trackPluginEvent('cart_page_opened', {
+          ...(fromChat ? { surface: 'chat', from_chat: true } : { surface: 'cart' }),
+          ...(this.isWooCommerceWebsite?.() ? { cart_channel: 'woo' } : {}),
+        });
+      }
+      this.closePluginForCheckout();
+      (window.top || window).location.assign(url);
+    },
+    /**
+     * Chip / explicit UI nav only (skips AI). Free-typed chat uses AI cartActions.
+     * @returns {Promise<boolean>} true when the shopper is leaving for cart/checkout
+     *   (caller must not reopen chat or send the chip to the AI).
+     */
+    async handleCartNavFromChatRequest(text) {
+      if (!this.isStoreCart) return false;
+      if (this.isGoToCheckoutChatRequest(text)) {
+        await this.openShopifyCheckout({ fromChat: true });
+        return true;
+      }
+      if (this.isGoToCartPageChatRequest(text)) {
+        await this.openStoreCartPage({ fromChat: true });
+        return true;
+      }
+      if (this.isOpenCartChatRequest(text)) {
+        this.showShopifyCartPanel = true;
+        if (typeof this.noteHeaderButton === 'function') this.noteHeaderButton('cart');
+        return true;
+      }
+      return false;
+    },
+    findLatestChatProductForCart(text = '') {
       const messages = Array.isArray(this.chatMessages) ? this.chatMessages : [];
       let productMessage = null;
       for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -1960,15 +2307,16 @@ export default {
           break;
         }
       }
-      if (!productMessage) return;
+      if (!productMessage) return null;
 
       const products = productMessage.products;
       let chosenIndex = products.length === 1 ? 0 : -1;
       let bestScore = 0;
+      const hint = String(text || '').trim();
       products.forEach((product, index) => {
         const title = this.getProductDisplayTitle?.(product) || product?.title || '';
-        const score = typeof this.scoreProductMentionMatch === 'function'
-          ? this.scoreProductMentionMatch(title, text)
+        const score = hint && typeof this.scoreProductMentionMatch === 'function'
+          ? this.scoreProductMentionMatch(title, hint)
           : 0;
         if (score > bestScore) {
           bestScore = score;
@@ -1976,19 +2324,385 @@ export default {
         }
       });
       if (chosenIndex < 0) chosenIndex = 0;
+      return { product: products[chosenIndex], index: chosenIndex, message: productMessage };
+    },
+    /** Queue an add from chat/chip — do not add instantly on send (feels too snappy). */
+    queueChatAddToCartRequest(text) {
+      if (!this.isStoreCart || !this.isAddToCartChatRequest(text)) return;
+      this._pendingChatAddToCartText = String(text || '').trim();
+      // Beat after the customer message before bag mutate + "הוספתי לעגלה".
+      this._pendingChatAddEarliestAt = Date.now() + 1600;
+      if (this._pendingChatAddDelayTimer) {
+        clearTimeout(this._pendingChatAddDelayTimer);
+        this._pendingChatAddDelayTimer = null;
+      }
+    },
+
+    clearPendingChatAddToCart() {
+      this._pendingChatAddToCartText = '';
+      this._pendingChatAddProductsReady = false;
+      this._pendingChatAddEarliestAt = 0;
+      if (this._pendingChatAddDelayTimer) {
+        clearTimeout(this._pendingChatAddDelayTimer);
+        this._pendingChatAddDelayTimer = null;
+      }
+    },
+
+    async waitForChatAddEarliest() {
+      const earliest = Number(this._pendingChatAddEarliestAt) || 0;
+      const wait = earliest - Date.now();
+      if (wait <= 0) return;
+      await new Promise((resolve) => {
+        this._pendingChatAddDelayTimer = window.setTimeout(() => {
+          this._pendingChatAddDelayTimer = null;
+          resolve();
+        }, wait);
+      });
+    },
+
+    async addProductFromChatRequest(text, { immediate = false } = {}) {
+      if (!this.isStoreCart || !this.isAddToCartChatRequest(text)) return;
+      if (!immediate) {
+        this.queueChatAddToCartRequest(text);
+        return;
+      }
+      const found = this.findLatestChatProductForCart(text);
+      if (!found) {
+        // No cards yet (common on the first "תוסיף לסל …" turn) — retry when products arrive.
+        this._pendingChatAddToCartText = String(text || '').trim();
+        return;
+      }
+      this.clearPendingChatAddToCart();
 
       const payload = typeof this.buildProductCardCartPayload === 'function'
-        ? this.buildProductCardCartPayload(products[chosenIndex], chosenIndex, productMessage)
-        : products[chosenIndex];
+        ? this.buildProductCardCartPayload(found.product, found.index, found.message)
+        : found.product;
       if (!payload?.id) return;
 
       if (this.isProductInBag(payload)) {
         this.revealGoToCheckout();
+        // Still run drawer → bag card → best sellers even when it was already in the bag.
+        if (typeof this.ensurePluginCartAddMoment === 'function') {
+          this.ensurePluginCartAddMoment(payload);
+        } else if (typeof this.presentCartUpsell === 'function') {
+          this.presentCartUpsell(payload, 'plugin');
+        }
         return;
       }
 
       await this.addPoweredByAssisHomeProduct(payload, 'chat');
       if (this.isProductInBag(payload)) this.revealGoToCheckout();
+    },
+
+    flushPendingChatAddToCart() {
+      const pending = String(this._pendingChatAddToCartText || '').trim();
+      if (!pending || !this.isStoreCart) return;
+      // AI cartActions / choreography already handling this add — do not double-add.
+      if (this.cartUpsellAwaiting || this._pluginCartChoreographyRunning) {
+        this.clearPendingChatAddToCart();
+        return;
+      }
+      if (this._cartUpsellAwaitReply && this._cartUpsellReplyReady) {
+        if (typeof this.tryShowCartUpsellUnderReply === 'function') this.tryShowCartUpsellUnderReply();
+        this.clearPendingChatAddToCart();
+        return;
+      }
+      if (this.cartUpsell?.source === 'plugin' && !this._cartUpsellAwaitReply) {
+        this.clearPendingChatAddToCart();
+        return;
+      }
+      const earliest = Number(this._pendingChatAddEarliestAt) || 0;
+      const wait = earliest - Date.now();
+      if (wait > 0) {
+        if (this._pendingChatAddDelayTimer) return;
+        this._pendingChatAddDelayTimer = window.setTimeout(() => {
+          this._pendingChatAddDelayTimer = null;
+          this.flushPendingChatAddToCart();
+        }, wait);
+        return;
+      }
+      if (!this.findLatestChatProductForCart(pending) && !this._pendingChatAddProductsReady) return;
+      if (!this.findLatestChatProductForCart(pending)) return;
+      // Persist first so a Woo fragment refresh cannot restore a chat without this reply.
+      if (typeof this.persistChatSession === 'function') this.persistChatSession();
+      const text = pending;
+      this.clearPendingChatAddToCart();
+      void this.addProductFromChatRequest(text, { immediate: true });
+    },
+
+    /**
+     * AI cartActions are the source of truth for commerce intent.
+     * Keyword helpers below are only for chip/fast UI paths that skip the AI round.
+     */
+    normalizeAiCartActions(value) {
+      if (!Array.isArray(value)) return [];
+      const allowed = new Set(['add_to_cart', 'open_cart', 'open_checkout']);
+      const actions = [];
+      for (const item of value) {
+        if (!item || typeof item !== 'object') continue;
+        // Models sometimes emit action/id instead of type/productId.
+        const type = String(item.type || item.action || '').trim();
+        if (!allowed.has(type)) continue;
+        if (type === 'add_to_cart') {
+          const productId = String(item.productId || item.id || '').trim();
+          if (!productId) continue;
+          const action = { type, productId };
+          const quantity = Number(item.quantity);
+          if (Number.isFinite(quantity) && quantity >= 1 && quantity <= 99) {
+            action.quantity = Math.floor(quantity);
+          }
+          actions.push(action);
+        } else {
+          actions.push({ type });
+        }
+        if (actions.length >= 5) break;
+      }
+      return actions;
+    },
+
+    salvageCartActionsFromText(text) {
+      const raw = String(text || '')
+        .replace(/[“”]/g, '"')
+        .replace(/[‘’]/g, "'");
+      const actions = [];
+      const push = (type, productId, quantity) => {
+        const item = { type };
+        if (productId) item.productId = productId;
+        if (quantity) item.quantity = quantity;
+        actions.push(item);
+      };
+      try {
+        const trimmed = raw.trim();
+        if (trimmed.startsWith('{') && /"cartActions"\s*:/i.test(trimmed)) {
+          const parsed = JSON.parse(trimmed);
+          if (parsed && Array.isArray(parsed.cartActions)) {
+            return this.normalizeAiCartActions(parsed.cartActions);
+          }
+        }
+      } catch {
+        /* fall through */
+      }
+      const match = raw.match(/"cartActions"\s*:\s*(\[[\s\S]*?\])/i);
+      if (match) {
+        try {
+          const parsed = JSON.parse(match[1]);
+          const normalized = this.normalizeAiCartActions(parsed);
+          if (normalized.length) return normalized;
+        } catch {
+          /* fall through */
+        }
+      }
+      if (/["']?(?:action|type)["']?\s*:\s*["']?open_checkout["']?/i.test(raw)) {
+        push('open_checkout');
+      }
+      if (/["']?(?:action|type)["']?\s*:\s*["']?open_cart["']?/i.test(raw)) {
+        push('open_cart');
+      }
+      if (/["']?(?:action|type)["']?\s*:\s*["']?add_to_cart["']?/i.test(raw)) {
+        const idMatch = raw.match(/["']?(?:productId|id)["']?\s*:\s*["']([^"']+)["']/i);
+        const qtyMatch = raw.match(/["']?quantity["']?\s*:\s*"?(\d+)"?/i);
+        push('add_to_cart', idMatch?.[1], qtyMatch ? Number(qtyMatch[1]) : undefined);
+      }
+      return this.normalizeAiCartActions(actions);
+    },
+
+    cartActionFallbackMessage(actions) {
+      const types = new Set((Array.isArray(actions) ? actions : []).map((item) => item?.type));
+      if (this.language === 'en') {
+        if (types.has('open_checkout')) return 'Of course - opening checkout for you now.';
+        if (types.has('open_cart')) return 'Taking you to your cart now.';
+        return 'Great - it is in your bag.';
+      }
+      if (types.has('open_checkout')) return 'בשמחה - מעביר אותך לתשלום עכשיו.';
+      if (types.has('open_cart')) return 'מעביר אותך לסל הקניות עכשיו.';
+      return 'תתחדש! המוצר נוסף לסל.';
+    },
+
+    queueAiCartActions(message, value) {
+      const fromPayload = this.normalizeAiCartActions(value);
+      const fromText = this.normalizeAiCartActions(this.salvageCartActionsFromText(message?.message));
+      const merged = [];
+      const seen = new Set();
+      for (const action of [...fromPayload, ...fromText]) {
+        const key = `${action.type}:${action.productId || ''}:${action.quantity || 1}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        merged.push(action);
+      }
+      if (!message || !merged.length) return;
+      message.cartActions = merged;
+      this.maybeRunAiCartActions(message);
+    },
+
+    maybeRunAiCartActions(message) {
+      if (!message || message._aiCartActionsApplied) return;
+      if (!this.isStoreCart) return;
+      const actions = this.normalizeAiCartActions(message.cartActions);
+      if (!actions.length) return;
+      if (message.isTyping || message.isStreaming || message.streamPendingCommit) return;
+      message._aiCartActionsApplied = true;
+      void this.executeAiCartActions(actions, message);
+    },
+
+    productIdsMatchForCart(left, right) {
+      const a = String(left || '').trim();
+      const b = String(right || '').trim();
+      if (!a || !b) return false;
+      if (a === b) return true;
+      const numA = this.shopifyNumericId(a);
+      const numB = this.shopifyNumericId(b);
+      return Boolean(numA && numB && numA === numB);
+    },
+
+    findChatProductForCartAction(productId, preferMessage) {
+      const id = String(productId || '').trim();
+      const matchIn = (message) => {
+        const products = Array.isArray(message?.products) ? message.products : [];
+        for (let index = 0; index < products.length; index += 1) {
+          const product = products[index];
+          if (!id) return { product, index, message };
+          const displayId = typeof this.getProductDisplayId === 'function'
+            ? this.getProductDisplayId(product, index)
+            : product?.id;
+          if (
+            this.productIdsMatchForCart(displayId, id)
+            || this.productIdsMatchForCart(product?.id, id)
+            || this.productIdsMatchForCart(product?.product_id, id)
+            || this.productIdsMatchForCart(product?.variant_id || product?.variantId, id)
+          ) {
+            return { product, index, message };
+          }
+        }
+        return null;
+      };
+      if (id) {
+        const preferred = matchIn(preferMessage);
+        if (preferred) return preferred;
+        const messages = Array.isArray(this.chatMessages) ? this.chatMessages : [];
+        for (let i = messages.length - 1; i >= 0; i -= 1) {
+          const found = matchIn(messages[i]);
+          if (found) return found;
+        }
+      }
+      return this.findLatestChatProductForCart();
+    },
+
+    stripAiAddConfirmAfterPin(message, actions) {
+      if (!message || typeof this.isAiDuplicateAddConfirm !== 'function') return;
+      const recentPin = (this.chatMessages || []).slice(-12).some((item) => item?.isCartAction);
+      if (!recentPin || !this.isAiDuplicateAddConfirm(message.message)) return;
+      const before = String(message.message || '');
+      const kept = typeof this.stripDuplicateAiAddConfirm === 'function'
+        ? this.stripDuplicateAiAddConfirm(before)
+        : before;
+      if (kept) {
+        message.message = kept;
+        message._cartActionFallback = false;
+        message._cartActionFollowUpOnly = kept !== before
+          || Boolean(typeof this.splitLastQuestion === 'function' && this.splitLastQuestion(kept).question);
+        return;
+      }
+      if (typeof this.isShortAiAddConfirmOnly === 'function' && this.isShortAiAddConfirmOnly(before)) {
+        message.message = typeof this.cartActionFallbackMessage === 'function'
+          ? this.cartActionFallbackMessage(actions?.length ? actions : [{ type: 'add_to_cart' }])
+          : (this.language === 'he' ? 'תתחדש! המוצר נוסף לסל.' : 'Great - it is in your bag.');
+        message._cartActionFallback = true;
+        message._cartActionFollowUpOnly = true;
+      }
+    },
+    async executeAiCartActions(actions, message) {
+      if (!this.isStoreCart || !Array.isArray(actions) || !actions.length) return;
+      const hasAdd = actions.some((item) => String(item?.type || '').trim() === 'add_to_cart');
+      if (hasAdd) {
+        // Same beat as the client heuristic — don't mutate the bag the instant the AI finishes.
+        await this.waitForChatAddEarliest();
+      }
+      // Client heuristic may already be presenting the bag for this turn.
+      this.clearPendingChatAddToCart();
+      const noteOpts = { withAi: false, beforeMessage: message };
+      for (const action of actions) {
+        const type = String(action?.type || '').trim();
+        if (type === 'add_to_cart') {
+          // Honor the agent's cartActions — intent is decided by the AI, not keyword matching.
+          const found = this.findChatProductForCartAction(action.productId, message);
+          const quantity = Math.max(1, Math.floor(Number(action.quantity)) || 1);
+          if (found) {
+            const payload = typeof this.buildProductCardCartPayload === 'function'
+              ? this.buildProductCardCartPayload(found.product, found.index, found.message)
+              : found.product;
+            if (!payload?.id && !payload?.variant_id && !payload?.selectedVariantId) continue;
+            const withQty = {
+              ...payload,
+              quantity,
+              // Prefer action title when the agent already named the chosen variant.
+              ...(action.title || action.name
+                ? { title: String(action.title || action.name).trim() }
+                : {}),
+            };
+            if (this.isProductInBag(withQty)) {
+              // Already in bag — still pin before this AI reply, then bag choreography.
+              if (typeof this.pushCartActionMessage === 'function') {
+                await this.pushCartActionMessage(
+                  this.cartActionPinTitle(withQty) || withQty.title || withQty.name,
+                  { withAi: false, beforeMessage: message },
+                );
+              }
+              this.stripAiAddConfirmAfterPin(message, actions);
+              this.revealGoToCheckout();
+              if (typeof this.ensurePluginCartAddMoment === 'function') {
+                this.ensurePluginCartAddMoment(withQty);
+              }
+              continue;
+            }
+            await this.addPoweredByAssisHomeProduct(withQty, 'chat', noteOpts);
+            this.stripAiAddConfirmAfterPin(message, actions);
+            continue;
+          }
+          // Fallback: add by catalog id from the action when cards are not in chat yet.
+          const productId = this.shopifyNumericId(action.productId) || String(action.productId || '').trim();
+          if (!productId) continue;
+          try {
+            const byId = {
+              id: action.productId || productId,
+              product_id: action.productId || productId,
+              variant_id: productId,
+              variantId: productId,
+              selectedVariantId: productId,
+              quantity,
+              title: String(action.title || action.name || message?.cartUpsellTitle || '').trim(),
+            };
+            if (this.isProductInBag(byId)) {
+              if (typeof this.pushCartActionMessage === 'function') {
+                await this.pushCartActionMessage(
+                  this.cartActionPinTitle(byId) || byId.title,
+                  { withAi: false, beforeMessage: message },
+                );
+              }
+              this.stripAiAddConfirmAfterPin(message, actions);
+              this.revealGoToCheckout();
+              if (typeof this.ensurePluginCartAddMoment === 'function') {
+                this.ensurePluginCartAddMoment(byId);
+              }
+              continue;
+            }
+            await this.addPoweredByAssisHomeProduct(byId, 'chat', noteOpts);
+            this.stripAiAddConfirmAfterPin(message, actions);
+          } catch (error) {
+            console.error('Assis: AI add to cart by id failed', error);
+            this.showShopifyActionError?.('cart', error);
+          }
+          continue;
+        }
+        if (type === 'open_cart') {
+          // AI decided open_cart — navigate; do not re-check keywords.
+          await this.openStoreCartPage({ fromChat: true });
+          continue;
+        }
+        if (type === 'open_checkout') {
+          // AI decided open_checkout — navigate; do not re-check keywords.
+          await this.openShopifyCheckout({ fromChat: true });
+        }
+      }
     },
   },
 };

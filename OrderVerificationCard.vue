@@ -1509,7 +1509,7 @@ export default {
   max-width: 100%;
   min-width: 0;
   /* Must beat App.vue scoped `.assis-plugin-root[data-v] * { padding: 0 }` (equal 0,2,0 otherwise). */
-  padding: 4px;
+  padding: 10px 4px 4px;
   margin-bottom: 14px;
   box-sizing: border-box;
   animation: assis-agent-card-in 0.48s cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -1557,8 +1557,17 @@ export default {
   background: var(--assis-chat-card-bg, #ffffff);
   border: var(--assis-chat-card-border, 1px solid rgba(15, 23, 42, 0.06));
   box-shadow: var(--assis-chat-card-shadow, 0 4px 12px rgba(15, 23, 42, 0.06));
-  transition: translate 0.3s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.3s ease, border-color 0.18s ease;
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.3s ease, border-color 0.18s ease;
   overflow: hidden;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  @media (prefers-reduced-motion: no-preference) {
+    .assis-plugin-root .assis-order-verification .assis-order-verification-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0 0 1px rgba(29, 111, 238, 0.14), 0 14px 28px rgba(15, 23, 42, 0.14);
+    }
+  }
 }
 
 .assis-order-verification-card--verified {

@@ -1,10 +1,31 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 
-const initVue = async () => {
-    const el = document.getElementById('assis-plugin-app')
+/** WordPress optimization plugins may run this script before wp_footer prints the mount node. */
+function waitForAssisMountEl(timeoutMs = 10000) {
+    const existing = document.getElementById('assis-plugin-app')
+    if (existing) return Promise.resolve(existing)
 
-    // console.log('Element trouvé:', el)
+    return new Promise((resolve) => {
+        let settled = false
+        const finish = (el) => {
+            if (settled) return
+            settled = true
+            obs.disconnect()
+            clearTimeout(timer)
+            resolve(el)
+        }
+        const obs = new MutationObserver(() => {
+            const el = document.getElementById('assis-plugin-app')
+            if (el) finish(el)
+        })
+        obs.observe(document.documentElement, { childList: true, subtree: true })
+        const timer = setTimeout(() => finish(document.getElementById('assis-plugin-app')), timeoutMs)
+    })
+}
+
+const initVue = async () => {
+    const el = await waitForAssisMountEl()
 
     if (!el) return
 

@@ -130,6 +130,8 @@ export default {
       ) return 'collection';
 
       if (path === '/' || path === '') return 'home';
+      // Market / locale storefront roots (Shopify markets, WP multilingual): /he, /en-us, …
+      if (/^\/[a-z]{2}(?:-[a-z]{2})?\/?$/i.test(path)) return 'home';
 
       if (hasToken([
         'shipping', 'delivery', 'refund', 'return', 'returns', 'faq', 'track', 'tracking',

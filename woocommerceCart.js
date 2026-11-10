@@ -63,14 +63,53 @@ export default {
       return false;
     },
     wooCheckoutUrl() {
-      const blocksUrl = String(window.wcSettings?.checkoutUrl || '').trim();
-      if (blocksUrl && !/[?&]wc-ajax=/.test(blocksUrl)) return blocksUrl;
-      // Classic checkout_url is the place-order endpoint (?wc-ajax=checkout), not the page.
-      if (window.wc_checkout_params) {
-        const path = window.location.pathname || '/checkout/';
-        return path.endsWith('/') ? path : `${path}/`;
-      }
+      const usable = (value) => {
+        const url = String(value || '').trim();
+        if (!url || /[?&]wc-ajax=/i.test(url)) return '';
+        // Never treat the cart page (or current page) as checkout.
+        try {
+          const parsed = new URL(url, window.location.origin);
+          const path = parsed.pathname.replace(/\/+$/, '') || '/';
+          if (/\/cart$/i.test(path)) return '';
+          if (path === (window.location.pathname.replace(/\/+$/, '') || '/')) return '';
+        } catch {
+          /* keep raw */
+        }
+        return url;
+      };
+      // Blocks / Store API checkout page.
+      const blocksUrl = usable(window.wcSettings?.checkoutUrl);
+      if (blocksUrl) return blocksUrl;
+      // Classic params: checkout_url is often the ajax place-order endpoint — skip that.
+      const params = window.wc_checkout_params || {};
+      const fromClassic = usable(params.checkout_url)
+        || usable(params.checkout_page)
+        || usable(window.wc_add_to_cart_params?.checkout_url)
+        || usable(window.wc_add_to_cart_params?.cart_url?.replace(/\/cart\/?$/i, '/checkout/'));
+      if (fromClassic) return fromClassic;
+      // Never use the current page path — home/blog would "navigate" nowhere.
       return `${this.shopifyStoreRoot()}checkout/`;
+    },
+    wooCartUrl() {
+      const usable = (value) => {
+        const url = String(value || '').trim();
+        if (!url || /[?&]wc-ajax=/i.test(url)) return '';
+        try {
+          const parsed = new URL(url, window.location.origin);
+          const path = parsed.pathname.replace(/\/+$/, '') || '/';
+          // Prefer real cart pages only (not checkout / current PDP).
+          if (/\/checkout$/i.test(path)) return '';
+          if (path === (window.location.pathname.replace(/\/+$/, '') || '/') && !/\/cart$/i.test(path)) return '';
+        } catch {
+          /* keep raw */
+        }
+        return url;
+      };
+      const fromSettings = usable(window.wcSettings?.cartUrl)
+        || usable(window.wc_add_to_cart_params?.cart_url)
+        || usable(window.wc_checkout_params?.cart_url);
+      if (fromSettings) return fromSettings;
+      return `${this.shopifyStoreRoot()}cart/`;
     },
     assisCookieSuffix() {
       try {
@@ -198,7 +237,7 @@ export default {
       if (nonce) this._wooCartNonce = nonce;
       if (token) this._wooCartToken = token;
     },
-    async wooStore(path, { method = 'GET', body } = {}) {
+    async wooStore(path, { method = 'GET', body, retried = false } = {}) {
       this._wooStoreFetchDepth = (this._wooStoreFetchDepth || 0) + 1;
       try {
         if (method !== 'GET' && !this._wooCartNonce) {
@@ -216,6 +255,10 @@ export default {
         });
         this.rememberWooCartHeaders(response);
         if (!response.ok) {
+          if (!retried && method !== 'GET' && (response.status === 401 || response.status === 403)) {
+            this._wooCartNonce = '';
+            return this.wooStore(path, { method, body, retried: true });
+          }
           let message = `Woo cart failed (${response.status})`;
           try {
             const error = await response.json();

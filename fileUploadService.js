@@ -5,9 +5,21 @@ export class FileUploadService {
   static STORAGE_BUCKET = 'chat-media'
   static MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
   
-  // Define allowed file types for each category
-  static ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff']
-  static ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/avi', 'video/mov', 'video/wmv', 'video/flv', 'video/webm', 'video/mkv']
+  // Align with assis-ai-agent media parts: image/*, video/*, audio/*, application/pdf.
+  // Keep common office/text docs for chat attach even when the model cannot inline-read them.
+  static ALLOWED_IMAGE_TYPES = [
+    'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
+    'image/bmp', 'image/tiff', 'image/heic', 'image/heif', 'image/svg+xml',
+  ]
+  static ALLOWED_VIDEO_TYPES = [
+    'video/mp4', 'video/avi', 'video/quicktime', 'video/mov', 'video/wmv',
+    'video/flv', 'video/webm', 'video/mkv', 'video/x-msvideo', 'video/3gpp',
+  ]
+  static ALLOWED_AUDIO_TYPES = [
+    'audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/wav', 'audio/x-wav',
+    'audio/webm', 'audio/ogg', 'audio/aac', 'audio/m4a', 'audio/x-m4a',
+    'audio/flac', 'audio/opus', 'audio/3gpp',
+  ]
   static ALLOWED_DOCUMENT_TYPES = [
     'application/pdf',
     'application/msword',
@@ -17,8 +29,11 @@ export class FileUploadService {
     'application/vnd.ms-powerpoint',
     'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     'text/plain',
-    'text/csv'
+    'text/csv',
   ]
+
+  static FILE_ACCEPT =
+    'image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.mp3,.wav,.m4a,.aac,.ogg,.flac,.heic,.heif'
 
   /**
    * Upload a single file to Supabase Storage
@@ -270,6 +285,43 @@ export class FileUploadService {
   }
 
   /**
+   * Resolve category from MIME and/or filename (drag/drop often omits type).
+   */
+  static resolveFileCategory(file) {
+    const mime = String(file?.type || '').toLowerCase().trim()
+    const name = String(file?.name || '').toLowerCase()
+
+    if (
+      mime.startsWith('image/')
+      || this.ALLOWED_IMAGE_TYPES.includes(mime)
+      || /\.(jpe?g|png|gif|webp|bmp|tiff?|heic|heif|svg)$/i.test(name)
+    ) {
+      return 'image'
+    }
+    if (
+      mime.startsWith('video/')
+      || this.ALLOWED_VIDEO_TYPES.includes(mime)
+      || /\.(mp4|mov|webm|mkv|avi|wmv|flv|m4v|3gp)$/i.test(name)
+    ) {
+      return 'video'
+    }
+    if (
+      mime.startsWith('audio/')
+      || this.ALLOWED_AUDIO_TYPES.includes(mime)
+      || /\.(mp3|wav|m4a|aac|ogg|flac|opus|wma|aiff?)$/i.test(name)
+    ) {
+      return 'audio'
+    }
+    if (
+      this.ALLOWED_DOCUMENT_TYPES.includes(mime)
+      || /\.(pdf|docx?|xlsx?|pptx?|txt|csv)$/i.test(name)
+    ) {
+      return 'document'
+    }
+    return null
+  }
+
+  /**
    * Validate file before upload and return file type
    */
   static validateFile(file) {
@@ -278,31 +330,21 @@ export class FileUploadService {
       throw new Error(`File size too large. Maximum size is ${this.MAX_FILE_SIZE / (1024 * 1024)}MB.`)
     }
 
-    // Check file type
-    if (this.ALLOWED_IMAGE_TYPES.includes(file.type)) {
-      return 'image'
-    } else if (this.ALLOWED_VIDEO_TYPES.includes(file.type)) {
-      return 'video'
-    } else if (this.ALLOWED_DOCUMENT_TYPES.includes(file.type)) {
-      return 'document'
-    } else {
-      throw new Error('Invalid file type. Only images, videos, and documents are allowed.')
-    }
+    const category = this.resolveFileCategory(file)
+    if (category) return category
+    throw new Error('Invalid file type. Only images, videos, audio, and documents are allowed.')
   }
 
   /**
    * Get file type from MIME type
    */
   static getFileTypeFromMime(mimeType) {
-    if (this.ALLOWED_IMAGE_TYPES.includes(mimeType)) {
-      return 'image'
-    } else if (this.ALLOWED_VIDEO_TYPES.includes(mimeType)) {
-      return 'video'
-    } else if (this.ALLOWED_DOCUMENT_TYPES.includes(mimeType)) {
-      return 'document'
-    } else {
-      return 'document' // Default fallback
-    }
+    const mime = String(mimeType || '').toLowerCase()
+    if (mime.startsWith('image/') || this.ALLOWED_IMAGE_TYPES.includes(mime)) return 'image'
+    if (mime.startsWith('video/') || this.ALLOWED_VIDEO_TYPES.includes(mime)) return 'video'
+    if (mime.startsWith('audio/') || this.ALLOWED_AUDIO_TYPES.includes(mime)) return 'audio'
+    if (this.ALLOWED_DOCUMENT_TYPES.includes(mime)) return 'document'
+    return 'document'
   }
 
   /**
@@ -320,20 +362,14 @@ export class FileUploadService {
    * Get file icon based on file type
    */
   static getFileIcon(fileType, mimeType) {
-    if (fileType === 'image') {
-      return '🖼️'
-    } else if (fileType === 'video') {
-      return '🎥'
-    } else if (mimeType.includes('pdf')) {
-      return '📄'
-    } else if (mimeType.includes('word') || mimeType.includes('document')) {
-      return '📝'
-    } else if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) {
-      return '📊'
-    } else if (mimeType.includes('powerpoint') || mimeType.includes('presentation')) {
-      return '📈'
-    } else {
-      return '📎'
-    }
+    const mime = String(mimeType || '')
+    if (fileType === 'image') return '🖼️'
+    if (fileType === 'video') return '🎥'
+    if (fileType === 'audio' || mime.startsWith('audio/')) return '🎧'
+    if (mime.includes('pdf')) return '📄'
+    if (mime.includes('word') || mime.includes('document')) return '📝'
+    if (mime.includes('excel') || mime.includes('spreadsheet')) return '📊'
+    if (mime.includes('powerpoint') || mime.includes('presentation')) return '📈'
+    return '📎'
   }
 }
